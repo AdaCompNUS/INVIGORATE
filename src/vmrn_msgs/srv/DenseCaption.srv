@@ -1,0 +1,11 @@
+sensor_msgs/Image input
+int32 model_image_size # Needs to be divisble by actual image width
+int32 num_proposals
+int32 boxes_to_show 
+float32 rpn_nms_thresh
+float32 final_nms_thresh
+---
+int32 n # N number of captions (might not equal to boxes_to_show input)
+string[] captions # N number of semantic description
+float32[] boxes # 4N number of bounding values Eg: (x1, y1, w1, h1 .... xN, yN, wN, hN)
+float32[] scores # N number of captioning scores

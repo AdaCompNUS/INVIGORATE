@@ -4,3 +4,6 @@
 [submodule "src/faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch"]
 	path = src/faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch
 	url = https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch.git
+[submodule "src/mattnet_server/MAttNet"]
+	path = src/mattnet_server/MAttNet
+	url = https://github.com/lyf44/MAttNet.git

@@ -1,0 +1,6 @@
+sensor_msgs/Image img
+float64[] bbox
+int32[] cls
+string expr
+---
+float64[] ground_prob
