@@ -1,0 +1,6 @@
+[submodule "src/ingress-proj"]
+	path = src/ingress-proj
+	url = https://github.com/AdaCompNUS/ingress-proj
+[submodule "src/faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch"]
+	path = src/faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch
+	url = https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch.git
