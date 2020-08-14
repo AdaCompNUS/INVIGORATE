@@ -1,0 +1,8 @@
+sensor_msgs/Image img
+bool get_box_feat
+
+---
+int32 num_box
+float64[] bbox
+int32[] cls
+string box_feats

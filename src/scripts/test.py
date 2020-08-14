@@ -5,23 +5,20 @@ import sys
 sys.path.append('../faster_rcnn_detector/VMRN/Visual-Manipulation-Relationship-Network-Pytorch/')
 
 import rospy
-from model.utils.data_viewer import dataViewer
-from model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
-
-from faster_rcnn_detector.srv import ObjectDetection
-from vmrn_old.srv import VmrDetection
-from vmrn_msgs.srv import MAttNetGrounding
-from ingress_srv.ingress_srv import Ingress
-
 import cv2
 from cv_bridge import CvBridge
-br = CvBridge()
-
 import torch
 import numpy as np
 import os
-
 import time
+
+from model.utils.data_viewer import dataViewer
+from model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
+
+from vmrn_msgs.srv import MAttNetGroundingV2, ObjectDetection, VmrDetection
+from ingress_srv.ingress_srv import Ingress
+
+br = CvBridge()
 
 # ------- Settings ------
 TEST_OBJECT_DETECTION = True
@@ -35,8 +32,8 @@ def faster_rcnn_client(img):
     try:
         obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
         img_msg = br.cv2_to_imgmsg(img)
-        res = obj_det(img_msg)
-        return res.num_box, res.bbox, res.cls
+        res = obj_det(img_msg, True)
+        return res.num_box, res.bbox, res.cls, res.box_feats
     except rospy.ServiceException as e:
         print("Service call failed: %s"%e)
 
@@ -50,12 +47,12 @@ def vmrn_client(img, bbox):
     except rospy.ServiceException as e:
         print("Service call failed: %s"%e)
 
-def mattnet_client(img, bbox, cls, expr):
+def mattnet_client(img, expr, img_data):
     rospy.wait_for_service('mattnet_server')
     try:
-        grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
+        grounding = rospy.ServiceProxy('mattnet_server', MAttNetGroundingV2)
         img_msg = br.cv2_to_imgmsg(img)
-        res = grounding(img_msg, bbox, cls, expr)
+        res = grounding(img_msg, expr, img_data)
         return res.ground_prob
     except rospy.ServiceException as e:
         print("Service call failed: %s"%e)
@@ -85,12 +82,11 @@ def test(img_cv, expr):
     # test object detection
     if TEST_OBJECT_DETECTION:
         tb = time.time()
-        obj_result = faster_rcnn_client(img_cv)
-        print(obj_result[1])
-        num_box = obj_result[0]
+        num_box, bboxes, classes, bbox_feats = faster_rcnn_client(img_cv)
+        print(bboxes)
         print(num_box)
-        bboxes = np.array(obj_result[1]).reshape(-1, 5)
-        cls = np.array(obj_result[2]).reshape(-1, 1)
+        bboxes = np.array(bboxes).reshape(-1, 5)
+        cls = np.array(classes).reshape(-1, 1)
         bbox_2d = bboxes[:, :4]
         bboxes = np.concatenate([bboxes, cls], axis=-1)
     else:
@@ -106,9 +102,7 @@ def test(img_cv, expr):
         print('TEST_MRT_DETECTION is false, skip')
     
     if TEST_REFER_EXPRESSION:
-        filtered_box = obj_result[1]
-        filtered_cls = obj_result[2]
-        ground_result = mattnet_client(img_cv, filtered_box, filtered_cls, expr)
+        ground_result = mattnet_client(img_cv, expr, bbox_feats)
         bg_score = 0.3
         ground_result += (bg_score,)
         ground_result = torch.nn.functional.softmax(10 * torch.Tensor(ground_result), dim=0)
