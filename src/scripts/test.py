@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use('Agg')
 
 import sys
-sys.path.append('../faster_rcnn_detector/VMRN/Visual-Manipulation-Relationship-Network-Pytorch/')
+sys.path.append('../faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch/')
 
 import rospy
 import cv2

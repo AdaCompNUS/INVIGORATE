@@ -18,7 +18,7 @@ import os.path as osp
 import time
 from pprint import pprint
 
-import mattnet.tools._init_paths
+import MAttNet.tools._init_paths
 from layers.joint_match import JointMatching
 
 # torch
@@ -27,7 +27,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 # root directory
-MATTNET_ROOT_DIR = osp.join(osp.dirname(__file__), 'mattnet')
+MATTNET_ROOT_DIR = osp.join(osp.dirname(osp.abspath(__file__)), '../MAttNet')
 
 class MattNetV2(object):
     def __init__(self, args):

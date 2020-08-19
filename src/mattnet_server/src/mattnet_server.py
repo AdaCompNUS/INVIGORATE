@@ -37,7 +37,7 @@ class mattnet_server(object):
         parser.add_argument('--dataset', type=str, default='refcoco',
                             help='dataset name: refclef, refcoco, refcoco+, refcocog')
         parser.add_argument('--splitBy', type=str, default='unc', help='splitBy: unc, google, berkeley')
-        parser.add_argument('--model_id', type=str, default='rcnn_cmr_with_st', help='model id name')
+        parser.add_argument('--model_id', type=str, default='rcnn_cmr_with_st_from_pretrained', help='model id name')
         parser.add_argument('--id', type=int, default='1', help='gpuid')
         args = parser.parse_args('')
 
