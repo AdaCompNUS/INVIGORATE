@@ -5,14 +5,20 @@ import torch
 import json
 import cv2
 from cv_bridge import CvBridge
+import sys
+import os.path as osp
 
-from model.FasterRCNN import fasterRCNN
-from model.utils.config import read_cfgs, cfg
-from model.utils.blob import prepare_data_batch_from_cvimage
-from model.utils.net_utils import rel_prob_to_mat, find_all_paths, create_mrt, objdet_inference
-from roi_data_layer.roidb import combined_roidb
-from model.utils.data_viewer import dataViewer
-from model.rpn.bbox_transform import bbox_xy_to_xywh
+cur_dir = osp.dirname(osp.abspath(__file__))
+VMRN_ROOT_DIR = osp.join(cur_dir, '../vmrn')
+sys.path.append(VMRN_ROOT_DIR)
+
+from vmrn.model.FasterRCNN import fasterRCNN
+from vmrn.model.utils.config import read_cfgs, cfg
+from vmrn.model.utils.blob import prepare_data_batch_from_cvimage
+from vmrn.model.utils.net_utils import rel_prob_to_mat, find_all_paths, create_mrt, objdet_inference
+from vmrn.roi_data_layer.roidb import combined_roidb
+from vmrn.model.utils.data_viewer import dataViewer
+from vmrn.model.rpn.bbox_transform import bbox_xy_to_xywh
 
 from vmrn_msgs.srv import ObjectDetection, ObjectDetectionResponse
 
@@ -48,8 +54,8 @@ class fasterRCNNService(object):
         
         # detect objects
         img = self.br.imgmsg_to_cv2(img_msg)
-        data_batch = prepare_data_batch_from_cvimage(image, is_cuda = True)
-        dets = self.fasterRCNN_forward_process(data_batch, save_res=True)
+        data_batch = prepare_data_batch_from_cvimage(img, is_cuda = True)
+        dets = self.fasterRCNN_forward_process(img, data_batch, save_res=True)
         obj_box = dets[0]
         obj_cls = dets[1]
         num_obj = dets[0].shape[0]
@@ -66,7 +72,7 @@ class fasterRCNNService(object):
         res.box_feats = json.dumps(regional_feat)
         return res
 
-    def fasterRCNN_forward_process(self, data_batch, save_res=False, id =""):
+    def fasterRCNN_forward_process(self, image, data_batch, save_res=False, id =""):
         result  = self.RCNN(data_batch)
         rois = result[0][0][:,1:5].data
         cls_prob = result[1][0].data
@@ -87,7 +93,7 @@ class fasterRCNNService(object):
                 np.concatenate((obj_boxes, np.expand_dims(obj_classes, 1)), axis = 1), o_inds=list(range(num_box)))
             cv2.imwrite("images/output/" + id + "object_det.png", obj_det_img)
 
-        return obj_boxes, obj_classes, obj_cls_name, 
+        return obj_boxes, obj_classes, obj_cls_name
     
     def get_region_features(self, image, im_scales, obj_boxes, obj_classes):
         # add to dets
@@ -113,7 +119,7 @@ class fasterRCNNService(object):
         obj_boxes = torch.from_numpy(obj_boxes).cuda()
         obj_boxes = obj_boxes.unsqueeze(0)
         # print(obj_boxes)
-        img_scale = data_batch[1][0][2]
+        # img_scale = data_batch[1][0][2]
         print("img_scale {}".format(img_scale))
         pool5, fc7 = self.RCNN.box_to_spatial_fc7(self.RCNN.get_base_feat_cache(), obj_boxes, img_scale)
         print('pool5 shape {}'.format(pool5.shape))
@@ -253,7 +259,7 @@ if __name__ == '__main__':
     rospy.init_node('faster_rcnn_server')
     # we need to read configs of VMRN that were used in training and also need to be used in this demo
     args = read_cfgs()
-    fasterrcnn_service = fasterRCNNService(args, os.path.join(args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
+    fasterrcnn_service = fasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
 
 
 
