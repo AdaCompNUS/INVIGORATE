@@ -56,7 +56,8 @@ class mattnet_server(object):
         torch.cuda.empty_cache()
 
         res = MAttNetGroundingV2Response()
-        res.ground_prob = entry['overall_scores']
+        print(entry['overall_scores'])
+        res.ground_scores = entry['overall_scores']
         return res
 
 

@@ -10,8 +10,9 @@ import os.path as osp
 
 cur_dir = osp.dirname(osp.abspath(__file__))
 VMRN_ROOT_DIR = osp.join(cur_dir, '../vmrn')
-sys.path.append(VMRN_ROOT_DIR)
+ROOT_DIR = osp.join(cur_dir, '../..')
 
+import vmrn._init_path
 from vmrn.model.FasterRCNN import fasterRCNN
 from vmrn.model.utils.config import read_cfgs, cfg
 from vmrn.model.utils.blob import prepare_data_batch_from_cvimage
@@ -22,7 +23,7 @@ from vmrn.model.rpn.bbox_transform import bbox_xy_to_xywh
 
 from vmrn_msgs.srv import ObjectDetection, ObjectDetectionResponse
 
-class fasterRCNNService(object):
+class FasterRCNNService(object):
     def __init__(self, args, model_path):
         self.br = CvBridge()
         conv_num = str(int(np.log2(cfg.RCNN_COMMON.FEAT_STRIDE[0])))
@@ -57,13 +58,15 @@ class fasterRCNNService(object):
         data_batch = prepare_data_batch_from_cvimage(img, is_cuda = True)
         dets = self.fasterRCNN_forward_process(img, data_batch, save_res=True)
         obj_box = dets[0]
+        print(obj_box.shape)
         obj_cls = dets[1]
         num_obj = dets[0].shape[0]
 
         # optionally, get regional feature
         regional_feat = {}
         if req.get_box_feat:
-            regional_feat = self.get_region_features(img, data_batch[1][0][2], obj_box, obj_cls)
+            regional_feat = self.get_region_features(img, data_batch[1][0][2], obj_box, obj_cls) # 
+            regional_feat['Feats'] = self.convert_regional_feat_to_python_list(regional_feat['Feats'])
 
         res = ObjectDetectionResponse()
         res.num_box = int(num_obj)
@@ -80,7 +83,8 @@ class fasterRCNNService(object):
         obj_boxes = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
                                      class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True)
         if save_res:
-            np.save("images/output/" + id + "_bbox.npy", obj_boxes)
+            np.save(ROOT_DIR + "/images/output/" + id + "_bbox.npy", obj_boxes)
+
         obj_classes = obj_boxes[:, -1]
         obj_boxes = obj_boxes[:, :-1]
         num_box = obj_boxes.shape[0]
@@ -91,11 +95,13 @@ class fasterRCNNService(object):
         if save_res:
             obj_det_img = self.data_viewer.draw_objdet(image.copy(),
                 np.concatenate((obj_boxes, np.expand_dims(obj_classes, 1)), axis = 1), o_inds=list(range(num_box)))
-            cv2.imwrite("images/output/" + id + "object_det.png", obj_det_img)
+            cv2.imwrite(ROOT_DIR + "/images/output/" + id + "object_det.png", obj_det_img)
 
         return obj_boxes, obj_classes, obj_cls_name
     
     def get_region_features(self, image, im_scales, obj_boxes, obj_classes):
+        obj_boxes = obj_boxes[:, :4]
+        
         # add to dets
         dets = []
         det_id = 0
@@ -116,23 +122,22 @@ class fasterRCNNService(object):
         # Compute features
         # (n, 1024, 7, 7), (n, 2048, 7, 7) TODO
         print(obj_boxes)
-        obj_boxes = torch.from_numpy(obj_boxes).cuda()
+        obj_boxes = torch.from_numpy(obj_boxes).to(dtype=torch.float32).cuda()
         obj_boxes = obj_boxes.unsqueeze(0)
         # print(obj_boxes)
         # img_scale = data_batch[1][0][2]
-        print("img_scale {}".format(img_scale))
-        pool5, fc7 = self.RCNN.box_to_spatial_fc7(self.RCNN.get_base_feat_cache(), obj_boxes, img_scale)
+        print("img_scale {}".format(im_scales))
+        pool5, fc7 = self.RCNN.box_to_spatial_fc7(self.RCNN.get_base_feat_cache(), obj_boxes, im_scales)
         print('pool5 shape {}'.format(pool5.shape))
         print('fc7 shape {}'.format(fc7.shape))
         lfeats = self.compute_lfeats(det_ids, Dets, image) # location feature against the image
         dif_lfeats = self.compute_dif_lfeats(det_ids, Dets) # location feature against five objects of the same category
         cxt_fc7, cxt_lfeats, cxt_det_ids = self.fetch_cxt_feats(det_ids, Dets, fc7)  # relational feature
 
-        # move to Variable cuda
-        lfeats = Variable(torch.from_numpy(lfeats).cuda())
-        dif_lfeats = Variable(torch.from_numpy(dif_lfeats).cuda())
-        cxt_lfeats = Variable(torch.from_numpy(cxt_lfeats).cuda())
-
+        lfeats = torch.from_numpy(lfeats).cuda()
+        dif_lfeats = torch.from_numpy(dif_lfeats).cuda()
+        cxt_lfeats = torch.from_numpy(cxt_lfeats).cuda()
+        
         # return
         data = {}
         data['det_ids'] = det_ids
@@ -219,16 +224,15 @@ class fasterRCNNService(object):
         Arguments:
         - det_ids    : list of det_ids
         - Dets       : each det is {det_id, box, category_id, category_name}
-        - spatial_fc7: (#det_ids, 2048, 7, 7) Variable cuda
+        - spatial_fc7: (#det_ids, 2048, 7, 7) cuda
         Return
-        - cxt_feats  : Variable cuda (#det_ids, topK, feat_dim)
+        - cxt_feats  : cuda (#det_ids, topK, feat_dim)
         - cxt_lfeats : ndarray (#det_ids, topK, 5)
         - cxt_det_ids: [[det_id]] of size (#det_ids, topK), padded with -1
         Note we use neighbouring objects for computing context objects, zeros padded.
         '''
         fc7 = spatial_fc7.mean(3).mean(2)  # (n, 2048)
-        cxt_feats = Variable(spatial_fc7.data.new(
-            len(det_ids), topK, 2048).zero_())
+        cxt_feats = spatial_fc7.data.new(len(det_ids), topK, 2048).zero_()
         cxt_lfeats = np.zeros((len(det_ids), topK, 5), dtype=np.float32)
         cxt_det_ids = -np.ones((len(det_ids), topK),
                                dtype=np.int32)  # (#det_ids, topK)
@@ -254,12 +258,29 @@ class fasterRCNNService(object):
                 cxt_det_ids[i, j] = cand_det_id
         cxt_det_ids = cxt_det_ids.tolist()
         return cxt_feats, cxt_lfeats, cxt_det_ids
+    
+    def convert_regional_feat_to_python_list(self, feats):
+        pool5 = feats['pool5'].detach().cpu().numpy().tolist()
+        fc7 = feats['fc7'].detach().cpu().numpy().tolist()
+        lfeats = feats['lfeats'].detach().cpu().numpy().tolist()
+        dif_lfeats = feats['dif_lfeats'].detach().cpu().numpy().tolist()
+        cxt_fc7 = feats['cxt_fc7'].detach().cpu().numpy().tolist()
+        cxt_lfeats = feats['cxt_lfeats'].detach().cpu().numpy().tolist()
+        
+        feats['pool5'] = pool5
+        feats['fc7'] = fc7
+        feats['lfeats'] = lfeats
+        feats['dif_lfeats'] = dif_lfeats
+        feats['cxt_fc7'] = cxt_fc7
+        feats['cxt_lfeats'] = cxt_lfeats
+
+        return feats
 
 if __name__ == '__main__':
     rospy.init_node('faster_rcnn_server')
     # we need to read configs of VMRN that were used in training and also need to be used in this demo
     args = read_cfgs()
-    fasterrcnn_service = fasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
+    fasterrcnn_service = FasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
 
 
 

@@ -3,4 +3,4 @@ string expr
 string img_data
 
 ---
-float64[] ground_prob
+float64[] ground_scores

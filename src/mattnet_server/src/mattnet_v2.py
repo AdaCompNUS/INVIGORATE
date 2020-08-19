@@ -79,16 +79,25 @@ class MattNetV2(object):
         # masks = img_data['masks']
         Feats = img_data['Feats']
 
+        # convert to torch gpu tensor
+        pool5 = torch.tensor(Feats['pool5']).cuda()
+        fc7 = torch.tensor(Feats['fc7']).cuda()
+        lfeats = torch.tensor(Feats['lfeats']).cuda()
+        dif_lfeats = torch.tensor(Feats['dif_lfeats']).cuda()
+        cxt_fc7 = torch.tensor(Feats['cxt_fc7']).cuda()
+        cxt_lfeats = torch.tensor(Feats['cxt_lfeats']).cuda()
+
         # encode labels
         expr = expr.lower().strip()
         labels = self.encode_labels([expr], self.word_to_ix)  # (1, sent_length)
         labels = Variable(torch.from_numpy(labels).long().cuda())
-        expanded_labels = labels.expand(
-            len(det_ids), labels.size(1))  # (n, sent_length)
+        expanded_labels = labels.expand(len(det_ids), labels.size(1))  # (n, sent_length)
+        # scores, sub_grid_attn, sub_attn, loc_attn, rel_attn, rel_ixs, weights, att_scores, module_scores = \
+        #     self.model(Feats['pool5'], Feats['fc7'], Feats['lfeats'], Feats['dif_lfeats'],
+        #             Feats['cxt_fc7'], Feats['cxt_lfeats'],
+        #             expanded_labels)
         scores, sub_grid_attn, sub_attn, loc_attn, rel_attn, rel_ixs, weights, att_scores, module_scores = \
-            self.model(Feats['pool5'], Feats['fc7'], Feats['lfeats'], Feats['dif_lfeats'],
-                    Feats['cxt_fc7'], Feats['cxt_lfeats'],
-                    expanded_labels)
+            self.model(pool5, fc7, lfeats, dif_lfeats, cxt_fc7, cxt_lfeats, expanded_labels)
 
         # move to numpy
         scores = scores.data.cpu().numpy()
