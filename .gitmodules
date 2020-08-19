@@ -2,7 +2,7 @@
 	path = src/ingress-proj
 	url = https://github.com/AdaCompNUS/ingress-proj
 [submodule "src/faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch"]
-	path = src/faster_rcnn_detector/Visual-Manipulation-Relationship-Network-Pytorch
+	path = src/faster_rcnn_detector/vmrn
 	url = https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch.git
 [submodule "src/mattnet_server/MAttNet"]
 	path = src/mattnet_server/MAttNet
