@@ -79,6 +79,110 @@ def vis_action(action_str, shape):
                 2, (0, 0, 0), thickness=2)
     return im
 
+def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
+    print(obj_cls, cxt_obj_cls)
+    obj_name = CLASSES[obj_cls]
+    cxt_obj_name = CLASSES[cxt_obj_cls]
+
+    rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
+    rel_caption_sentence.replace('.', '')
+    return rel_caption_sentence
+    
+
+# def single_step_perception(self, img, expr, prevs=None, cls_filter=None):
+#         tb = time.time()
+#         obj_result = self.faster_rcnn_client(img)
+#         bboxes = np.array(obj_result[1]).reshape(-1, 4 + 32)
+#         cls = np.array(obj_result[2]).reshape(-1, 1)
+#         bboxes, cls = self.bbox_filter(bboxes, cls)
+
+#         scores = bboxes[:, 4:].reshape(-1, 32)
+#         bboxes = bboxes[:, :4]
+#         bboxes = np.concatenate([bboxes, cls], axis=-1)
+
+#         ind_match_dict = {}
+#         if prevs is not None:
+#             ind_match_dict = self.bbox_match(bboxes, prevs["bbox"])
+#             self.history_scores[-1]["mapping"] = ind_match_dict
+#             not_matched = set(range(bboxes.shape[0])) - set(ind_match_dict.keys())
+#             ignored = set(range(prevs["bbox"].shape[0])) - set(ind_match_dict.values())
+
+#             # ignored = list(ignored - {prevs["actions"]})
+#             # bboxes = np.concatenate([bboxes, prevs["bbox"][ignored]], axis=0)
+#             # cls = np.concatenate([cls, prevs["cls"][ignored]], axis=0)
+#             prevs["qa_his"] = self.qa_his_mapping(prevs["qa_his"], ind_match_dict, not_matched, ignored)
+
+#         num_box = bboxes.shape[0]
+
+#         rel_result = self.vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
+#         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
+#         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
+#         if prevs is not None:
+#             # modify the relationship probability according to the new observation
+#             rel_score_mat[:, ind_match_dict.keys()][:, :, ind_match_dict.keys()] += \
+#                 prevs["rel_score_mat"][:, ind_match_dict.values()][:, :, ind_match_dict.values()]
+#             rel_score_mat[:, ind_match_dict.keys()][:, :, ind_match_dict.keys()] /= 2
+
+#         with torch.no_grad():
+#             triu_mask = torch.triu(torch.ones(num_box, num_box), diagonal=1)
+#             triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
+#             leaf_desc_prob = leaf_and_descendant_stats(torch.from_numpy(rel_score_mat) * triu_mask).numpy()
+
+#         ground_score = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), cls.reshape(-1).tolist(), expr)
+#         bg_score = BG_SCORE
+#         ground_score += (bg_score,)
+#         ground_score = np.array(ground_score)
+#         self.history_scores.append({"scores" : ground_score})
+#         if prevs is not None:
+#             # ground_score[ind_match_dict.keys()] += prevs["ground_score"][ind_match_dict.values()]
+#             # ground_score[ind_match_dict.keys()] /= 2
+#             ground_score[ind_match_dict.keys()] = np.maximum(
+#                 prevs["ground_score"][ind_match_dict.values()],
+#                 ground_score[ind_match_dict.keys()])
+#         ground_result = self.score_to_prob(ground_score)
+
+#         # utilize the answered questions to correct grounding results.
+#         for i in range(bboxes.shape[0]):
+#             box_score = 0
+#             for class_str in cls_filter:
+#                 box_score += scores[i][classes_to_ind[class_str]]
+#             if box_score < 0.02:
+#                 ground_result[i] = 0
+#         ground_result /= ground_result.sum()
+
+#         if prevs is not None:
+#             ground_result_backup = ground_result.copy()
+#             for k in prevs["qa_his"].keys():
+#                 if k == "bg":
+#                     # target has already been detected in the last step
+#                     for i in not_matched:
+#                         ground_result[i] = 0
+#                     ground_result[-1] = 0
+#                 elif k == "clue":
+#                     clue = prevs["qa_his"]["clue"]
+#                     t_ground = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), cls.reshape(-1).tolist(), clue)
+#                     t_ground += (BG_SCORE,)
+#                     t_ground = self.score_to_prob(np.array(t_ground))
+#                     t_ground = np.expand_dims(t_ground, 0)
+#                     leaf_desc_prob[:, -1] = (t_ground[:, :-1] * leaf_desc_prob[:, :-1]).sum(-1)
+#                 else:
+#                     ground_result[k] = 0
+
+#             if ground_result.sum() > 0:
+#                 ground_result /= ground_result.sum()
+#             else:
+#                 # something wrong with the matching process. roll back
+#                 for i in not_matched:
+#                     ground_result[i] = ground_result_backup[i]
+#                 ground_result[-1] = ground_result_backup[-1]
+
+#         print("Perception Time Consuming: " + str(time.time() - tb) + "s")
+
+#         if prevs is not None:
+#             return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, prevs["qa_his"]
+#         else:
+#             return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, {}
+
 
 def test(img_cv, expr):
     # test object detection
@@ -88,9 +192,10 @@ def test(img_cv, expr):
         print(bboxes)
         print(num_box)
         bboxes = np.array(bboxes).reshape(-1, 5)
-        cls = np.array(classes).reshape(-1, 1)
+        classes = np.array(classes).reshape(-1, 1)
+        print('classes: {}'.format(classes))
         bbox_2d = bboxes[:, :4]
-        bboxes = np.concatenate([bboxes, cls], axis=-1)
+        bboxes = np.concatenate([bboxes, classes], axis=-1)
     else:
         print('TEST_OBJECT_DETECTION is false, quit')
         return
@@ -116,20 +221,25 @@ def test(img_cv, expr):
         print('TEST_REFER_EXPRESSION is false, skip')
 
     if TEST_CAPTION_GENERATION:
-        ground_scores_sorted = sorted(ground_scores)
+        ground_scores_sorted = sorted(ground_scores, reverse=True)
         # ground_prob_sorted, ground_prob_idx = torch.sort(ground_prob, descending=True)
         if (ground_scores_sorted[0] - ground_scores_sorted[1] < AMBIGUOUS_THRESHOLD): # this is temporary
             # target_box_ind = ground_prob_idx[0]
-            target_box_ind = ground_scores_sorted.index(ground_scores_sorted[0])
+            target_box_ind = ground_scores.index(ground_scores_sorted[0])
             if target_box_ind == len(ground_scores) - 1:
-                target_box_ind = ground_scores_sorted.index(ground_scores_sorted[1])
+                target_box_ind = ground_scores.index(ground_scores_sorted[1])
+
+            print('grounding is ambiguous, generate captions for object {}'.format(target_box_ind))
             # target_box_ind = 0 # hard code now.
             top_caption, top_context_box_idxs = caption_generation_client(img_cv, bbox_2d, target_box_ind)
             print('top_caption: {}'.format(top_caption))
             print('top_context_box_idxs: {}'.format(top_context_box_idxs))
+            caption_sentence = form_rel_caption_sentence(classes[target_box_ind][0], classes[top_context_box_idxs][0], top_caption)
+            print('caption_sentence: {}'.format(caption_sentence))
         else:
             top_caption = ''
             top_context_box_idxs = -1
+            target_box_ind = -1
             print('not ambiguous, skip caption generation')
 
     if TEST_GRASP_POLICY:
@@ -152,7 +262,7 @@ def test(img_cv, expr):
     vis_bboxes[:, -1] = bboxes[:, -1]
 
     # object detection
-    object_det_img = data_viewer.draw_objdet(img_cv.copy(), vis_bboxes, list(range(cls.shape[0])))
+    object_det_img = data_viewer.draw_objdet(img_cv.copy(), vis_bboxes, list(range(classes.shape[0])))
     cv2.imwrite("object_det.png", object_det_img)
 
     # relationship detection
@@ -177,7 +287,7 @@ def test(img_cv, expr):
         #     vis_bboxes = np.take(vis_bboxes, [target_box_ind, 4], axis=0)
         # else:
         #     vis_bboxes = np.take(vis_bboxes, [target_box_ind, top_context_box_idxs], axis=0)
-        caption_img = vis_action(top_caption, img_cv.shape)
+        caption_img = vis_action(str(target_box_ind) + " " + caption_sentence, img_cv.shape)
     else:
         caption_img = np.zeros((img_cv.shape), np.uint8)
 
@@ -216,19 +326,19 @@ def test(img_cv, expr):
 if __name__ == "__main__":
     rospy.init_node('test')
 
-    classes = ['__background__',  # always index 0
+    CLASSES = ['__background__',  # always index 0
                  'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
                  'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
                  'remote controller', 'cans', 'tape', 'knife', 'wrench', 'cup', 'charger',
                  'badminton', 'wallet', 'wrist developer', 'glasses', 'pliers', 'headset',
                  'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
-    data_viewer = dataViewer(classes)
+    data_viewer = dataViewer(CLASSES)
 
     # user input
     img_array = ['']
 
-    im_id = "61.jpg"
-    expr = "apple"
+    im_id = "60.jpg"
+    expr = "cup"
 
     img_cv = cv2.imread("../images/" + im_id)
 
