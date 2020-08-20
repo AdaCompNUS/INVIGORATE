@@ -287,7 +287,8 @@ def test(img_cv, expr):
         #     vis_bboxes = np.take(vis_bboxes, [target_box_ind, 4], axis=0)
         # else:
         #     vis_bboxes = np.take(vis_bboxes, [target_box_ind, top_context_box_idxs], axis=0)
-        caption_img = vis_action(str(target_box_ind) + " " + caption_sentence, img_cv.shape)
+        caption_vis_sentence = 'for object {}: {}'.format(target_box_ind, caption_sentence)
+        caption_img = vis_action(caption_vis_sentence, img_cv.shape)
     else:
         caption_img = np.zeros((img_cv.shape), np.uint8)
 
