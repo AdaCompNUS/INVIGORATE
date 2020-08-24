@@ -20,14 +20,22 @@ from ingress_srv.ingress_srv import Ingress
 br = CvBridge()
 
 # ------- Settings ------
+DBG_PRINT = False
+
 TEST_OBJECT_DETECTION = True
 TEST_REFER_EXPRESSION = True
+TEST_CLS_NAME_FILTER = True
 TEST_CAPTION_GENERATION = True
 TEST_MRT_DETECTION = False
 TEST_GRASP_POLICY = False
 
 # ------- Constants -------
-AMBIGUOUS_THRESHOLD = 0.2
+AMBIGUOUS_THRESHOLD = 0.1
+BG_SCORE = 0
+
+def dbg_print(string):
+    if DBG_PRINT:
+        print(string)
 
 def faster_rcnn_client(img):
     rospy.wait_for_service('faster_rcnn_server')
@@ -67,7 +75,7 @@ def mattnet_client(img, expr, img_data):
 #     return filtered_box, filtered_cls
 
 def caption_generation_client(img, bbox, target_box_id):
-    print(bbox)
+    # dbg_print(bbox)
     ingress_client = Ingress()
     top_caption, top_context_box_idx = ingress_client.generate_rel_captions_for_box(img, bbox.tolist(), target_box_id)
     return top_caption, top_context_box_idx
@@ -76,128 +84,34 @@ def vis_action(action_str, shape):
     im = 255. * np.ones(shape)
     cv2.putText(im, action_str, (0, im.shape[0] / 2),
                 cv2.FONT_HERSHEY_PLAIN,
-                2, (0, 0, 0), thickness=2)
+                1.5, (0, 0, 0), thickness=1)
     return im
 
 def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
-    print(obj_cls, cxt_obj_cls)
     obj_name = CLASSES[obj_cls]
     cxt_obj_name = CLASSES[cxt_obj_cls]
-
-    rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
-    rel_caption_sentence.replace('.', '')
-    return rel_caption_sentence
     
+    if cxt_obj_cls == 0:
+        rel_caption_sentence = '{} {} (of image)'.format(obj_name, rel_caption)
+    else:
+        rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
+    rel_caption_sentence = rel_caption_sentence.replace('.', '')
+    return rel_caption_sentence
 
-# def single_step_perception(self, img, expr, prevs=None, cls_filter=None):
-#         tb = time.time()
-#         obj_result = self.faster_rcnn_client(img)
-#         bboxes = np.array(obj_result[1]).reshape(-1, 4 + 32)
-#         cls = np.array(obj_result[2]).reshape(-1, 1)
-#         bboxes, cls = self.bbox_filter(bboxes, cls)
-
-#         scores = bboxes[:, 4:].reshape(-1, 32)
-#         bboxes = bboxes[:, :4]
-#         bboxes = np.concatenate([bboxes, cls], axis=-1)
-
-#         ind_match_dict = {}
-#         if prevs is not None:
-#             ind_match_dict = self.bbox_match(bboxes, prevs["bbox"])
-#             self.history_scores[-1]["mapping"] = ind_match_dict
-#             not_matched = set(range(bboxes.shape[0])) - set(ind_match_dict.keys())
-#             ignored = set(range(prevs["bbox"].shape[0])) - set(ind_match_dict.values())
-
-#             # ignored = list(ignored - {prevs["actions"]})
-#             # bboxes = np.concatenate([bboxes, prevs["bbox"][ignored]], axis=0)
-#             # cls = np.concatenate([cls, prevs["cls"][ignored]], axis=0)
-#             prevs["qa_his"] = self.qa_his_mapping(prevs["qa_his"], ind_match_dict, not_matched, ignored)
-
-#         num_box = bboxes.shape[0]
-
-#         rel_result = self.vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
-#         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
-#         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
-#         if prevs is not None:
-#             # modify the relationship probability according to the new observation
-#             rel_score_mat[:, ind_match_dict.keys()][:, :, ind_match_dict.keys()] += \
-#                 prevs["rel_score_mat"][:, ind_match_dict.values()][:, :, ind_match_dict.values()]
-#             rel_score_mat[:, ind_match_dict.keys()][:, :, ind_match_dict.keys()] /= 2
-
-#         with torch.no_grad():
-#             triu_mask = torch.triu(torch.ones(num_box, num_box), diagonal=1)
-#             triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-#             leaf_desc_prob = leaf_and_descendant_stats(torch.from_numpy(rel_score_mat) * triu_mask).numpy()
-
-#         ground_score = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), cls.reshape(-1).tolist(), expr)
-#         bg_score = BG_SCORE
-#         ground_score += (bg_score,)
-#         ground_score = np.array(ground_score)
-#         self.history_scores.append({"scores" : ground_score})
-#         if prevs is not None:
-#             # ground_score[ind_match_dict.keys()] += prevs["ground_score"][ind_match_dict.values()]
-#             # ground_score[ind_match_dict.keys()] /= 2
-#             ground_score[ind_match_dict.keys()] = np.maximum(
-#                 prevs["ground_score"][ind_match_dict.values()],
-#                 ground_score[ind_match_dict.keys()])
-#         ground_result = self.score_to_prob(ground_score)
-
-#         # utilize the answered questions to correct grounding results.
-#         for i in range(bboxes.shape[0]):
-#             box_score = 0
-#             for class_str in cls_filter:
-#                 box_score += scores[i][classes_to_ind[class_str]]
-#             if box_score < 0.02:
-#                 ground_result[i] = 0
-#         ground_result /= ground_result.sum()
-
-#         if prevs is not None:
-#             ground_result_backup = ground_result.copy()
-#             for k in prevs["qa_his"].keys():
-#                 if k == "bg":
-#                     # target has already been detected in the last step
-#                     for i in not_matched:
-#                         ground_result[i] = 0
-#                     ground_result[-1] = 0
-#                 elif k == "clue":
-#                     clue = prevs["qa_his"]["clue"]
-#                     t_ground = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), cls.reshape(-1).tolist(), clue)
-#                     t_ground += (BG_SCORE,)
-#                     t_ground = self.score_to_prob(np.array(t_ground))
-#                     t_ground = np.expand_dims(t_ground, 0)
-#                     leaf_desc_prob[:, -1] = (t_ground[:, :-1] * leaf_desc_prob[:, :-1]).sum(-1)
-#                 else:
-#                     ground_result[k] = 0
-
-#             if ground_result.sum() > 0:
-#                 ground_result /= ground_result.sum()
-#             else:
-#                 # something wrong with the matching process. roll back
-#                 for i in not_matched:
-#                     ground_result[i] = ground_result_backup[i]
-#                 ground_result[-1] = ground_result_backup[-1]
-
-#         print("Perception Time Consuming: " + str(time.time() - tb) + "s")
-
-#         if prevs is not None:
-#             return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, prevs["qa_his"]
-#         else:
-#             return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, {}
-
-
-def test(img_cv, expr):
+def test_obj_manipulation(img_cv, expr):
     # test object detection
     if TEST_OBJECT_DETECTION:
         tb = time.time()
         num_box, bboxes, classes, bbox_feats = faster_rcnn_client(img_cv)
-        print(bboxes)
-        print(num_box)
+        dbg_print(bboxes)
+        dbg_print(num_box)
         bboxes = np.array(bboxes).reshape(-1, 5)
         classes = np.array(classes).reshape(-1, 1)
-        print('classes: {}'.format(classes))
+        dbg_print('classes: {}'.format(classes))
         bbox_2d = bboxes[:, :4]
         bboxes = np.concatenate([bboxes, classes], axis=-1)
     else:
-        print('TEST_OBJECT_DETECTION is false, quit')
+        dbg_print('TEST_OBJECT_DETECTION is false, quit')
         return
     
     if TEST_MRT_DETECTION:
@@ -208,17 +122,26 @@ def test(img_cv, expr):
         # vis_rel_score_mat = relscores_to_visscores(rel_score_mat)
         pass
     else:
-        print('TEST_MRT_DETECTION is false, skip')
+        dbg_print('TEST_MRT_DETECTION is false, skip')
     
     if TEST_REFER_EXPRESSION:
         ground_scores = list(mattnet_client(img_cv, expr, bbox_feats))
-        bg_score = 0.3
-        ground_scores.append(bg_score)
+        ground_scores.append(BG_SCORE)
         ground_prob = torch.nn.functional.softmax(10 * torch.Tensor(ground_scores), dim=0)
-        print('ground_scores: {}'.format(ground_scores))
-        print('ground_prob: {}'.format(ground_prob))
+        dbg_print('ground_scores: {}'.format(ground_scores))
+        dbg_print('ground_prob: {}'.format(ground_prob))
     else:
-        print('TEST_REFER_EXPRESSION is false, skip')
+        dbg_print('TEST_REFER_EXPRESSION is false, skip')
+
+    if TEST_CLS_NAME_FILTER:
+        for i in range(len(ground_scores) - 1): # exclude background
+            cls_name = CLASSES[classes[i][0]]
+            if cls_name not in expr: # simple filter
+                ground_prob[i] = 0.0
+                ground_scores[i] = -float('inf')
+        
+        ground_prob /= torch.sum(ground_prob)
+        dbg_print('filtered_ground_prob: {}'.format(ground_prob))
 
     if TEST_CAPTION_GENERATION:
         ground_scores_sorted = sorted(ground_scores, reverse=True)
@@ -227,20 +150,28 @@ def test(img_cv, expr):
             # target_box_ind = ground_prob_idx[0]
             target_box_ind = ground_scores.index(ground_scores_sorted[0])
             if target_box_ind == len(ground_scores) - 1:
-                target_box_ind = ground_scores.index(ground_scores_sorted[1])
-
-            print('grounding is ambiguous, generate captions for object {}'.format(target_box_ind))
-            # target_box_ind = 0 # hard code now.
-            top_caption, top_context_box_idxs = caption_generation_client(img_cv, bbox_2d, target_box_ind)
-            print('top_caption: {}'.format(top_caption))
-            print('top_context_box_idxs: {}'.format(top_context_box_idxs))
-            caption_sentence = form_rel_caption_sentence(classes[target_box_ind][0], classes[top_context_box_idxs][0], top_caption)
-            print('caption_sentence: {}'.format(caption_sentence))
+                # target_box_ind = ground_scores.index(ground_scores_sorted[1])
+                top_caption = 'background'
+                top_context_box_idxs = -1
+                target_box_ind = -1
+                dbg_print('top_caption: {}'.format(top_caption))
+            else:
+                dbg_print('grounding is ambiguous, generate captions for object {}'.format(target_box_ind))
+                # target_box_ind = 0 # hard code now.
+                top_caption, top_context_box_idxs = caption_generation_client(img_cv, bbox_2d, target_box_ind)
+                dbg_print('top_caption: {}'.format(top_caption))
+                dbg_print('top_context_box_idxs: {}'.format(top_context_box_idxs))
+                if top_context_box_idxs == len(ground_scores) - 1:
+                    # top context is background
+                    caption_sentence = form_rel_caption_sentence(classes[target_box_ind][0], 0, top_caption)
+                else:
+                    caption_sentence = form_rel_caption_sentence(classes[target_box_ind][0], classes[top_context_box_idxs][0], top_caption)
+                dbg_print('caption_sentence: {}'.format(caption_sentence))
         else:
             top_caption = ''
             top_context_box_idxs = -1
             target_box_ind = -1
-            print('not ambiguous, skip caption generation')
+            dbg_print('not ambiguous, skip caption generation')
 
     if TEST_GRASP_POLICY:
         belief = {}
@@ -252,7 +183,7 @@ def test(img_cv, expr):
             belief["leaf_desc_prob"] = leaf_and_descendant_stats(rel_score_mat)
         belief["ground_prob"] = ground_result
         a = inner_loop_planning(belief)
-        print('TEST_GRASP_POLICY is false, skip')
+        dbg_print('TEST_GRASP_POLICY is false, skip')
 
     ############ visualize
     # resize img for visualization
@@ -275,7 +206,7 @@ def test(img_cv, expr):
 
     # grounding
     if TEST_REFER_EXPRESSION:
-        ground_img = data_viewer.draw_grounding_probs(img_cv.copy(), expr, vis_bboxes, ground_prob[:-1].numpy())
+        ground_img = data_viewer.draw_grounding_probs(img_cv.copy(), expr, vis_bboxes, ground_prob.numpy())
         # cv2.imwrite("ground.png", ground_img)
     else:
         ground_img = np.zeros((img_cv.shape), np.uint8)
@@ -287,20 +218,23 @@ def test(img_cv, expr):
         #     vis_bboxes = np.take(vis_bboxes, [target_box_ind, 4], axis=0)
         # else:
         #     vis_bboxes = np.take(vis_bboxes, [target_box_ind, top_context_box_idxs], axis=0)
-        caption_vis_sentence = 'for object {}: {}'.format(target_box_ind, caption_sentence)
+        if top_caption == 'background':
+            caption_vis_sentence = top_caption
+        else:
+            caption_vis_sentence = 'for object {}: {}'.format(target_box_ind, caption_sentence)
         caption_img = vis_action(caption_vis_sentence, img_cv.shape)
     else:
         caption_img = np.zeros((img_cv.shape), np.uint8)
 
     if TEST_GRASP_POLICY:
-        print("Optimal Action:")
+        dbg_print("Optimal Action:")
         if a < num_box:
             action_str = "Grasping object " + str(a)
         elif a < 2 * num_box:
             action_str ="Asking Q1 for " + str(a-num_box) + "th object"
         else:
             action_str ="Asking Q2"
-        print("Time Consuming: "+ str(time.time() - tb) + "s")
+        dbg_print("Time Consuming: "+ str(time.time() - tb) + "s")
         action_img = vis_action(action_str, img_cv.shape)
     else:
         action_img = np.zeros((img_cv.shape), np.uint8)
@@ -338,10 +272,30 @@ if __name__ == "__main__":
     # user input
     img_array = ['']
 
-    im_id = "60.jpg"
-    expr = "cup"
+    # im_id = '1.png'
+    # expr = 'cup under banana'
 
-    img_cv = cv2.imread("../images/" + im_id)
+    # img_cv = cv2.imread("../images/" + im_id)
 
-    test(img_cv, expr)
+    # test(img_cv, expr)
+
+    TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
+             ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
+             ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
+             ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
+             ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
+            #  ['37.png', 'apple under banana'],
+            #  ['38.png', 'apple under banana'],
+             ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
+             ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
+            ]
+
+    for i, test in enumerate(TESTS):
+        im_id = test[0]
+        expr = test[1]
+        img_cv = cv2.imread("../images/" + im_id)
+        test_obj_manipulation(img_cv, expr)
+        print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
+
+
 
