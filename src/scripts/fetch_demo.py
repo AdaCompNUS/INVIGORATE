@@ -180,14 +180,15 @@ def main():
     data_viewer = dataViewer(classes)
     robot = FetchRobot()
 
-    expr = raw_input("Please tell me what you want: ")
+    # expr = raw_input("Please tell me what you want: ")
+    expr = 'cup under banana'
     related_classes = [cls for cls in classes if cls in expr or expr in cls]
     # running_mode = "kinect"
     all_results = []
 
     # outer-loop planning: in each step, grasp the leaf-descendant node.
     while (True):
-        img, depth = robot.read_img()
+        img, _ = robot.read_img()
 
         # perception
         bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, ind_match, grasps = \
