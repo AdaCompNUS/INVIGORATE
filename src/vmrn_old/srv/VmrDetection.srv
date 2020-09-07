@@ -1,0 +1,5 @@
+sensor_msgs/Image img
+float64[] bbox
+---
+float64[] rel_score_mat
+int32[] rel_mat

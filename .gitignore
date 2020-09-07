@@ -8,3 +8,6 @@ logs/
 *.pyc
 *.png
 *.jpg
+
+#pytorch models
+*.pth
