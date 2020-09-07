@@ -83,7 +83,7 @@ class vmrn_server(object):
         rospy.init_node('vmrn_server')
         cfg_file = 'cfgs/vmrdcompv1_all_in_one_res101_DEMO.yml'
         cfg_from_file(cfg_file)
-        net_name = 'all_in_one_1_25_1407_0.pth'
+        net_name = 'all_in_one_1_13_1407_3.pth'
         vmrd_classes = ('__background__',  # always index 0
                    'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
                    'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
@@ -146,10 +146,11 @@ class vmrn_server(object):
         self.gt_boxes.data.resize_(bbox.size()).copy_(bbox)
         self.num_boxes = torch.Tensor([self.gt_boxes.shape[0]]).type_as(self.num_boxes)
         self.gt_boxes = self.gt_boxes.unsqueeze(0)
-        rel_mat, rel_score_mat = self.rel_det_with_gtbox_allinone(img)
+        rel_mat, rel_score_mat, grasps = self.rel_det_with_gtbox_allinone(img)
         res = VmrDetectionResponse()
         res.rel_mat = rel_mat.astype(np.int32).reshape(-1).tolist()
         res.rel_score_mat = rel_score_mat.astype(np.float64).reshape(-1).tolist()
+        res.grasps = grasps.astype(np.float64).reshape(-1).tolist()
         return res
 
     def rel_det_with_gtbox_allinone(self, img, im_id = None):
@@ -172,7 +173,7 @@ class vmrn_server(object):
             'im_info': self.im_info,
         }
 
-        rel_result = self.net.rel_forward_with_gtbox(self.im_data, gt)
+        rel_result, grasp_result = self.net.rel_forward_with_gtbox(self.im_data, gt)
         if im_id is None:
             now_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             im_id = now_time
@@ -183,7 +184,7 @@ class vmrn_server(object):
         # if not os.path.exists("output/rob_result/result/"):
         #     os.makedirs("output/rob_result/result/")
         # cv2.imwrite('output/rob_result/result/' + im_id + 'reldet.jpg', im_rel)
-        return rel_mat, rel_score_mat
+        return rel_mat, rel_score_mat, grasp_result.cpu().numpy()
 
 if __name__ == '__main__':
 

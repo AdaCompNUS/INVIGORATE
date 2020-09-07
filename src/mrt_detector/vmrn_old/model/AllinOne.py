@@ -42,6 +42,7 @@ import FasterRCNN
 from model.op2l.object_pairing_layer import _ObjPairLayer
 from model.op2l.rois_pair_expanding_layer import  _RoisPairExpandingLayer
 from model.op2l.op2l import _OP2L
+from model.fully_conv_grasp.bbox_transform_grasp import labels2points, grasp_decode
 
 class _All_in_One(nn.Module):
     """ faster RCNN """
@@ -70,9 +71,9 @@ class _All_in_One(nn.Module):
                              feat_stride=self._fs)
 
         self.VMRN_obj_proposal_target = _ProposalTargetLayer(self.n_classes)
-        self.VMRN_obj_roi_pool = _RoIPooling(cfg.RCNN_COMMON.POOLING_SIZE, cfg.RCNN_COMMON.POOLING_SIZE, 1.0 / 16.0)
-        self.VMRN_obj_roi_align = RoIAlignAvg(cfg.RCNN_COMMON.POOLING_SIZE, cfg.RCNN_COMMON.POOLING_SIZE, 1.0 / 16.0)
 
+        self.VMRN_obj_roi_pool = _RoIPooling(cfg.RCNN_COMMON.POOLING_SIZE, cfg.RCNN_COMMON.POOLING_SIZE, 1.0/16.0)
+        self.VMRN_obj_roi_align = RoIAlignAvg(cfg.RCNN_COMMON.POOLING_SIZE, cfg.RCNN_COMMON.POOLING_SIZE, 1.0/16.0)
         self.grid_size = cfg.RCNN_COMMON.POOLING_SIZE * 2 if cfg.RCNN_COMMON.CROP_RESIZE_WITH_MAX_POOL else cfg.RCNN_COMMON.POOLING_SIZE
         self.VMRN_obj_roi_crop = _RoICrop()
 
@@ -129,6 +130,7 @@ class _All_in_One(nn.Module):
         obj_labels = gt_boxes[:, :, -1].view(-1)
         obj_labels = obj_labels[obj_labels > 0]
 
+        # relationship forward
         if (obj_num > 1).sum().item() > 0:
             # filter out the detection of only one object instance
             obj_pair_feat = self.VMRN_rel_op2l(base_feat, obj_rois, self.batch_size, obj_num)
@@ -144,17 +146,76 @@ class _All_in_One(nn.Module):
             # no detected relationships
             rel_cls_prob = Variable(torch.Tensor([]).type_as(base_feat))
 
+        # grasp detection forward
+        pooled_feat = self._roi_pooing(base_feat, obj_rois)
+        grasp_feat = self._MGN_head_to_tail(pooled_feat)
+        grasp_pred = self.MGN_classifier(grasp_feat)
+        # bs*N x K*A x 5, bs*N x K*A x 2
+        grasp_loc, grasp_conf = grasp_pred
+        grasp_all_anchors = self._generate_anchors(grasp_conf.size(1), grasp_conf.size(2), obj_rois.unsqueeze(0))
+        # filter out negative samples
+        grasp_all_anchors = grasp_all_anchors.type_as(gt_boxes)
+        # reshape grasp_loc and grasp_conf
+        grasp_loc = grasp_loc.contiguous().view(grasp_loc.size(0), -1, 5)
+        grasp_conf = grasp_conf.contiguous().view(grasp_conf.size(0), -1, 2)
+        grasp_batch_size = grasp_loc.size(0)
+        # bs*N x K*A x 2
+        grasp_prob = F.softmax(grasp_conf, 2)
+
+        # relationship postprocess
         rel_result = None
         if not self.training:
             if obj_rois.numel() > 0:
-                pred_boxes = obj_rois.data[:, 1:5]
+                pred_boxes = obj_rois.data[:, 1:5].clone()
                 pred_boxes[:, 0::2] /= im_info[0][3].item()
                 pred_boxes[:, 1::2] /= im_info[0][2].item()
                 rel_result = (pred_boxes, obj_labels, rel_cls_prob.data)
             else:
                 rel_result = (obj_rois.data, obj_labels, rel_cls_prob.data)
 
-        return rel_result
+        # grasp postprocess
+        grasp_box_deltas = grasp_loc.data
+        grasp_scores = grasp_prob.data
+        grasp_box_deltas = grasp_box_deltas.view(-1, 5) * torch.FloatTensor(cfg.FCGN.BBOX_NORMALIZE_STDS).cuda() \
+                           + torch.FloatTensor(cfg.FCGN.BBOX_NORMALIZE_STDS).cuda()
+        grasp_box_deltas = grasp_box_deltas.view(grasp_all_anchors.size())
+        # bs*N x K*A x 5
+        grasp_pred = grasp_decode(grasp_box_deltas, grasp_all_anchors)
+        # bs*N x K*A x 1
+        rois_w = (obj_rois[:, 3] - obj_rois[:, 1]).data.view(-1). \
+            unsqueeze(1).unsqueeze(2).expand_as(grasp_pred[:, :, 0:1])
+        rois_h = (obj_rois[:, 4] - obj_rois[:, 2]).data.view(-1). \
+            unsqueeze(1).unsqueeze(2).expand_as(grasp_pred[:, :, 1:2])
+        keep_mask = (grasp_pred[:, :, 0:1] > 0) & (grasp_pred[:, :, 1:2] > 0) & \
+                    (grasp_pred[:, :, 0:1] < rois_w) & (grasp_pred[:, :, 1:2] < rois_h)
+        grasp_scores = (grasp_scores).contiguous(). \
+            view(obj_rois.size(0), -1, 2)
+        # bs*N x 1 x 1
+        xleft = obj_rois[:, 1].data.view(-1).unsqueeze(1).unsqueeze(2)
+        ytop = obj_rois[:, 2].data.view(-1).unsqueeze(1).unsqueeze(2)
+        # rois offset
+        grasp_pred[:, :, 0:1] = grasp_pred[:, :, 0:1] + xleft
+        grasp_pred[:, :, 1:2] = grasp_pred[:, :, 1:2] + ytop
+        # bs*N x K*A x 8
+        grasp_pred_boxes = labels2points(grasp_pred).contiguous().view(obj_rois.size(0), -1, 8)
+        # bs*N x K*A
+        grasp_pos_scores = grasp_scores[:, :, 1]
+        # bs*N x K*A
+        _, grasp_score_idx = torch.sort(grasp_pos_scores, dim=1, descending=True)
+        _, grasp_idx_rank = torch.sort(grasp_score_idx)
+        # bs*N x K*A mask
+        topn_grasp = 5
+        grasp_maxscore_mask = (grasp_idx_rank < topn_grasp)
+        # bs*N x topN
+        grasp_maxscores = grasp_scores[:, :, 1][grasp_maxscore_mask].contiguous(). \
+            view(obj_rois.size()[:1] + (topn_grasp,))
+        # scores = scores * grasp_maxscores[:, :, 0:1]
+        # bs*N x topN x 8
+        grasp_pred_boxes = grasp_pred_boxes[grasp_maxscore_mask].view(obj_rois.size()[:1] + (topn_grasp, 8))
+        grasp_pred_boxes[:, :, 0::2] /= im_info[0][3].item()
+        grasp_pred_boxes[:, :, 1::2] /= im_info[0][2].item()
+        grasp_pred_boxes = torch.cat([grasp_pred_boxes, grasp_maxscores.unsqueeze(-1)], dim = -1)
+        return rel_result, grasp_pred_boxes
 
     def forward(self, im_data, gt):
         # object detection
@@ -858,3 +919,4 @@ class vmrn_rel_classifier(nn.Module):
         x = F.relu(self.bn2(x))
         x = self.outlayer(x)
         return x
+

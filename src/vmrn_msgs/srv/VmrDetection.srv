@@ -3,3 +3,4 @@ float64[] bbox
 ---
 float64[] rel_score_mat
 int32[] rel_mat
+float64[] grasps
