@@ -88,14 +88,14 @@ class vmrn_server(object):
         rospy.init_node('vmrn_server')
         cfg_file = osp.join(VMRN_OLD_ROOT_DIR, 'cfgs/vmrdcompv1_all_in_one_res101_DEMO.yml')
         cfg_from_file(cfg_file)
-        net_name = 'all_in_one_1_13_1407_3.pth'
+        net_name = 'all_in_one_1_25_1407_0.pth' # 'all_in_one_1_13_1407_3.pth'
         vmrd_classes = ('__background__',  # always index 0
                    'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
                    'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
                    'remote controller', 'cans', 'tape', 'knife', 'wrench', 'cup', 'charger',
                    'badminton', 'wallet', 'wrist developer', 'glasses', 'pliers', 'headset',
                    'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch')
-        load_name = os.path.join('output', 'res101', 'vmrdcompv1', net_name)
+        load_name = os.path.join(VMRN_OLD_ROOT_DIR, 'output', 'res101', 'vmrdcompv1', net_name)
         self.net = ALL_IN_ONE.resnet(vmrd_classes, 101, pretrained=True, class_agnostic=False)
         self.net.create_architecture()
         print("load checkpoint %s" % (load_name))

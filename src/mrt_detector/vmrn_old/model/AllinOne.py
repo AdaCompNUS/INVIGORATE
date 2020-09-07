@@ -13,6 +13,7 @@ from torch.autograd import Variable
 import torchvision.models as models
 from torch.autograd import Variable
 import torch.nn.init as init
+import os
 
 import numpy as np
 from utils.config import cfg
@@ -775,7 +776,8 @@ class resnet(_All_in_One):
     def __init__(self, classes, num_layers=101, pretrained=False, class_agnostic=False):
 
         self.num_layers = num_layers
-        self.model_path = 'data/pretrained_model/resnet' + str(num_layers) + '_caffe.pth'
+        cur_dir = os.path.dirname(os.path.realpath(__file__))
+        self.model_path = os.path.join(cur_dir, '../data/pretrained_model/resnet' + str(num_layers) + '_caffe.pth')
 
         self.dout_base_model = None
         if num_layers == 18 or num_layers == 34:
