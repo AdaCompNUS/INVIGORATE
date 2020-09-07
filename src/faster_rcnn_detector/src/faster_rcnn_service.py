@@ -48,7 +48,6 @@ class FasterRCNNService(object):
         self.data_viewer = dataViewer(self.classes)
         s = rospy.Service('faster_rcnn_server', ObjectDetection, self.det_serv_callback)
         print("Ready to detect object.")
-        rospy.spin()
 
     def det_serv_callback(self, req):
         img_msg = req.img
@@ -281,6 +280,7 @@ if __name__ == '__main__':
     # we need to read configs of VMRN that were used in training and also need to be used in this demo
     args = read_cfgs()
     fasterrcnn_service = FasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
+    rospy.spin()
 
 
 

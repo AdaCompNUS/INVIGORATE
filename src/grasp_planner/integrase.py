@@ -12,6 +12,7 @@ from torchvision.ops import nms
 import time
 # from stanfordcorenlp import StanfordCoreNLP
 import pickle as pkl
+import os.path as osp
 
 from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
 from vmrn.model.rpn.bbox_transform import bbox_overlaps
@@ -52,19 +53,25 @@ classes_to_ind = dict(zip(classes, range(len(classes))))
 # NEW VERSION with MAttNet
 class INTEGRASE(object):
     def __init__(self):
+        rospy.loginfo('waiting for services...')
+        rospy.wait_for_service('faster_rcnn_server')
+        rospy.wait_for_service('vmrn_server')
+        rospy.wait_for_service('mattnet_server')
         self.obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
         self.vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
         self.grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
-        self.ingress_client = Ingress()
+        # self.ingress_client = Ingress()
 
         self.history_scores = []
         self.object_pool = []
         self.clue = None
         self.target_in_pool = None
         self._init_kde()
+        print('INTEGRASE init finished!!')
 
     def _init_kde(self):
-        with open("density_esti_train_data.pkl") as f:
+        cur_dir = osp.dirname(osp.abspath(__file__))
+        with open(osp.join(cur_dir, 'density_esti_train_data.pkl')) as f:
             data = pkl.load(f)
         data = data["ground"]
         pos_data = []
@@ -85,7 +92,7 @@ class INTEGRASE(object):
 
     def faster_rcnn_client(self, img):
         img_msg = br.cv2_to_imgmsg(img)
-        res = self.obj_det(img_msg)
+        res = self.obj_det(img_msg, False)
         return res.num_box, res.bbox, res.cls
 
     def vmrn_client(self, img, bbox):

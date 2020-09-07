@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+
+import _init_path
 import warnings
 import sys
 import rospy
@@ -7,18 +9,16 @@ from cv_bridge import CvBridge
 import torch
 import numpy as np
 import os
-
 import time
 import datetime
 # from stanfordcorenlp import StanfordCoreNLP
 
-from fetch_robot import FetchRobot
-
 import vmrn._init_path
-from vmrn.model.utils.data_viewer import dataViewer, gen_paper_fig # , paperFig
+from vmrn.model.utils.data_viewer import dataViewer # gen_paper_fig # , paperFig
 from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
+
+from fetch_robot import FetchRobot
 from grasp_planner.integrase import *
-from rosapi import image_grasp_to_robot
 
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
@@ -188,7 +188,7 @@ def main():
 
     # outer-loop planning: in each step, grasp the leaf-descendant node.
     while (True):
-        img, _ = robot.read_img()
+        img, _ = robot.read_imgs()
 
         # perception
         bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, ind_match, grasps = \
@@ -256,7 +256,7 @@ def main():
         if a < num_box:
             break
 
-    gen_paper_fig(expr, all_results)
+    # gen_paper_fig(expr, all_results)
 
 if __name__ == '__main__':
     main()

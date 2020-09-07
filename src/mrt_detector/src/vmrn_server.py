@@ -85,7 +85,6 @@ def get_image_blob(im, size=600):
 
 class vmrn_server(object):
     def __init__(self):
-        rospy.init_node('vmrn_server')
         cfg_file = osp.join(VMRN_OLD_ROOT_DIR, 'cfgs/vmrdcompv1_all_in_one_res101_DEMO.yml')
         cfg_from_file(cfg_file)
         net_name = 'all_in_one_1_25_1407_0.pth' # 'all_in_one_1_13_1407_3.pth'
@@ -139,7 +138,6 @@ class vmrn_server(object):
         self.gt_grasp_inds = self.gt_grasp_inds.cuda()
         s = rospy.Service('vmrn_server', VmrDetection, self.vmrn_server_callback)
         print("Ready to detect manipulation relationships.")
-        rospy.spin()
 
     def vmrn_server_callback(self, req):
         img_msg = req.img
@@ -192,5 +190,6 @@ class vmrn_server(object):
         return rel_mat, rel_score_mat, grasp_result.cpu().numpy()
 
 if __name__ == '__main__':
-
+    rospy.init_node('vmrn_server')
     vmrn_server()
+    rospy.spin()

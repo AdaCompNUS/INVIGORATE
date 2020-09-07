@@ -34,3 +34,7 @@ put it in <MAttnet-root-dir>/pyutils/mask-faster-rcnn/output/res101/coco_2014_tr
 ## mattnet v2
 download mattnet pretrained model.
 put it in <MAttnet-root-dir>/output/refcoco_small_unc/
+
+# setup grasp policy
+download density estimation pickle file
+put it in grasp_planner

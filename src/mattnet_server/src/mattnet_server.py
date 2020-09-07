@@ -46,8 +46,7 @@ class mattnet_server(object):
         self.mattnet = MattNet(args)
 
         s = rospy.Service('mattnet_server', MAttNetGrounding, self.mattnet_serv_callback)
-        print("Ready to detect object.")
-        rospy.spin()
+        print("Ready to ground object.")
 
     def mattnet_serv_callback(self, req):
         img_msg = req.img
@@ -75,3 +74,4 @@ class mattnet_server(object):
 if __name__=="__main__":
     rospy.init_node('mattnet_server')
     mattnet_server()
+    rospy.spin()
