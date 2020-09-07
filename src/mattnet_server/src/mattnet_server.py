@@ -16,7 +16,7 @@ from scipy.misc import imread, imresize
 import sys
 
 from MAttNet.tools.mattnet import MattNet
-from vmrn.srv import MAttNetGrounding, MAttNetGroundingResponse
+from vmrn_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
 
 # box functions
 def xywh_to_xyxy(boxes):

@@ -1,24 +1,29 @@
 import rospy
-from vmrn_old.srv import VmrDetection, VmrDetectionResponse
-
 import numpy as np
 import cv2
 from cv_bridge import CvBridge
-br = CvBridge()
 import os
-
 import datetime
-
 import torch
-from model.utils.config import cfg, cfg_from_file
-import model.AllinOne as ALL_IN_ONE
-from model.utils.net_utils import rel_prob_to_mat, create_mrt
 import networkx as nx
 import matplotlib.pyplot as plt
+import os.path as osp
 
+from vmrn_msgs.srv import VmrDetection, VmrDetectionResponse
+
+import vmrn_old._init_path
+from vmrn_old.model.utils.config import cfg, cfg_from_file
+from vmrn_old.model.utils.net_utils import rel_prob_to_mat, create_mrt
+import vmrn_old.model.AllinOne as ALL_IN_ONE
+
+
+# -------- Constants -------
+VMRN_OLD_ROOT_DIR = '../vmrn_old'
 lua_grasp_detec_file = 'demo.lua'
-
 topn_grasp = 3
+
+# -------- Static -------
+br = CvBridge()
 
 def fig2data(fig):
     """
@@ -81,7 +86,7 @@ def get_image_blob(im, size=600):
 class vmrn_server(object):
     def __init__(self):
         rospy.init_node('vmrn_server')
-        cfg_file = 'cfgs/vmrdcompv1_all_in_one_res101_DEMO.yml'
+        cfg_file = osp.join(VMRN_OLD_ROOT_DIR, 'cfgs/vmrdcompv1_all_in_one_res101_DEMO.yml')
         cfg_from_file(cfg_file)
         net_name = 'all_in_one_1_13_1407_3.pth'
         vmrd_classes = ('__background__',  # always index 0

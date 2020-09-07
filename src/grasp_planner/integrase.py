@@ -1,19 +1,7 @@
 #!/usr/bin/env python
 import warnings
-try:
-    from rosapi.baxter_api import *
-    from rosapi.calibrate import calibrate_kinect
-    from rosapi.kinect_subscriber import kinect_reader
-except:
-    warnings.warn("Baxter interface not available")
 
 import rospy
-from model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
-
-from faster_rcnn_detector.srv import ObjectDetection
-from vmrn_old.srv import VmrDetection
-from ingress_msgs.srv import MAttNetGrounding
-
 import cv2
 from cv_bridge import CvBridge
 import torch
@@ -21,18 +9,20 @@ import numpy as np
 from scipy import optimize
 import os
 from torchvision.ops import nms
-from model.rpn.bbox_transform import bbox_overlaps
-
 import time
-from stanfordcorenlp import StanfordCoreNLP
+# from stanfordcorenlp import StanfordCoreNLP
 import pickle as pkl
-from model.utils.density_estimator import object_belief, gaussian_kde
 
-br = CvBridge()
-# nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
+from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
+from vmrn.model.rpn.bbox_transform import bbox_overlaps
+from vmrn.model.utils.density_estimator import object_belief, gaussian_kde
+from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
+from ingress_srv.ingress_srv import Ingress
 
-MODEL_NAME = "all_in_one_FixObj_NoScorePostProc_ShareW_NoRelClsGrad.pth"
-MODEL_PATH = "output/vmrdcompv1/res101"
+# -------- Constants ---------
+
+# MODEL_NAME = "all_in_one_FixObj_NoScorePostProc_ShareW_NoRelClsGrad.pth"
+# MODEL_PATH = "output/vmrdcompv1/res101"
 
 BG_SCORE = 0.25
 
@@ -53,14 +43,19 @@ classes = ['__background__',  # always index 0
                'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
                'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
 
+# -------- Static ---------- 
+br = CvBridge()
+# nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
 classes_to_ind = dict(zip(classes, range(len(classes))))
 
+# -------- Code ---------- 
 # NEW VERSION with MAttNet
 class INTEGRASE(object):
     def __init__(self):
-        self.obj_det = self._init_client('faster_rcnn_server', ObjectDetection)
-        self.vmr_det = self._init_client('vmrn_server', VmrDetection)
-        self.grounding = self._init_client('mattnet_server', MAttNetGrounding)
+        self.obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
+        self.vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
+        self.grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
+        self.ingress_client = Ingress()
 
         self.history_scores = []
         self.object_pool = []
@@ -87,14 +82,6 @@ class INTEGRASE(object):
         kde_pos = gaussian_kde(pos_data)
         kde_neg = gaussian_kde(neg_data)
         self.kdes = [kde_neg, kde_pos]
-
-    def _init_client(self, srv_name, srv_type):
-        rospy.wait_for_service(srv_name)
-        try:
-            client = rospy.ServiceProxy(srv_name, srv_type)
-            return client
-        except rospy.ServiceException as e:
-            print("Service call failed: %s" % e)
 
     def faster_rcnn_client(self, img):
         img_msg = br.cv2_to_imgmsg(img)
@@ -288,6 +275,7 @@ class INTEGRASE(object):
             self.object_pool.append(new_box)
             ind_match_dict[i] = len(self.object_pool) - 1
 
+        # detect vmr and grasp pose
         rel_result = self.vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
@@ -300,6 +288,7 @@ class INTEGRASE(object):
             triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
             leaf_desc_prob = leaf_and_descendant_stats(torch.from_numpy(rel_score_mat) * triu_mask).numpy()
 
+        # visual grounding
         ground_score = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, 4].reshape(-1).tolist(), expr)
         for i, score in enumerate(ground_score):
             obj_ind = ind_match_dict[i]

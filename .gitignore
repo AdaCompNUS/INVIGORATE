@@ -11,3 +11,7 @@ logs/
 
 #pytorch models
 *.pth
+
+# binary modules
+*.so
+*.o

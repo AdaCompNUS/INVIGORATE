@@ -9,5 +9,4 @@ this_dir = osp.dirname(__file__)
 
 coco_path = osp.join(this_dir,'data','coco','PythonAPI')
 add_path(coco_path)
-
 add_path(this_dir)

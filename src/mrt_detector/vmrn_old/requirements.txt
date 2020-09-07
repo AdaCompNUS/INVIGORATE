@@ -1,7 +1,8 @@
 cython
 cffi
-opencv-python
 scipy
 easydict
 matplotlib
 pyyaml
+networkx
+torchvision==0.2.0
