@@ -228,6 +228,18 @@ class INTEGRASE(object):
         return np.array(keep_g)
 
     def single_step_perception_new(self, img, expr, cls_filter=None):
+        '''
+        @return bboxes,         [Nx5]
+                scores,         [Nx1]
+                rel_mat,        [NxN]
+                rel_score_mat,  [3xNxN]
+                leaf_desc_prob, [N+1xN+1]
+                ground_score,   [N+1]
+                ground_result,  [N+1]
+                ind_match_dict, 
+                grasps,         [Nx5x8], 5 grasps for every object, every grasp is x1y1, x2y2, x3y3, x4y4
+        '''
+
         tb = time.time()
         num_bbox, bboxes, classes, cls_scores = self.faster_rcnn_client(img)
         bboxes = np.array(bboxes).reshape(num_bbox, -1)
@@ -292,7 +304,7 @@ class INTEGRASE(object):
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box)) # [NxN]
         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box)) #[3xNxN], 3 diff kinds of relationship
         grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
-        grasps = self.grasp_filter(bboxes, grasps) # [Nx5x8], 5 grasps for every object, every grasp is x1y1, x2y2, x3y3, x4y4
+        grasps = self.grasp_filter(bboxes, grasps) 
         print('Step 2: mrt and grasp pose detection completed')
 
         # TODO: updating the relationship probability according to the new observation
@@ -351,7 +363,7 @@ class INTEGRASE(object):
             tentative_ground = self.p_cand_to_belief_mc(pcand)
             tentative_ground = np.expand_dims(tentative_ground, 0)
             leaf_desc_prob[:, -1] = (tentative_ground * leaf_desc_prob[:, :-1]).sum(-1) # assume l&d prob of target == l%d prob of bg
-        print('Step 3.2: TODO completed')
+        print('Step 3.2: compute target_prob completed')
 
         print("Perception Time Consuming: " + str(time.time() - tb) + "s")
         return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, ind_match_dict, grasps
@@ -367,6 +379,22 @@ class INTEGRASE(object):
             sampled /= sampled.sum()
         return sampled
 
+    def qa_his_mapping(self, qa_his, ind_match_dict, not_matched, ignored):
+        new_qa_his = {}
+        for key, v in ind_match_dict.items():
+            if v in qa_his.keys():
+                new_qa_his[key] = qa_his[v]
+
+        if "bg" in qa_his.keys():
+            new_qa_his["bg"] = qa_his["bg"]
+            for i in not_matched:
+                new_qa_his[i] = 0
+
+        if "clue" in qa_his.keys(): new_qa_his["clue"] = qa_his["clue"]
+        return new_qa_his
+
+'''
+Legacy
     def single_step_perception(self, img, expr, prevs=None, cls_filter=None):
         tb = time.time()
         obj_result = self.faster_rcnn_client(img)
@@ -460,18 +488,4 @@ class INTEGRASE(object):
             return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, prevs["qa_his"]
         else:
             return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, {}
-
-    def qa_his_mapping(self, qa_his, ind_match_dict, not_matched, ignored):
-        new_qa_his = {}
-        for key, v in ind_match_dict.items():
-            if v in qa_his.keys():
-                new_qa_his[key] = qa_his[v]
-
-        if "bg" in qa_his.keys():
-            new_qa_his["bg"] = qa_his["bg"]
-            for i in not_matched:
-                new_qa_his[i] = 0
-
-        if "clue" in qa_his.keys(): new_qa_his["clue"] = qa_his["clue"]
-        return new_qa_his
-
+'''

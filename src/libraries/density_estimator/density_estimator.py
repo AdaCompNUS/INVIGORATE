@@ -2,6 +2,7 @@ from sklearn.neighbors import KernelDensity as kde
 import numpy as np
 import pickle as pkl
 import matplotlib.pyplot as plt
+import os.path as osp
 
 class gaussian_kde(object):
     def __init__(self, data, bandwidth=0.05):
@@ -38,7 +39,8 @@ class object_belief(object):
         self.belief = np.array([0.5, 0.5])
 
 if __name__=="__main__":
-    with open("../../density_esti_train_data.pkl") as f:
+    this_dir = osp.dirname(osp.abspath(__file__))
+    with open(osp.join(this_dir, 'density_esti_train_data.pkl')) as f:
         data = pkl.load(f)
     data = data["ground"]
 

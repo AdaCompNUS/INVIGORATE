@@ -203,7 +203,24 @@ class DataViewer(object):
 
     def draw_grounding_probs(self, im, expr, dets, ground_probs):
         im = np.ascontiguousarray(im)
+        # img_caption = 'user expr: {}, bg prob: {:.2f}'.format(expr, ground_probs[-1])
         self.draw_image_caption(im, expr)
+
+        # print(im.shape)
+
+        # get ind of highest prob
+        max_prob_ind = np.argmax(ground_probs)
+
+        # Draw bg prob
+        if max_prob_ind == len(ground_probs) - 1:
+            cv2.rectangle(im, (0, im.shape[0]), (100, im.shape[0]-20), (0, 255, 0), -1)
+        else:
+            cv2.rectangle(im, (0, im.shape[0]), (100, im.shape[0]-20), (163, 68, 187), -1)
+        cv2.putText(im, '{:.2f}'.format(ground_probs[-1]), (0, im.shape[0]),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    2, (255, 255, 255), thickness=2)
+
+        ground_probs = ground_probs[:-1]
         if dets.shape[0] == 0:
             return im
         dets = dets[(dets[:,:4].sum(-1)) > 0].astype(np.int)
@@ -212,8 +229,26 @@ class DataViewer(object):
 
         for i in range(num_box):
             prob = '{:.2f}'.format(ground_probs[i])
-            im = self.draw_single_bbox(im, dets[i][:4], text_str=prob)
+            if i == max_prob_ind:
+                im = self.draw_single_bbox(im, dets[i][:4], bbox_color=(0, 255, 0), text_str='{}: {}'.format(i, prob))
+            else:
+                im = self.draw_single_bbox(im, dets[i][:4], text_str='{}: {}'.format(i, prob))
         return im
+
+    def add_bg_score_to_img(self, img, bg_score):
+        cv2.rectangle(img, (0, img.shape[0]), (100, img.shape[0]-20), (163, 68, 187), -1)
+        cv2.putText(img, '{:.2f}'.format(bg_score), (0, img.shape[0]),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    2, (255, 255, 255), thickness=2)
+        return img
+    
+    def add_grasp_to_img(self, im, g_dets, g_inds=None):
+        im = np.ascontiguousarray(im)
+        im = self.draw_graspdet(im, g_dets, g_inds)
+        return im
+
+
+
 
 class paperFig(object):
     def __init__(self, data, size):
@@ -300,8 +335,13 @@ class paperFig(object):
         ax.spines['right'].set_visible(False)
 
 def gen_paper_fig(expr, results):
+    # od_data = [
+    #     {"data": r["od_img"][:,:,::-1].astype(np.float32) / 256.,
+    #      "type": "image",
+    #      "title": ""}
+    #     for r in results]
     od_data = [
-        {"data": r["od_img"][:,:,::-1].astype(np.float32) / 256.,
+        {"data": r["ground_img"][:,:,::-1].astype(np.float32) / 256.,
          "type": "image",
          "title": ""}
         for r in results]
@@ -316,12 +356,13 @@ def gen_paper_fig(expr, results):
          "type": "image",
          "title": ""}
         for r in results]
-    fig_size = (5 * len(results), 16)
+    fig_size = (10 * len(results), 20)
 
-    data = ori_data + od_data + mrt_data
+    # data = ori_data + od_data + mrt_data
+    data = mrt_data + od_data + ori_data
     paper_fig = paperFig(data, size=fig_size)
 
-    sub_fig_width = 4
+    sub_fig_width = 9
     interval = 1
     left = 0.5
 
@@ -329,22 +370,34 @@ def gen_paper_fig(expr, results):
     interval = float(interval) / fig_size[0]
     left = float(left) / fig_size[0]
     width = float(sub_fig_width) / fig_size[0]
-    ori_locs = [[left + i * (width + interval), 0.02, width, 0.24] for i in range(len(results))]
-    od_locs = [[left + i * (width + interval), 0.3, width, 0.24] for i in range(len(results))]
-    mrt_locs = [[left + i * (width + interval), 0.58, width, 0.24] for i in range(len(results))]
-    locs = ori_locs + od_locs + mrt_locs
-    paper_fig.draw_figure_with_locs_and_size(locs, axis_off=True)
+    # ori_locs = [[left + i * (width + interval), 0.02, width, 0.24] for i in range(len(results))]
+    # od_locs = [[left + i * (width + interval), 0.3, width, 0.24] for i in range(len(results))]
+    # mrt_locs = [[left + i * (width + interval), 0.58, width, 0.24] for i in range(len(results))]
+    mrt_locs = [[left + i * (width + interval), 0.1, width, 0.24] for i in range(len(results))]
+    od_locs = [[left + i * (width + interval), 0.38, width, 0.24] for i in range(len(results))]
+    ori_locs = [[left + i * (width + interval), 0.66, width, 0.24] for i in range(len(results))]
+    locs = mrt_locs + od_locs + ori_locs
+    paper_fig.draw_figure_with_locs_and_size(locs, axis_off=False)
 
+    # arrow_locs = [
+    #     [(2 * loc[0] + loc[2]) / 2.,
+    #      loc[1] + loc[3],
+    #      (2 * loc[0] + loc[2]) / 2.,
+    #      loc[1] + loc[3] + 0.03]
+    #     for loc in locs
+    # ]
+
+    # draw vertical arrows
     arrow_locs = [
-        [(2 * loc[0] + loc[2]) / 2.,
-         loc[1] + loc[3],
-         (2 * loc[0] + loc[2]) / 2.,
-         loc[1] + loc[3] + 0.03]
+        [
+            (2 * loc[0] + loc[2]) / 2., loc[1],        # head position
+            (2 * loc[0] + loc[2]) / 2., loc[1] - 0.03  # tail position
+        ] 
         for loc in locs
     ]
 
     for i, action_str in enumerate(action_data):
-        text_loc = ((2 * od_locs[i][0] + od_locs[i][2]) / 2., 0.88)
+        text_loc = ((2 * od_locs[i][0] + od_locs[i][2]) / 2., 0.05)
         paper_fig.draw_single_text(text_loc, action_str)
     text_loc = ((0.5, 0.95))
     paper_fig.draw_single_text(text_loc, "User's Command: " + expr)
@@ -354,11 +407,12 @@ def gen_paper_fig(expr, results):
         rec_size = (width + 0.4 * interval, 0.92)
         paper_fig.draw_rect(rec_loc, rec_size)
 
+    # draw horizontal arrows
     arrow_locs += [
-        [od_locs[i][0] + width + 0.2 * interval,
-         0.5,
-         od_locs[i+1][0] - 0.2 * interval,
-         0.5]
+        [
+            od_locs[i][0] + width + 0.2 * interval, 0.5,
+            od_locs[i+1][0] - 0.2 * interval, 0.5,
+        ]
         for i in range(len(od_locs[:-1]))
     ]
     paper_fig.draw_arrows(arrow_locs)

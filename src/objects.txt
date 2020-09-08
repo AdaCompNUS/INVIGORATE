@@ -1,0 +1,1 @@
+CATEGORY = ['umbrella', 'bottle', 'cup', 'knife', 'banana', 'apple', 'remote', 'mouse', 'cell phone', 'book', 'toothbrush']
