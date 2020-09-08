@@ -6,6 +6,24 @@
 *.belief representation
 '''
 
+''''
+leaf_and_desc
+   x1                 x2                vn
+x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
+x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
+vn  N.A.              N.A.              N.A.
+
+Assume p(x1) = 0, p(x2) = 1
+''''
+
+''''
+Action
+0~N grasp and end
+N+1 ~ 2N grasp and continue
+2N+1 ~ 3N Ask do you mean
+3N+1      ask where is
+''''
+
 
 import _init_path
 import warnings
@@ -166,7 +184,12 @@ def with_single_img(s_ing_client):
     # outer-loop planning: in each step, grasp the leaf-descendant node.
     vis_rel_score_mat = relscores_to_visscores(rel_score_mat)
     belief = {}
-    belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob)
+    belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob) # [N+1, N+1] where [i, j] represents the probability of i being leaf and descendant of j.
+                                                                # +1 because of bg
+
+                                                                # grounding_belief, mrt_belief -> leaf & desc prob
+                                                                # b = ()
+
     belief["ground_prob"] = torch.from_numpy(ground_result)
 
     # inner-loop planning, with a sequence of questions and a last grasping.
@@ -210,10 +233,10 @@ def main():
 
         # inner-loop planning, with a sequence of questions and a last grasping.
         while (True):
-            a = inner_loop_planning(belief)
+            a = inner_loop_planning(belief) # action_idx. 
             all_results.append(
                 save_visualization(img, bboxes, rel_mat, vis_rel_score_mat, expr, ground_result, a, data_viewer, grasps.copy()))
-            if a < 2 * num_box:
+            if a < 2 * num_box: # if it is a grasp action
                 break
             else:
                 data = {"img": img,

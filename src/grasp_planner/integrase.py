@@ -251,7 +251,7 @@ class INTEGRASE(object):
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"] = scores[k]
 
-        # add history ignored bounding boxes.
+        # add history bounding boxes that are not detected in this timestamp 
         for i, o in enumerate(self.object_pool):
             if i not in ind_match_dict.values() and o["removed"] == False and o["ground_belief"] > 0.5:
                 bboxes = np.append(bboxes, o["bbox"])
@@ -289,10 +289,10 @@ class INTEGRASE(object):
 
         # detect vmr and grasp pose
         rel_result = self.vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
-        rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
-        rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
+        rel_mat = np.array(rel_result[0]).reshape((num_box, num_box)) # [NxN]
+        rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box)) #[3xNxN], 3 diff kinds of relationship
         grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
-        grasps = self.grasp_filter(bboxes, grasps)
+        grasps = self.grasp_filter(bboxes, grasps) # [Nx5x8], 5 grasps for every object, every grasp is x1y1, x2y2, x3y3, x4y4
         print('Step 2: mrt and grasp pose detection completed')
 
         # TODO: updating the relationship probability according to the new observation
@@ -309,7 +309,7 @@ class INTEGRASE(object):
             self.object_pool[obj_ind]["ground_scores_history"].append(score)
         pcand = [self.object_pool[ind_match_dict[i]]["cand_belief"].belief[1] for i in range(num_box)]
         ground_result = self.p_cand_to_belief_mc(pcand)
-        ground_result = np.append(ground_result, 1. - ground_result.sum())
+        ground_result = np.append(ground_result, 1. - ground_result.sum()) # append bg
         print('Step 3: raw grounding completed')
 
         # grounding result postprocess.
@@ -341,15 +341,16 @@ class INTEGRASE(object):
             self.object_pool[v]["ground_belief"] = ground_result[k]
 
         # 3. incorporate the provided clue by the user
+        # clue contains the tentative target contained in anwer of user for 'where is '
         if self.clue is not None:
-            t_ground = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, 4].reshape(-1).tolist(), self.clue)
-            for i, score in enumerate(t_ground):
+            tentative_ground = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, 4].reshape(-1).tolist(), self.clue) # find clue object
+            for i, score in enumerate(tentative_ground):
                 obj_ind = ind_match_dict[i]
                 self.object_pool[obj_ind]["clue_belief"].update(score, self.kdes)
             pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
-            t_ground = self.p_cand_to_belief_mc(pcand)
-            t_ground = np.expand_dims(t_ground, 0)
-            leaf_desc_prob[:, -1] = (t_ground * leaf_desc_prob[:, :-1]).sum(-1)
+            tentative_ground = self.p_cand_to_belief_mc(pcand)
+            tentative_ground = np.expand_dims(tentative_ground, 0)
+            leaf_desc_prob[:, -1] = (tentative_ground * leaf_desc_prob[:, :-1]).sum(-1) # assume l&d prob of target == l%d prob of bg
         print('Step 3.2: TODO completed')
 
         print("Perception Time Consuming: " + str(time.time() - tb) + "s")
