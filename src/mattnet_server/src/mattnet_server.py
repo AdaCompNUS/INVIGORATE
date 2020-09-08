@@ -63,11 +63,11 @@ class mattnet_server(object):
         bboxes = np.concatenate([bboxes, cls], -1)
         with torch.no_grad():
             img_data = self.mattnet.forward_image_with_bbox(img, bboxes=bboxes, classes=cls_names)
-            entry, score = self.mattnet.comprehend(img_data, expr)
+            entry = self.mattnet.comprehend(img_data, expr)
         torch.cuda.empty_cache()
 
         res = MAttNetGroundingResponse()
-        res.ground_prob = score
+        res.ground_prob = entry['overall_scores']
         return res
 
 
