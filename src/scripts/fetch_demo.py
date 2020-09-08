@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 
+'''
+*.Leaf_desc_prob leaf prob size
+*.a < 3 * num_box???
+*.belief representation
+'''
+
+
 import _init_path
 import warnings
 import sys
@@ -14,7 +21,7 @@ import datetime
 # from stanfordcorenlp import StanfordCoreNLP
 
 import vmrn._init_path
-from vmrn.model.utils.data_viewer import dataViewer # gen_paper_fig # , paperFig
+from vmrn.model.utils.data_viewer import dataViewer, gen_paper_fig # , paperFig
 from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
 
 from fetch_robot import FetchRobot
@@ -256,7 +263,7 @@ def main():
         if a < num_box:
             break
 
-    # gen_paper_fig(expr, all_results)
+    gen_paper_fig(expr, all_results)
 
 if __name__ == '__main__':
     main()

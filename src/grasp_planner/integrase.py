@@ -14,7 +14,7 @@ import time
 import pickle as pkl
 import os.path as osp
 
-from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
+from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning
 from vmrn.model.rpn.bbox_transform import bbox_overlaps
 from vmrn.model.utils.density_estimator import object_belief, gaussian_kde
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
@@ -93,7 +93,7 @@ class INTEGRASE(object):
     def faster_rcnn_client(self, img):
         img_msg = br.cv2_to_imgmsg(img)
         res = self.obj_det(img_msg, False)
-        return res.num_box, res.bbox, res.cls
+        return res.num_box, res.bbox, res.cls, res.cls_scores
 
     def vmrn_client(self, img, bbox):
         img_msg = br.cv2_to_imgmsg(img)
@@ -229,12 +229,13 @@ class INTEGRASE(object):
 
     def single_step_perception_new(self, img, expr, cls_filter=None):
         tb = time.time()
-        obj_result = self.faster_rcnn_client(img)
-        bboxes = np.array(obj_result[1]).reshape(-1, 4 + 32)
-        cls = np.array(obj_result[2]).reshape(-1, 1)
+        num_bbox, bboxes, classes, cls_scores = self.faster_rcnn_client(img)
+        bboxes = np.array(bboxes).reshape(num_bbox, -1)
+        cls = np.array(classes).reshape(-1, 1)
         bboxes, cls = self.bbox_filter(bboxes, cls)
+        scores = np.array(cls_scores).reshape(num_bbox, -1)
+        print('Step 1: faster-rcnn object detection completed!')
 
-        scores = bboxes[:, 4:].reshape(-1, 32)
         bboxes = bboxes[:, :4]
         bboxes = np.concatenate([bboxes, cls], axis=-1)
         num_box = bboxes.shape[0]
@@ -257,8 +258,10 @@ class INTEGRASE(object):
                 scores = np.append(scores, o["cls_scores"])
                 ind_match_dict[num_box] = i
                 num_box += 1
-        bboxes = bboxes.reshape(-1, 5)
-        scores = scores.reshape(-1, 32)
+        # bboxes = bboxes.reshape(-1, 5)
+        # scores = scores.reshape(-1, 32)
+        bboxes = bboxes.reshape(num_box, -1)
+        scores = scores.reshape(num_box, -1)
 
         # initialize newly detected bboxes
         for i in not_matched:
@@ -282,12 +285,15 @@ class INTEGRASE(object):
             self.object_pool.append(new_box)
             ind_match_dict[i] = len(self.object_pool) - 1
 
+        # print('Step 2: Object detection belief update completed!')
+
         # detect vmr and grasp pose
         rel_result = self.vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
         grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
         grasps = self.grasp_filter(bboxes, grasps)
+        print('Step 2: mrt and grasp pose detection completed')
 
         # TODO: updating the relationship probability according to the new observation
         with torch.no_grad():
@@ -304,6 +310,7 @@ class INTEGRASE(object):
         pcand = [self.object_pool[ind_match_dict[i]]["cand_belief"].belief[1] for i in range(num_box)]
         ground_result = self.p_cand_to_belief_mc(pcand)
         ground_result = np.append(ground_result, 1. - ground_result.sum())
+        print('Step 3: raw grounding completed')
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
@@ -314,6 +321,7 @@ class INTEGRASE(object):
             if box_score < 0.02:
                 ground_result[i] = 0.
         ground_result /= ground_result.sum()
+        print('Step 3.1: class name filter completed')
 
         # 2. incorporate QA history
         ground_result_backup = ground_result.copy()
@@ -342,6 +350,7 @@ class INTEGRASE(object):
             t_ground = self.p_cand_to_belief_mc(pcand)
             t_ground = np.expand_dims(t_ground, 0)
             leaf_desc_prob[:, -1] = (t_ground * leaf_desc_prob[:, :-1]).sum(-1)
+        print('Step 3.2: TODO completed')
 
         print("Perception Time Consuming: " + str(time.time() - tb) + "s")
         return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, ind_match_dict, grasps
