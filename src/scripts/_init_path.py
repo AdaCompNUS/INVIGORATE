@@ -2,4 +2,5 @@ import os.path as osp
 import sys
 
 this_dir = osp.dirname(osp.abspath(__file__))
-sys.path.insert(0, osp.join(this_dir, '../'))
+ROOT_DIR = osp.join(this_dir, '../')
+sys.path.insert(0, ROOT_DIR)

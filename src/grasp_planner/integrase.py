@@ -40,7 +40,7 @@ Q1={
 classes = ['__background__',  # always index 0
                'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
                'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-               'remote', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
+               'remote controller', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
                'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
                'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
 

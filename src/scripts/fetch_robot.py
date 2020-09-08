@@ -21,5 +21,5 @@ class FetchRobot():
         depth = None
         return img, depth
 
-    def robot_grasp(self, grasp):
+    def grasp(self, grasp):
         print('dummy execution of grasp {}'.format(grasp))

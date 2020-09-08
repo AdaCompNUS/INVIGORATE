@@ -25,8 +25,8 @@ DBG_PRINT = False
 TEST_OBJECT_DETECTION = True
 TEST_REFER_EXPRESSION = True
 TEST_CLS_NAME_FILTER = True
-TEST_CAPTION_GENERATION = True
-TEST_MRT_DETECTION = False
+TEST_CAPTION_GENERATION = False
+TEST_MRT_DETECTION = True
 TEST_GRASP_POLICY = False
 
 # ------- Constants -------
@@ -115,12 +115,10 @@ def test_obj_manipulation(img_cv, expr):
         return
     
     if TEST_MRT_DETECTION:
-        # TODO!!!
-        # rel_result = vmrn_client(img_cv, obj_result[1])
-        # rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
-        # rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
-        # vis_rel_score_mat = relscores_to_visscores(rel_score_mat)
-        pass
+        rel_result = vmrn_client(img_cv, obj_result[1])
+        rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
+        rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
+        vis_rel_score_mat = relscores_to_visscores(rel_score_mat)
     else:
         dbg_print('TEST_MRT_DETECTION is false, skip')
     
@@ -183,6 +181,7 @@ def test_obj_manipulation(img_cv, expr):
             belief["leaf_desc_prob"] = leaf_and_descendant_stats(rel_score_mat)
         belief["ground_prob"] = ground_result
         a = inner_loop_planning(belief)
+    else:
         dbg_print('TEST_GRASP_POLICY is false, skip')
 
     ############ visualize

@@ -4,9 +4,12 @@
 *.Leaf_desc_prob leaf prob size
 *.a < 3 * num_box???
 *.belief representation
+*.add history ignored bounding boxes.
+*.How to handle, 'its under the banana' -> leaf_desc_prob['banana'] increase?
+*.overleaf
 '''
 
-''''
+'''
 leaf_and_desc
    x1                 x2                vn
 x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
@@ -14,16 +17,15 @@ x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
 vn  N.A.              N.A.              N.A.
 
 Assume p(x1) = 0, p(x2) = 1
-''''
+'''
 
-''''
+'''
 Action
 0~N grasp and end
 N+1 ~ 2N grasp and continue
 2N+1 ~ 3N Ask do you mean
 3N+1      ask where is
-''''
-
+'''
 
 import _init_path
 import warnings
@@ -39,11 +41,14 @@ import datetime
 # from stanfordcorenlp import StanfordCoreNLP
 
 import vmrn._init_path
-from vmrn.model.utils.data_viewer import dataViewer, gen_paper_fig # , paperFig
+# from vmrn.model.utils.data_viewer import dataViewer, gen_paper_fig # , paperFig
 from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
 
 from fetch_robot import FetchRobot
 from grasp_planner.integrase import *
+from libraries.data_viewer.data_viewer import DataViewer, gen_paper_fig
+
+# ------- Statics -----------
 
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
@@ -172,7 +177,7 @@ def with_single_img(s_ing_client):
     related_classes = [cls for cls in classes if cls in expr or expr in cls]
     img = cv2.imread("images/" + im_id + ".png")
 
-    data_viewer = dataViewer(classes)
+    data_viewer = DataViewer(classes)
 
     bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, qa_his = \
         s_ing_client.single_step_perception(img, expr, cls_filter=related_classes)
@@ -207,7 +212,7 @@ def with_single_img(s_ing_client):
 def main():
     rospy.init_node('INTEGRASE', anonymous=True)
     s_ing_client = INTEGRASE()
-    data_viewer = dataViewer(classes)
+    data_viewer = DataViewer(classes)
     robot = FetchRobot()
 
     # expr = raw_input("Please tell me what you want: ")
@@ -285,6 +290,9 @@ def main():
 
         if a < num_box:
             break
+
+        # TODO test temp
+        break
 
     gen_paper_fig(expr, all_results)
 
