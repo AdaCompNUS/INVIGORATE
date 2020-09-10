@@ -111,7 +111,7 @@ class INTEGRASE(object):
         prob = torch.nn.functional.softmax(10 * torch.from_numpy(score), dim=0)
         return prob.numpy()
 
-    def bbox_filter(self, bbox, cls):
+    def bbox_filter(self, bbox, cls, cls_scores):
         # apply NMS
         keep = nms(torch.from_numpy(bbox[:, :-1]), torch.from_numpy(bbox[:, -1]), 0.7)
         keep = keep.view(-1).numpy().tolist()
@@ -120,7 +120,8 @@ class INTEGRASE(object):
                 keep.append(i)
         bbox = bbox[keep]
         cls = cls[keep]
-        return bbox, cls
+        cls_scores = cls_scores[keep]
+        return bbox, cls, cls_scores
 
     def bbox_match(self, bbox, prev_bbox, scores, prev_scores, mode="hungarian"):
         # TODO: apply Hungarian algorithm to match boxes
@@ -243,9 +244,9 @@ class INTEGRASE(object):
         tb = time.time()
         num_bbox, bboxes, classes, cls_scores = self.faster_rcnn_client(img)
         bboxes = np.array(bboxes).reshape(num_bbox, -1)
-        cls = np.array(classes).reshape(-1, 1)
-        bboxes, cls = self.bbox_filter(bboxes, cls)
+        cls = np.array(classes).reshape(num_bbox, 1)
         scores = np.array(cls_scores).reshape(num_bbox, -1)
+        bboxes, cls, scores = self.bbox_filter(bboxes, cls, scores)
         print('Step 1: faster-rcnn object detection completed!')
 
         bboxes = bboxes[:, :4]
@@ -323,17 +324,20 @@ class INTEGRASE(object):
         ground_result = self.p_cand_to_belief_mc(pcand)
         ground_result = np.append(ground_result, 1. - ground_result.sum()) # append bg
         print('Step 3: raw grounding completed')
+        print('raw ground results: {}'.format(ground_result))
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
         for i in range(bboxes.shape[0]):
             box_score = 0
             for class_str in cls_filter:
-                box_score += scores[i][classes_to_ind[class_str]]
+                tmp = scores[i][classes_to_ind[class_str]]
+                box_score += tmp
             if box_score < 0.02:
                 ground_result[i] = 0.
         ground_result /= ground_result.sum()
         print('Step 3.1: class name filter completed')
+        print('ground results: {}'.format(ground_result))
 
         # 2. incorporate QA history
         ground_result_backup = ground_result.copy()
@@ -347,6 +351,8 @@ class INTEGRASE(object):
             ground_result[-1] = 0
         assert ground_result.sum() > 0
         ground_result /= ground_result.sum()
+        print('Step 3.2: incorporate QA history completed')
+        print('ground results: {}'.format(ground_result))
 
         # update ground belief
         for k, v in ind_match_dict.items():
@@ -363,7 +369,7 @@ class INTEGRASE(object):
             tentative_ground = self.p_cand_to_belief_mc(pcand)
             tentative_ground = np.expand_dims(tentative_ground, 0)
             leaf_desc_prob[:, -1] = (tentative_ground * leaf_desc_prob[:, :-1]).sum(-1) # assume l&d prob of target == l%d prob of bg
-        print('Step 3.2: compute target_prob completed')
+        print('Step 4: compute leaf_desc_prob with clue completed')
 
         print("Perception Time Consuming: " + str(time.time() - tb) + "s")
         return bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, ground_result, ind_match_dict, grasps

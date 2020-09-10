@@ -4,7 +4,7 @@ from cv_bridge import CvBridge
 import cv2
 import os.path as osp
 
-REAL_ROBOT = True
+REAL_ROBOT = False
 
 if REAL_ROBOT:
     import fetch_api
@@ -25,7 +25,7 @@ class FetchRobot():
             depth = self._br.imgmsg_to_cv2(depth_img_msg, desired_encoding='passthrough')
         else:
             cur_dir = osp.dirname(osp.abspath(__file__))
-            img = cv2.imread(osp.join(cur_dir, '../images/' + '60.jpg'))
+            img = cv2.imread(osp.join(cur_dir, '../images/' + '0.jpg'))
             depth = None
         return img, depth
 

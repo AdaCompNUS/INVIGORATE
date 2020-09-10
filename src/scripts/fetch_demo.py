@@ -37,6 +37,7 @@ import numpy as np
 import os
 import time
 import datetime
+from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 
 import vmrn._init_path
@@ -45,6 +46,7 @@ from grasp_planner.integrase import *
 from libraries.data_viewer.data_viewer import DataViewer, gen_paper_fig
 
 from fetch_robot import FetchRobot
+from dummy_robot import DummyRobot
 import caption_generator
 
 # -------- Settings --------
@@ -118,6 +120,7 @@ def save_visualization(img, bboxes, rel_mat, rel_score_mat, expr, target_prob, a
     print("Target Probability: ")
     print(target_prob.tolist())
     ground_img = data_viewer.draw_grounding_probs(img_show.copy(), expr, vis_bboxes, target_prob)
+    ground_img = data_viewer.add_obj_classes_to_img(ground_img, vis_bboxes)
 
     # action
     target_idx = -1
@@ -190,6 +193,7 @@ def main():
     s_ing_client = INTEGRASE()
     data_viewer = DataViewer(classes)
     robot = FetchRobot()
+    # robot = DummyRobot()
 
     expr = robot.listen()
     related_classes = [cls for cls in classes if cls in expr or expr in cls]
@@ -197,6 +201,8 @@ def main():
     all_results = []
     # outer-loop planning: in each step, grasp the leaf-descendant node.
     while (True):
+        inner_loop_results = []
+
         img, _ = robot.read_imgs()
 
         # perception
@@ -212,9 +218,17 @@ def main():
 
         # inner-loop planning, with a sequence of questions and a last grasping.
         while (True):
-            a = inner_loop_planning(belief) # action_idx. 
-            if a < 2 * num_box: # if it is a grasp action
-                all_results.append(
+            a = inner_loop_planning(belief) # action_idx.
+            if a < num_box:
+                grasp_target_idx = a
+                print("Grasping object " + str(grasp_target_idx) + " and ending the program")
+                inner_loop_results.append(
+                    save_visualization(img, bboxes, rel_mat, vis_rel_score_mat, expr, target_prob, a, data_viewer, grasps.copy()))
+                break
+            elif a < 2 * num_box: # if it is a grasp action
+                grasp_target_idx = a - num_box
+                print("Grasping object " + str(grasp_target_idx) + " and continuing")
+                inner_loop_results.append(
                     save_visualization(img, bboxes, rel_mat, vis_rel_score_mat, expr, target_prob, a, data_viewer, grasps.copy()))
                 break
             else:
@@ -230,13 +244,13 @@ def main():
                     if target_prob[-1] == 1:
                         question_str = Q2["type2"]
                     elif (target_prob[:-1] > 0.02).sum() == 1:
-                        target_idx = np.argmax(target_prob[:-1]
+                        target_idx = np.argmax(target_prob[:-1])
                         if GENERATE_CAPTIONS:
                             # generate caption
                             caption = caption_generator.generate_caption(img, bboxes, target_idx)
                             question_str = Q1["type1"].format(caption)
                         else:
-                            question_str = Q2["type3"].format(target_idx) + "th object")
+                            question_str = Q2["type3"].format(target_idx + "th object")
                     else:
                         question_str = Q2["type1"]
                 
@@ -279,9 +293,15 @@ def main():
                             s_ing_client.object_pool[obj_ind]["is_target"] = False
                 belief = s_ing_client.update_belief(belief, a, ans, data)
 
-                all_results.append(
+                inner_loop_results.append(
                     save_visualization(img, bboxes, rel_mat, vis_rel_score_mat, expr, target_prob, a, data_viewer, grasps.copy(), question_str))
-                all_results[-1]["answer"] = split_long_string("User's Answer: " + ans.upper())
+                inner_loop_results[-1]["answer"] = split_long_string("User's Answer: " + ans.upper())
+
+        # display grasp
+        im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasp_target_idx)
+        im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+        im_pil = Image.fromarray(im)
+        im_pil.show()
 
         # execute grasping action
         grasp = grasps[a % num_box][:8] + np.tile([XCROP[0], YCROP[0]], 4)
@@ -293,8 +313,7 @@ def main():
             break
 
         # generate debug images
-        gen_paper_fig(expr, all_results)
-        all_results = []
+        gen_paper_fig(expr, inner_loop_results)
 
         to_cont = raw_input('To_continue?')
         if to_cont != 'y':

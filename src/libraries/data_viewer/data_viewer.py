@@ -247,7 +247,22 @@ class DataViewer(object):
         im = self.draw_graspdet(im, g_dets, g_inds)
         return im
 
-
+    def add_obj_classes_to_img(self, im, dets):
+        im = np.ascontiguousarray(im)
+        num_box = dets.shape[0]
+        for i in range(num_box):
+            cls = self.ind_to_class[dets[i, -1]]
+            text_str = '{}: {}'.format(i, cls)
+            cv2.putText(im, text_str, (0, 100+i*30),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    2, (255, 255, 255), thickness=2)
+        return im
+    
+    def display_obj_to_grasp(self, im, bboxes, grasp_target_idx):
+        im = np.ascontiguousarray(im)
+        bboxes = bboxes.astype(np.int)
+        im = self.draw_single_bbox(im, bboxes[grasp_target_idx][:4])
+        return im
 
 
 class paperFig(object):
