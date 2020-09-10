@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="202.117.3.81">
+    <serverData>
+      <paths name="202.117.3.81">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/catkin_ws/src/vmrn_old/scripts" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

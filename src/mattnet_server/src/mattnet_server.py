@@ -15,8 +15,9 @@ import torch  # put this before scipy import
 from scipy.misc import imread, imresize
 import sys
 
+from vmrn_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
+
 from MAttNet.tools.mattnet import MattNet
-from vmrn.srv import MAttNetGrounding, MAttNetGroundingResponse
 
 # box functions
 def xywh_to_xyxy(boxes):
@@ -37,7 +38,7 @@ class mattnet_server(object):
         parser.add_argument('--dataset', type=str, default='refcoco',
                             help='dataset name: refclef, refcoco, refcoco+, refcocog')
         parser.add_argument('--splitBy', type=str, default='unc', help='splitBy: unc, google, berkeley')
-        parser.add_argument('--model_id', type=str, default='rcnn_cmr_with_st_from_pretrained', help='model id name')
+        parser.add_argument('--model_id', type=str, default='mrcn_cmr_with_st', help='model id name')
         parser.add_argument('--id', type=int, default='1', help='gpuid')
         args = parser.parse_args('')
 
@@ -45,8 +46,7 @@ class mattnet_server(object):
         self.mattnet = MattNet(args)
 
         s = rospy.Service('mattnet_server', MAttNetGrounding, self.mattnet_serv_callback)
-        print("Ready to detect object.")
-        rospy.spin()
+        print("Ready to ground object.")
 
     def mattnet_serv_callback(self, req):
         img_msg = req.img
@@ -63,14 +63,15 @@ class mattnet_server(object):
         bboxes = np.concatenate([bboxes, cls], -1)
         with torch.no_grad():
             img_data = self.mattnet.forward_image_with_bbox(img, bboxes=bboxes, classes=cls_names)
-            entry, score = self.mattnet.comprehend(img_data, expr)
+            entry = self.mattnet.comprehend(img_data, expr)
         torch.cuda.empty_cache()
 
         res = MAttNetGroundingResponse()
-        res.ground_prob = score
+        res.ground_prob = entry['overall_scores']
         return res
 
 
 if __name__=="__main__":
     rospy.init_node('mattnet_server')
     mattnet_server()
+    rospy.spin()

@@ -5,4 +5,5 @@ bool get_box_feat
 int32 num_box
 float64[] bbox
 int32[] cls
+float64[] cls_scores
 string box_feats

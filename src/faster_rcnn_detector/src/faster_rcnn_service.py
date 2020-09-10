@@ -48,7 +48,6 @@ class FasterRCNNService(object):
         self.data_viewer = dataViewer(self.classes)
         s = rospy.Service('faster_rcnn_server', ObjectDetection, self.det_serv_callback)
         print("Ready to detect object.")
-        rospy.spin()
 
     def det_serv_callback(self, req):
         img_msg = req.img
@@ -60,6 +59,7 @@ class FasterRCNNService(object):
         obj_box = dets[0]
         print(obj_box.shape)
         obj_cls = dets[1]
+        obj_cls_scores = dets[3]
         num_obj = dets[0].shape[0]
 
         # optionally, get regional feature
@@ -72,16 +72,19 @@ class FasterRCNNService(object):
         res.num_box = int(num_obj)
         res.bbox = obj_box.astype(np.float64).reshape(-1).tolist()
         res.cls = obj_cls.astype(np.int32).reshape(-1).tolist()
+        res.cls_scores = obj_cls_scores.astype(np.float64).reshape(-1).tolist()
         res.box_feats = json.dumps(regional_feat)
         return res
 
     def fasterRCNN_forward_process(self, image, data_batch, save_res=False, id =""):
-        result  = self.RCNN(data_batch)
+        with torch.no_grad():
+            result  = self.RCNN(data_batch)
+            
         rois = result[0][0][:,1:5].data
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data
-        obj_boxes = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
-                                     class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True)
+        obj_boxes, obj_cls_scores = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
+            class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True)
         if save_res:
             np.save(ROOT_DIR + "/images/output/" + id + "_bbox.npy", obj_boxes)
 
@@ -97,7 +100,7 @@ class FasterRCNNService(object):
                 np.concatenate((obj_boxes, np.expand_dims(obj_classes, 1)), axis = 1), o_inds=list(range(num_box)))
             cv2.imwrite(ROOT_DIR + "/images/output/" + id + "object_det.png", obj_det_img)
 
-        return obj_boxes, obj_classes, obj_cls_name
+        return obj_boxes, obj_classes, obj_cls_name, obj_cls_scores
     
     def get_region_features(self, image, im_scales, obj_boxes, obj_classes):
         obj_boxes = obj_boxes[:, :4]
@@ -281,6 +284,7 @@ if __name__ == '__main__':
     # we need to read configs of VMRN that were used in training and also need to be used in this demo
     args = read_cfgs()
     fasterrcnn_service = FasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
+    rospy.spin()
 
 
 

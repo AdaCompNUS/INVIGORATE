@@ -33,7 +33,7 @@ class mattnet_server(object):
 
         # arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument('--dataset', type=str, default='refcoco',
+        parser.add_argument('--dataset', type=str, default='refcoco_small',
                             help='dataset name: refclef, refcoco, refcoco+, refcocog')
         parser.add_argument('--splitBy', type=str, default='unc', help='splitBy: unc, google, berkeley')
         parser.add_argument('--model_id', type=str, default='rcnn_cmr_with_st_from_pretrained', help='model id name')
@@ -44,8 +44,7 @@ class mattnet_server(object):
         self.mattnet = MattNetV2(args)
 
         s = rospy.Service('mattnet_server_v2', MAttNetGroundingV2, self.mattnet_serv_callback)
-        print("Ready to detect object.")
-        rospy.spin()
+        print("Ready to ground object.")
 
     def mattnet_serv_callback(self, req):
         expr = req.expr
@@ -64,3 +63,4 @@ class mattnet_server(object):
 if __name__=="__main__":
     rospy.init_node('mattnet_server')
     mattnet_server()
+    rospy.spin()

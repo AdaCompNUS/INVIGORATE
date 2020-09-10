@@ -8,3 +8,13 @@ logs/
 *.pyc
 *.png
 *.jpg
+
+#pytorch models
+*.pth
+
+# binary modules
+*.so
+*.o
+
+# pickle file
+*.pkl
