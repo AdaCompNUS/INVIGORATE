@@ -77,7 +77,9 @@ class FasterRCNNService(object):
         return res
 
     def fasterRCNN_forward_process(self, image, data_batch, save_res=False, id =""):
-        result  = self.RCNN(data_batch)
+        with torch.no_grad():
+            result  = self.RCNN(data_batch)
+            
         rois = result[0][0][:,1:5].data
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data

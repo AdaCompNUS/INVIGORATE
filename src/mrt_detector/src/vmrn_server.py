@@ -176,7 +176,9 @@ class vmrn_server(object):
             'im_info': self.im_info,
         }
 
-        rel_result, grasp_result = self.net.rel_forward_with_gtbox(self.im_data, gt)
+        with torch.no_grad():
+            rel_result, grasp_result = self.net.rel_forward_with_gtbox(self.im_data, gt)
+
         if im_id is None:
             now_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             im_id = now_time
