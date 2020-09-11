@@ -1,14 +1,6 @@
 #!/usr/bin/env python
 
 '''
-TODO
-1. bug where only 1 object is detected
-2. question asking for where is it?
-3. grasp random objects when background has high prob?
-4. filter issues?
-'''
-
-'''
 leaf_and_desc
    x1                 x2                vn
 x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)

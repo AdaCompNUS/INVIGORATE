@@ -24,6 +24,10 @@ ROBOT = 'Dummy'
 
 GENERATE_CAPTIONS = True
 
+# -------- Constants --------
+YCROP = (250, 650)
+XCROP = (650, 1050)
+
 # ------- Statics -----------
 
 br = CvBridge()
@@ -43,116 +47,91 @@ def main():
     rospy.init_node('INTEGRASE', anonymous=True)
 
     invigorate_client = Invigorate()
-    data_viewer = DataViewer(classes)
+    data_viewer = DataViewer(CLASSES)
     robot = init_robot()
 
     expr = robot.listen()
 
     all_results = []
-
+    to_grasp = False
+    action = -1
+    grasps = None
+    quesetion_str = None
+    answer = None
     while (True):
-        if to_perceive:
+        if to_grasp:
+            # after grasping, perceive new images
             img, _ = robot.read_imgs()
 
             # perception
             observations = invigorate_client.perceive_img(img, expr)
             num_box = observations['bboxes'].shape[0]
-            vis_rel_score_mat = relscores_to_visscores(observations['rel_score_mat'])
+            vis_rel_score_mat = data_viewer.relscores_to_visscores()
 
             # state_estimation
             invigorate_client.estimate_state_with_observation(observations)
         else:
-            clue = 
-            invigorate_client.estimate_state_with_user_clue(clue)
+            # get user answer
+            answer = robot.listen()
+            invigorate_client.estimate_state_with_user_clue(action, answer)
 
-        best_action = inner_loop_planning(belief) # action_idx.
-        if a < num_box:
-            grasp_target_idx = a
+        action = invigorate_client.plan() # action_idx.
+        action_type = invigorate_client.get_action_type(action)
+        to_grasp = False
+        if action_type == 'GRASP_AND_END':
+            grasp_target_idx = action
             print("Grasping object " + str(grasp_target_idx) + " and ending the program")
-        elif a < 2 * num_box: # if it is a grasp action
-            grasp_target_idx = a - num_box
+            to_grasp = True
+        elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
+            grasp_target_idx = action - num_box
             print("Grasping object " + str(grasp_target_idx) + " and continuing")
-        else:
-            if a < 3 * num_box:
-                target_idx = a - 2 * num_box
+            to_grasp = True
+        elif action_type == 'Q1':
+            target_idx = action_type - 2 * num_box
+            if GENERATE_CAPTIONS:
+                # generate caption
+                bboxes = observations['bboxes']
+                caption = caption_generator.generate_caption(img, bboxes, target_idx)
+                question_str = Q1["type1"].format(caption)
+            else:
+                question_str = Q1["type1"].format(str(target_idx) + "th object")
+        else: # action type is Q2
+            if target_prob[-1] == 1:
+                question_str = Q2["type2"]
+            elif (target_prob[:-1] > 0.02).sum() == 1:
+                target_idx = np.argmax(target_prob[:-1])
                 if GENERATE_CAPTIONS:
                     # generate caption
                     caption = caption_generator.generate_caption(img, bboxes, target_idx)
-                    question_str = Q1["type1"].format(caption)
+                    question_str = Q2["type3"].format(caption)
                 else:
-                    question_str = Q1["type1"].format(str(target_idx) + "th object")
+                    question_str = Q2["type3"].format(target_idx + "th object")
             else:
-                if target_prob[-1] == 1:
-                    question_str = Q2["type2"]
-                elif (target_prob[:-1] > 0.02).sum() == 1:
-                    target_idx = np.argmax(target_prob[:-1])
-                    if GENERATE_CAPTIONS:
-                        # generate caption
-                        caption = caption_generator.generate_caption(img, bboxes, target_idx)
-                        question_str = Q1["type1"].format(caption)
-                    else:
-                        question_str = Q2["type3"].format(target_idx + "th object")
-                else:
-                    question_str = Q2["type1"]
-            
+                question_str = Q2["type1"]
+
+        if to_grasp:
+            # display grasp
+            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasp_target_idx)
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            im_pil = Image.fromarray(im)
+            im_pil.show()
+
+            # execute grasping action
+            grasps = observations['grasps']
+            grasp = grasps[action % num_box][:8] + np.tile([XCROP[0], YCROP[0]], 4)
+            robot.grasp(grasp)
+            # TODO: Determine whether the grasp is successful and then assign this "removed" flag
+            invigorate_client.transit_state(action)
+        else:
             robot.say(question_str)
 
-            data = {"img": img,
-                    "bbox": bboxes[:, :4].reshape(-1).tolist(),
-                    "cls": bboxes[:, 4].reshape(-1).tolist(),
-                    "mapping": ind_match}
-            ans = robot.listen()
-
-            if a < 3 * num_box:
-                # we use binary variables to encode the answer of q1 questions.
-                if ans in {"yes", "yeah", "yep", "sure"}:
-                    for i, v in enumerate(s_ing_client.object_pool):
-                        if i == ind_match[a - 2 * num_box]:
-                            s_ing_client.object_pool[i]["is_target"] = True
-                        else:
-                            s_ing_client.object_pool[i]["is_target"] = False
-                else:
-                    obj_ind = ind_match[a - 2 * num_box]
-                    s_ing_client.object_pool[obj_ind]["is_target"] = False
-            else:
-                if ans in {"yes", "yeah", "yep", "sure"}:
-                    # s_ing_client.target_in_pool = True
-                    # for i, v in enumerate(s_ing_client.object_pool):
-                    #     if i not in ind_match.values():
-                    #         s_ing_client.object_pool[i]["is_target"] = False
-                    if (target_prob[:-1] > 0.02).sum() == 1:
-                        obj_ind = ind_match[np.argmax(target_prob[:-1])]
-                        s_ing_client.object_pool[obj_ind]["is_target"] = True
-                else:
-                    # TODO: using Standord Core NLP library to parse the constituency of the sentence.
-                    ans = ans[6:]
-                    # for i in ind_match.values():
-                    #     s_ing_client.object_pool[i]["is_target"] = False
-                    s_ing_client.clue = ans
-                    if (target_prob[:-1] > 0.02).sum() == 1:
-                        obj_ind = ind_match[np.argmax(target_prob[:-1])]
-                        s_ing_client.object_pool[obj_ind]["is_target"] = False
-            belief = s_ing_client.update_belief(belief, a, ans, data)
-            # TODO
-            # inner_loop_results[-1]["answer"] = split_long_string("User's Answer: " + ans.upper())
-
-        # display grasp
-        im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasp_target_idx)
-        im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-        im_pil = Image.fromarray(im)
-        im_pil.show()
-
-        # execute grasping action
-        grasp = grasps[a % num_box][:8] + np.tile([XCROP[0], YCROP[0]], 4)
-        robot.grasp(grasp)
-        # TODO: Determine whether the grasp is successful and then assign this "removed" flag
-        s_ing_client.object_pool[ind_match[a % num_box]]["removed"] = True
-
-        # if a < num_box:
-        #     break
-
         # generate debug images
-        data_viewer.save_visualization_imgs(img, bboxes, rel_mat, vis_rel_score_mat, expr, target_prob, a, data_viewer, grasps.copy(), question_str))
+        img = observations['img']
+        bboxes = observations['bboxes']
+        rel_mat = observations['rel_mat']
+        rel_score_mat = observations['rel_score_mat']
+        target_prob = invigorate_client.belief['target_prob']
+        data_viewer.save_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr, target_prob, action, grasps.copy(), question_str, answer)
 
         to_cont = raw_input('To_continue?')
         if to_cont != 'y':

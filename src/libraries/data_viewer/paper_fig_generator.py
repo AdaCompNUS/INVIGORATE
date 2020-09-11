@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import time
 import datetime
+import numpy as np
 
 class paperFig(object):
     def __init__(self, data, size):
@@ -97,7 +99,7 @@ def gen_paper_fig(expr, results):
          "type": "image",
          "title": ""}
         for r in results]
-    action_data = [r["action_str"] if "answer" not in r else r["action_str"] + "\n" + r["answer"] for r in results]
+    action_data = [r["action_str"] for r in results]
     mrt_data = [
         {"data": r["mrt_img"][:,:,::-1].astype(np.float32) / 256.,
          "type": "image",

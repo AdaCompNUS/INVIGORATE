@@ -10,6 +10,8 @@ import cv2
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import os
+import os.path as osp
 
 # from model.utils.config import cfg
 from vmrn.model.utils.net_utils import create_mrt
@@ -18,6 +20,7 @@ import time
 import datetime
 
 from _init_path import ROOT_DIR
+from invigorate import *
 from paper_fig_generator import gen_paper_fig
 
 def split_long_string(in_str, len_thresh = 30):
@@ -98,7 +101,7 @@ class DataViewer(object):
             text_w = 17 * text_len
             gtextpos = (gr_c[0] - text_w / 2, gr_c[1] + 20)
             gtext_lu = (gr_c[0] - text_w / 2, gr_c[1])
-            gtext_rd = (gr_c[0] + text_w / 2, gr_c[1] + 25)ROOT_DIR
+            gtext_rd = (gr_c[0] + text_w / 2, gr_c[1] + 25)
             cv2.rectangle(img, gtext_lu, gtext_rd, text_bg_color, -1)
             cv2.putText(img, test_str, gtextpos,
                         cv2.FONT_HERSHEY_PLAIN,
@@ -294,7 +297,7 @@ class DataViewer(object):
         return im
 
     def generate_visualization_imgs(self, img, bboxes, rel_mat, rel_score_mat, 
-        expr, target_prob, action, grasps=None, question_str=None, im_id=None, tgt_size=500):
+        expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
         
         if im_id is None:
             current_date = datetime.datetime.now()
@@ -318,8 +321,9 @@ class DataViewer(object):
             object_det_img = self.draw_objdet(img_show.copy(), vis_bboxes, list(range(cls.shape[0])))
 
         # relationship detection
+        vis_rel_score_mat = self.relscores_to_visscores(rel_score_mat)
         rel_det_img = self.draw_mrt(img_show.copy(), rel_mat, class_names=target_prob.tolist()[:-1],
-                                        rel_score=rel_score_mat, with_img=False, rel_img_size=500)
+                                        rel_score=vis_rel_score_mat, with_img=False, rel_img_size=500)
         rel_det_img = cv2.resize(rel_det_img, (img_show.shape[1], img_show.shape[0]))
         rel_det_img = self.add_bg_score_to_img(rel_det_img, target_prob.tolist()[-1])
 
@@ -334,16 +338,16 @@ class DataViewer(object):
         question_type = None
         print("Optimal Action:")
         if action < num_box:
-            target_idx = a
-            action_str = "Grasping object " + str(a) + " and ending the program"
+            target_idx = action
+            action_str = "Grasping object " + str(action) + " and ending the program"
         elif action < 2 * num_box:
-            target_idx = a - num_box
-            action_str = "Grasping object " + str(a - num_box) + " and continuing"
+            target_idx = action - num_box
+            action_str = "Grasping object " + str(target_idx) + " and continuing"
         elif action < 3 * num_box:
             if question_str is not None:
                 action_str = question_str
             else:
-                action_str = Q1["type1"].format(str(a - 2 * num_box) + "th object")
+                action_str = Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
             question_type = "Q1_TYPE1"
         else:
             if target_prob[-1] == 1:
@@ -356,6 +360,10 @@ class DataViewer(object):
                 action_str = Q2["type1"]
                 question_type = "Q2_TYPE1"
         print(action_str)
+        # append answer
+        if answer is not None:
+            action_str += '\n' + answer
+
         action_img_shape = list(img_show.shape)
         action_img = self.vis_action(split_long_string(action_str), action_img_shape)
 
@@ -365,7 +373,7 @@ class DataViewer(object):
         print("Grasping score: ")
         print(grasps[:, -1].tolist())
         if grasps is not None and target_idx >= 0:
-            ground_img = data_viewer.add_grasp_to_img(ground_img, np.expand_dims(grasps[target_idx], axis=0))
+            ground_img = self.add_grasp_to_img(ground_img, np.expand_dims(grasps[target_idx], axis=0))
 
         # save result
         out_dir = osp.join(ROOT_DIR, "images/output")
@@ -400,8 +408,11 @@ class DataViewer(object):
                 "q_type": question_type}
 
     def save_visualization_imgs(self, img, bboxes, rel_mat, rel_score_mat, 
-        expr, target_prob, action, grasps=None, question_str=None, im_id=None, tgt_size=500):
+        expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
         imgs = self.generate_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr,
-            target_prob, action, grasps, question_str, im_id, tgt_size)
-        gen_paper_fig(expr, inner_loop_results)
+            target_prob, action, grasps, question_str, answer, im_id, tgt_size)
+        gen_paper_fig(expr, imgs)
         return True
+    
+    def relscores_to_visscores(self, rel_score_mat):
+        return np.max(rel_score_mat, axis=0)
