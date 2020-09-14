@@ -12,15 +12,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import os
 import os.path as osp
+from PIL import Image
+import time
+import datetime
 
 # from model.utils.config import cfg
 from vmrn.model.utils.net_utils import create_mrt
 # from sklearn.manifold import TSNE
-import time
-import datetime
+from config.config import *
 
-from _init_path import ROOT_DIR
-from invigorate import *
 from paper_fig_generator import gen_paper_fig
 
 def split_long_string(in_str, len_thresh = 30):
@@ -275,10 +275,11 @@ class DataViewer(object):
                     2, (255, 255, 255), thickness=2)
         return im
     
-    def display_obj_to_grasp(self, im, bboxes, grasp_target_idx):
+    def display_obj_to_grasp(self, im, bboxes, grasps, grasp_target_idx):
         im = np.ascontiguousarray(im)
         bboxes = bboxes.astype(np.int)
         im = self.draw_single_bbox(im, bboxes[grasp_target_idx][:4])
+        im = self.draw_single_grasp(im, grasps[grasp_target_idx])
         return im
     
     def vis_action(self, action_str, shape, draw_arrow = False):
@@ -310,7 +311,8 @@ class DataViewer(object):
         img_show = cv2.resize(img, None, None, fx=scalar, fy=scalar, interpolation=cv2.INTER_LINEAR)
         vis_bboxes = bboxes * scalar
         vis_bboxes[:, -1] = bboxes[:, -1]
-        grasps[:, :8] = grasps[:, :8] * scalar
+        if grasps is not None:
+            grasps[:, :8] = grasps[:, :8] * scalar
         num_box = bboxes.shape[0]
 
         # object detection
@@ -347,7 +349,7 @@ class DataViewer(object):
             if question_str is not None:
                 action_str = question_str
             else:
-                action_str = Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
+                action_str = integrase.Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
             question_type = "Q1_TYPE1"
         else:
             if target_prob[-1] == 1:
@@ -411,8 +413,14 @@ class DataViewer(object):
         expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
         imgs = self.generate_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr,
             target_prob, action, grasps, question_str, answer, im_id, tgt_size)
-        gen_paper_fig(expr, imgs)
+        gen_paper_fig(expr, [imgs])
         return True
     
     def relscores_to_visscores(self, rel_score_mat):
         return np.max(rel_score_mat, axis=0)
+
+    def display_img(self, img):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        im_pil = Image.fromarray(img)
+        im_pil.show()
+

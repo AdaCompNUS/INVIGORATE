@@ -17,10 +17,12 @@ N+1 ~ 2N grasp and continue
 2N+1 ~ 3N Ask do you mean
 3N+1      ask where is
 '''
-
-import _init_path
-import warnings
 import sys
+import os.path as osp
+this_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, osp.join(this_dir, '../'))
+
+import warnings
 import rospy
 import cv2
 from cv_bridge import CvBridge
@@ -34,12 +36,13 @@ from PIL import Image
 
 import vmrn._init_path
 from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
-from grasp_planner.integrase import *
+from config.config import *
+from invigorate.integrase import INTEGRASE
 from libraries.data_viewer.data_viewer import DataViewer
-
-from fetch_robot import FetchRobot
-from dummy_robot import DummyRobot
-import caption_generator
+from libraries.data_viewer.data_viewer import DataViewer
+from libraries.caption_generator import caption_generator
+from libraries.robots.fetch_robot import FetchRobot
+from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
 GENERATE_CAPTIONS = True
@@ -55,12 +58,12 @@ XCROP = (650, 1050)
 def main():
     rospy.init_node('INTEGRASE', anonymous=True)
     s_ing_client = INTEGRASE()
-    data_viewer = DataViewer(classes)
+    data_viewer = DataViewer(CLASSES)
     robot = FetchRobot()
     # robot = DummyRobot()
 
     expr = robot.listen()
-    related_classes = [cls for cls in classes if cls in expr or expr in cls]
+    related_classes = [cls for cls in CLASSES if cls in expr or expr in cls]
 
     all_results = []
     # outer-loop planning: in each step, grasp the leaf-descendant node.
@@ -69,11 +72,15 @@ def main():
 
         img, _ = robot.read_imgs()
 
+        # display image for debug
+        data_viewer.display_img(img)
+
         # perception
         bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, target_prob, ind_match, grasps = \
             s_ing_client.single_step_perception_new(img, expr, cls_filter=related_classes)
         num_box = bboxes.shape[0]
-        vis_rel_score_mat = relscores_to_visscores(rel_score_mat)
+        question_str = None
+        ans = None
 
         # outer-loop planning: in each step, grasp the leaf-descendant node.
         belief = {}
@@ -156,10 +163,8 @@ def main():
                 # inner_loop_results[-1]["answer"] = split_long_string("User's Answer: " + ans.upper())
 
         # display grasp
-        im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasp_target_idx)
-        im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-        im_pil = Image.fromarray(im)
-        im_pil.show()
+        im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
+        data_viewer.display_img(im)
 
         # execute grasping action
         grasp = grasps[a % num_box][:8] + np.tile([XCROP[0], YCROP[0]], 4)
@@ -171,7 +176,7 @@ def main():
         #     break
 
         # generate debug images
-        data_viewer.save_visualization_imgs(img, bboxes, rel_mat, vis_rel_score_mat, expr, target_prob, a, data_viewer, grasps.copy(), question_str))
+        data_viewer.save_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr, target_prob, a, grasps.copy(), question_str, ans)
 
         to_cont = raw_input('To_continue?')
         if to_cont != 'y':

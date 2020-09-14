@@ -14,9 +14,10 @@ import datetime
 from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 
-from invigorate import *
+from invigorate.config import *
+from invigorate.invigorate import Invigorate
 from libraries.data_viewer.data_viewer import DataViewer
-import libraries.caption_generator import caption_generator
+from libraries.caption_generator import caption_generator
 import libraries.robots as robots
 
 # -------- Settings --------
@@ -44,7 +45,7 @@ def init_robot(robot):
     return robot
 
 def main():
-    rospy.init_node('INTEGRASE', anonymous=True)
+    rospy.init_node('INVIGORATE', anonymous=True)
 
     invigorate_client = Invigorate()
     data_viewer = DataViewer(CLASSES)

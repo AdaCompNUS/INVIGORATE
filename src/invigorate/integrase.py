@@ -20,6 +20,8 @@ from vmrn.model.utils.density_estimator import object_belief, gaussian_kde
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from ingress_srv.ingress_srv import Ingress
 
+from config.config import *
+
 # -------- Constants ---------
 
 # MODEL_NAME = "all_in_one_FixObj_NoScorePostProc_ShareW_NoRelClsGrad.pth"
@@ -27,27 +29,9 @@ from ingress_srv.ingress_srv import Ingress
 
 BG_SCORE = 0.25
 
-Q2={
-    "type1": "I have not found the target. Where is it?", # COMMON FORMAT
-    "type2": "I have not found the target. Where is it?",         # WHEN ALL THINGS WITH PROB 0
-    "type3": "Do you mean the {:s}? If not, where is the target?"  # WHEN ONLY ONE THING WITH POSITIVE PROB
-}
-
-Q1={
-    "type1": "Do you mean the {:s}?"
-}
-
-classes = ['__background__',  # always index 0
-               'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
-               'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-               'remote controller', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
-               'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
-               'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
-
 # -------- Static ---------- 
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
-classes_to_ind = dict(zip(classes, range(len(classes))))
 
 # -------- Code ---------- 
 # NEW VERSION with MAttNet
@@ -331,7 +315,7 @@ class INTEGRASE(object):
         for i in range(bboxes.shape[0]):
             box_score = 0
             for class_str in cls_filter:
-                tmp = scores[i][classes_to_ind[class_str]]
+                tmp = scores[i][CLASSES_TO_IND[class_str]]
                 box_score += tmp
             if box_score < 0.02:
                 ground_result[i] = 0.
