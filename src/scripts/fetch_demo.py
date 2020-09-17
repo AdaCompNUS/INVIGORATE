@@ -167,7 +167,7 @@ def main():
         data_viewer.display_img(im)
 
         # execute grasping action
-        grasp = grasps[a % num_box][:8] + np.tile([XCROP[0], YCROP[0]], 4)
+        grasp = grasps[a % num_box][:8] # + np.tile([XCROP[0], YCROP[0]], 4)
         robot.grasp(grasp)
         # TODO: Determine whether the grasp is successful and then assign this "removed" flag
         s_ing_client.object_pool[ind_match[a % num_box]]["removed"] = True

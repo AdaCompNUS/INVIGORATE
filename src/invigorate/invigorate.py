@@ -1,11 +1,12 @@
 '''
 TODO
-1. bug where only 1 object is detected
+1. bug where only 1 object is detected line 290
 2. question asking for where is it?
 3. grasp random objects when background has high prob?
 4. The questions to be asked
 5. clue is persistent??
 6. what is this? if (target_prob[:-1] > 0.02).sum() == 1:
+7. grasp representation
 '''
 
 #!/usr/bin/env python
