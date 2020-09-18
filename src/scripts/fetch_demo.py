@@ -39,7 +39,6 @@ from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_pla
 from config.config import *
 from invigorate.integrase import INTEGRASE
 from libraries.data_viewer.data_viewer import DataViewer
-from libraries.data_viewer.data_viewer import DataViewer
 from libraries.caption_generator import caption_generator
 from libraries.robots.fetch_robot import FetchRobot
 from libraries.robots.dummy_robot import DummyRobot
@@ -78,6 +77,7 @@ def main():
         # perception
         bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, target_prob, ind_match, grasps = \
             s_ing_client.single_step_perception_new(img, expr, cls_filter=related_classes)
+        classes = bboxes[:, -1]
         num_box = bboxes.shape[0]
         question_str = None
         ans = None
@@ -87,12 +87,14 @@ def main():
         belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob)
         belief["ground_prob"] = torch.from_numpy(target_prob)
 
+        to_end = False
         # inner-loop planning, with a sequence of questions and a last grasping.
-        while (True):
+        while not to_end:
             a = inner_loop_planning(belief) # action_idx.
             if a < num_box:
                 grasp_target_idx = a
                 print("Grasping object " + str(grasp_target_idx) + " and ending the program")
+                to_end = True
                 break
             elif a < 2 * num_box: # if it is a grasp action
                 grasp_target_idx = a - num_box
@@ -120,7 +122,7 @@ def main():
                             question_str = Q2["type3"].format(target_idx + "th object")
                     else:
                         question_str = Q2["type1"]
-                
+
                 robot.say(question_str)
 
                 data = {"img": img,
@@ -176,7 +178,7 @@ def main():
         #     break
 
         # generate debug images
-        data_viewer.save_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr, target_prob, a, grasps.copy(), question_str, ans)
+        data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, a, grasps.copy(), question_str, ans)
 
         to_cont = raw_input('To_continue?')
         if to_cont != 'y':

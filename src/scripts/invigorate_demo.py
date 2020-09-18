@@ -1,8 +1,10 @@
 #!/usr/bin/env python
-
-import _init_path
-import warnings
 import sys
+import os.path as osp
+this_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, osp.join(this_dir, '../'))
+
+import warnings
 import rospy
 import cv2
 from cv_bridge import CvBridge
@@ -14,20 +16,21 @@ import datetime
 from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 
-from invigorate.config import *
+from config.config import *
 from invigorate.invigorate import Invigorate
 from libraries.data_viewer.data_viewer import DataViewer
 from libraries.caption_generator import caption_generator
-import libraries.robots as robots
+from libraries.robots.fetch_robot import FetchRobot
+from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
 ROBOT = 'Dummy'
-
 GENERATE_CAPTIONS = True
 
 # -------- Constants --------
-YCROP = (250, 650)
-XCROP = (650, 1050)
+EXEC_GRASP = 0
+EXEC_ASK = 1
+EXEC_DUMMY_ASK = 2
 
 # ------- Statics -----------
 
@@ -36,9 +39,9 @@ br = CvBridge()
 
 def init_robot(robot):
     if robot == 'Dummy':
-        robot = robots.dummy_robot.DummyRobot()
+        robot = DummyRobot()
     elif robot == 'Fetch':
-        robot = robots.fetch_robot.FetchRobot()
+        robot = FetchRobot()
     else:
         raise Exception('robot not recognized!!')
 
@@ -49,44 +52,61 @@ def main():
 
     invigorate_client = Invigorate()
     data_viewer = DataViewer(CLASSES)
-    robot = init_robot()
+    robot = init_robot(ROBOT)
 
     expr = robot.listen()
 
     all_results = []
-    to_grasp = False
+    exec_type = EXEC_GRASP
     action = -1
     grasps = None
-    quesetion_str = None
+    question_str = None
     answer = None
+    dummy_question_answer = None
     while (True):
-        if to_grasp:
+        if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
 
             # perception
             observations = invigorate_client.perceive_img(img, expr)
             num_box = observations['bboxes'].shape[0]
-            vis_rel_score_mat = data_viewer.relscores_to_visscores()
 
             # state_estimation
             invigorate_client.estimate_state_with_observation(observations)
-        else:
+        elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
             invigorate_client.estimate_state_with_user_clue(action, answer)
+        elif exec_type == EXEC_DUMMY_ASK:
+            answer = dummy_question_answer
+            invigorate_client.estimate_state_with_user_clue(action, answer)
+        else:
+            raise RuntimeError('Invalid exec_type')
 
-        action = invigorate_client.plan() # action_idx.
+        # debug
+        img = observations['img']
+        bboxes = observations['bboxes']
+        classes = observations['classes']
+        rel_mat = observations['rel_mat']
+        rel_score_mat = observations['rel_score_mat']
+        target_prob = invigorate_client.belief['target_prob']
+        imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
+        data_viewer.display_img(imgs['final_img'])
+
+        # plan for optimal actions
+        action = invigorate_client.decision_making_heuristic() # action_idx.
         action_type = invigorate_client.get_action_type(action)
+
         to_grasp = False
         if action_type == 'GRASP_AND_END':
             grasp_target_idx = action
             print("Grasping object " + str(grasp_target_idx) + " and ending the program")
-            to_grasp = True
+            exec_type = EXEC_GRASP
         elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
             grasp_target_idx = action - num_box
             print("Grasping object " + str(grasp_target_idx) + " and continuing")
-            to_grasp = True
+            exec_type = EXEC_GRASP
         elif action_type == 'Q1':
             target_idx = action_type - 2 * num_box
             if GENERATE_CAPTIONS:
@@ -97,8 +117,14 @@ def main():
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
         else: # action type is Q2
+            if invigorate_client.clue is not None:
+                # special case.
+                dummy_question_answer = invigorate_client.clue
+                question_str = ''
+                exec_type = EXEC_DUMMY_ASK
             if target_prob[-1] == 1:
                 question_str = Q2["type2"]
+                exec_type = EXEC_ASK
             elif (target_prob[:-1] > 0.02).sum() == 1:
                 target_idx = np.argmax(target_prob[:-1])
                 if GENERATE_CAPTIONS:
@@ -107,32 +133,40 @@ def main():
                     question_str = Q2["type3"].format(caption)
                 else:
                     question_str = Q2["type3"].format(target_idx + "th object")
+                exec_type = EXEC_ASK
             else:
                 question_str = Q2["type1"]
+                exec_type = EXEC_ASK
 
-        if to_grasp:
+        if exec_type == EXEC_GRASP:
+            grasps = observations['grasps']
+
             # display grasp
-            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasp_target_idx)
+            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             im_pil = Image.fromarray(im)
             im_pil.show()
 
             # execute grasping action
-            grasps = observations['grasps']
-            grasp = grasps[action % num_box][:8] + np.tile([XCROP[0], YCROP[0]], 4)
-            robot.grasp(grasp)
+            grasp = grasps[action % num_box][:8]
+            res = robot.grasp(grasp)
+            if not res:
+                raise RuntimeError('grasp failed!!!')
             # TODO: Determine whether the grasp is successful and then assign this "removed" flag
-            invigorate_client.transit_state(action)
-        else:
+        elif exec_type == EXEC_ASK:
             robot.say(question_str)
+
+        # transit state
+        invigorate_client.transit_state(action)
 
         # generate debug images
         img = observations['img']
         bboxes = observations['bboxes']
+        classes = observations['classes']
         rel_mat = observations['rel_mat']
         rel_score_mat = observations['rel_score_mat']
         target_prob = invigorate_client.belief['target_prob']
-        data_viewer.save_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr, target_prob, action, grasps.copy(), question_str, answer)
+        data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps.copy(), question_str, answer)
 
         to_cont = raw_input('To_continue?')
         if to_cont != 'y':

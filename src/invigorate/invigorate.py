@@ -25,54 +25,32 @@ import time
 import pickle as pkl
 import os.path as osp
 import copy
+from sklearn.cluster import KMeans
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
+from config.config import *
 
 # -------- Constants ---------
 
-# MODEL_NAME = "all_in_one_FixObj_NoScorePostProc_ShareW_NoRelClsGrad.pth"
-# MODEL_PATH = "output/vmrdcompv1/res101"
-
-BG_SCORE = 0.25
-
-Q2={
-    "type1": "I have not found the target. Where is it?",          # COMMON FORMAT
-    "type2": "I have not found the target. Where is it?",          # WHEN ALL THINGS WITH PROB 0
-    "type3": "Do you mean the {:s}? If not, where is the target?"  # WHEN ONLY ONE THING WITH POSITIVE PROB
-}
-
-Q1={
-    "type1": "Do you mean the {:s}?"
-}
-
-CLASSES = ['__background__',  # always index 0
-               'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
-               'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-               'remote controller', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
-               'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
-               'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
-
-CLASSES_TO_IND = dict(zip(CLASSES, range(len(CLASSES))))
-
 class Invigorate():
-    def __init__(self, robot):
-        self._robot = robot
+    def __init__(self):
         rospy.loginfo('waiting for services...')
         rospy.wait_for_service('faster_rcnn_server')
         rospy.wait_for_service('vmrn_server')
         rospy.wait_for_service('mattnet_server')
-        self.obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
-        self.vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
-        self.grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
-        
-        self.br = CvBridge()
+        self._obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
+        self._vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
+        self._grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
+
+        self._br = CvBridge()
 
         self.history_scores = []
         self.object_pool = []
         self.target_in_pool = None
         self._init_kde()
         self.belief = {}
+        self.clue = None
 
     def perceive_img(self, img, expr):
         '''
@@ -83,81 +61,25 @@ class Invigorate():
                 leaf_desc_prob, [N+1xN+1]
                 ground_score,   [N+1]
                 ground_result,  [N+1]
-                ind_match_dict, 
+                ind_match_dict,
                 grasps,         [Nx5x8], 5 grasps for every object, every grasp is x1y1, x2y2, x3y3, x4y4
         '''
 
         tb = time.time()
-        num_bbox, bboxes, classes, cls_scores = self._faster_rcnn_client(img)
-        bboxes = np.array(bboxes).reshape(num_bbox, -1)
-        classes = np.array(classes).reshape(num_bbox, 1)
-        scores = np.array(cls_scores).reshape(num_bbox, -1)
-        bboxes, classes, scores = self._bbox_filter(bboxes, classes, scores)
+
+        # object detection
+        bboxes, classes, scores = self._object_detection(img)
+        ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores)
         num_box = bboxes.shape[0]
-        print('Step 1: faster-rcnn object detection completed!')
+        print('Perceive_img: _object_detection finished')
 
-        bboxes = bboxes[:, :4]
-        bboxes_and_classes = np.concatenate([bboxes, classes], axis=-1)
+        # relationship and grasp detection
+        rel_mat, rel_score_mat, grasps = self._mrt_detection(img, bboxes)
+        print('Perceive_img: mrt and grasp detection finished')
 
-        prev_bboxes_and_classes = np.array([b["bbox_and_cls"] for b in self.object_pool])
-        prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
-        ind_match_dict = self._bbox_match(bboxes_and_classes, prev_bboxes_and_classes, scores, prev_scores)
-        not_matched = set(range(bboxes_and_classes.shape[0])) - set(ind_match_dict.keys())
-        ignored = set(range(prev_bboxes_and_classes.shape[0])) - set(ind_match_dict.values())
-
-        # updating the information of matched bboxes
-        for k, v in ind_match_dict.items():
-            self.object_pool[v]["bbox_and_cls"] = bboxes_and_classes[k]
-            self.object_pool[v]["cls_scores"] = scores[k]
-
-        # add history bounding boxes that are not detected in this timestamp 
-        for i, o in enumerate(self.object_pool):
-            if i not in ind_match_dict.values() and o["removed"] == False and o["ground_belief"] > 0.5:
-                bboxes_and_classes = np.append(bboxes_and_classes, o["bbox"])
-                scores = np.append(scores, o["cls_scores"])
-                ind_match_dict[num_box] = i
-                num_box += 1
-        # bboxes = bboxes.reshape(-1, 5)
-        # scores = scores.reshape(-1, 32)
-        bboxes_and_classes = bboxes_and_classes.reshape(num_box, -1)
-        scores = scores.reshape(num_box, -1)
-
-        # initialize newly detected bboxes
-        for i in not_matched:
-            new_box = {}
-            new_box["bbox"] = bboxes_and_classes[i]
-            new_box["cls_scores"] = scores[i]
-            new_box["cand_belief"] = object_belief()
-            new_box["ground_belief"] = 0.
-            new_box["ground_scores_history"] = []
-            new_box["clue"] = None
-            new_box["clue_belief"] = object_belief()
-            # whether this box has been confirmed by user's answer
-            # True: confirmed to be the target
-            # False: confirmed not to be the target
-            # None: not confirmed
-            if self.target_in_pool:
-                new_box["is_target"] = False
-            else:
-                new_box["is_target"] = None
-            new_box["removed"] = False
-            self.object_pool.append(new_box)
-            ind_match_dict[i] = len(self.object_pool) - 1
-
-        # decompose bbox and classes again
-        bboxes = bboxes_and_classes[:, :4]
-        classes = bboxes_and_classes[:, :-1]
-
-        # detect vmr and grasp pose
-        rel_result = self._vmrn_client(img, bboxes.reshape(-1).tolist())
-        rel_mat = np.array(rel_result[0]).reshape((num_box, num_box)) # [NxN]
-        rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box)) #[3xNxN], 3 diff kinds of relationship
-        grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
-        grasps = self._grasp_filter(bboxes, grasps) 
-        print('Step 2: mrt and grasp pose detection completed')
-
-        # visual grounding
-        grounding_scores = self._mattnet_client(img, bboxes.reshape(-1).tolist(), classes.reshape(-1).tolist(), expr)
+        # grounding
+        grounding_scores = self._multi_step_grounding(img, bboxes, expr, ind_match_dict)
+        print('Perceive_img: mattnet grounding finished')
 
         observations = {}
         observations['img'] = img
@@ -166,6 +88,7 @@ class Invigorate():
         observations['bboxes'] = bboxes
         observations['classes'] = classes
         observations['ind_match_dict'] = ind_match_dict
+        observations['not_matched'] = not_matched
         observations['det_scores'] = scores
         observations['rel_mat'] = rel_mat
         observations['rel_score_mat'] = rel_score_mat
@@ -176,14 +99,14 @@ class Invigorate():
         return observations
 
     def estimate_state_with_observation(self, observations):
+        img = observations['img']
         bboxes = observations['bboxes']
         det_scores = observations['det_scores']
         grounding_scores = observations['grounding_scores']
         rel_score_mat = observations['rel_score_mat']
         expr = observations['expr']
         ind_match_dict = observations['ind_match_dict']
-
-        num_box = observations['bboxes'].shape[0]
+        num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob
         # TODO: updating the relationship probability according to the new observation
@@ -216,23 +139,33 @@ class Invigorate():
         print('target_prob : {}'.format(target_prob))
 
         # 2. incorporate QA history
-        # target_prob = target_prob.copy()
+        target_prob_backup = target_prob.copy()
         for k, v in ind_match_dict.items():
-            if self.object_pool[v]["is_target"] == True:
-                target_prob[:] = 0.
-                target_prob[k] = 1.
-            elif self.object_pool[v]["is_target"] == False:
-                target_prob[k] = 0.
-        if self.target_in_pool:
-            target_prob[-1] = 0
-        assert target_prob.sum() > 0
-        target_prob /= target_prob.sum()
-        print('Step 3.2: incorporate QA history completed')
-        print('target_prob: {}'.format(target_prob))
+            if self.object_pool[v]["confirmed"] == True:
+                if self.object_pool[v]["ground_belief"] == 1.:
+                    target_prob[:] = 0.
+                    target_prob[k] = 1.
+                elif self.object_pool[v]["ground_belief"] == 0.:
+                    target_prob[k] = 0.
+        if target_prob.sum() > 0:
+            target_prob /= target_prob.sum()
+        else:
+            # something wrong with the matching process. roll back
+            for i in observations['not_matched']:
+                target_prob[i] = target_prob_backup[i]
+            target_prob[-1] = target_prob_backup[-1]
+            target_prob /= target_prob.sum()
 
         # update target_prob
         for k, v in ind_match_dict.items():
             self.object_pool[v]["target_prob"] = target_prob[k]
+
+        print('Step 3.2: incorporate QA history completed')
+        print('target_prob: {}'.format(target_prob))
+
+        # 3. incorporate the provided clue by the user
+        if self.clue is not None:
+            leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
@@ -275,127 +208,67 @@ class Invigorate():
 
                 leaf_desc_prob = self._estimate_state_with_user_clue(answer)
 
-        self.belief["target_prob"] = torch.from_numpy()
-        self.belief["leaf_desc_prob"] = torch.from_numpy()
+        self.belief["target_prob"] = torch.from_numpy(target_prob)
+        self.belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob)
         return belief
 
-    def plan(self, planning_depth=3):
-        # convert to torch # TODO numpy??
-        belief = self.belief.copy()
-        belief['target_prob'] = torch.from_numpy(self.belief['target_prob'])
-        belief['leaf_desc_prob'] = torch.from_numpy(self.belief['leaf_desc_prob'])
-
-        num_obj = belief["target_prob"].shape[0] - 1 # exclude the virtual node
-        penalty_for_asking = -2
-        # ACTIONS: Do you mean ... ? (num_obj) + Where is the target ? (1) + grasp object (num_obj)
-        def grasp_reward_estimate(belief):
-            # reward of grasping the corresponding object
-            # return is a 1-D tensor including num_obj elements, indicating the reward of grasping the corresponding object.
-            ground_prob = belief["target_prob"]
-            leaf_desc_tgt_prob = (belief["leaf_desc_prob"] * ground_prob.unsqueeze(0)).sum(-1)
-            leaf_prob = torch.diag(belief["leaf_desc_prob"])
-            not_leaf_prob = 1. - leaf_prob
-            target_prob = ground_prob
-            leaf_tgt_prob = leaf_prob * target_prob
-            leaf_desc_prob = leaf_desc_tgt_prob - leaf_tgt_prob
-            leaf_but_not_desc_tgt_prob = leaf_prob - leaf_desc_tgt_prob
-
-            # grasp and the end
-            r_1 = not_leaf_prob * (-10) + leaf_but_not_desc_tgt_prob * (-10) + leaf_desc_prob * (-10)\
-                    + leaf_tgt_prob * (0)
-            r_1 = r_1[:-1] # exclude the virtual node
-
-            # grasp and not the end
-            r_2 = not_leaf_prob * (-10) + leaf_but_not_desc_tgt_prob * (-6) + leaf_desc_prob * (0)\
-                    + leaf_tgt_prob * (-10)
-            r_2 = r_2[:-1]  # exclude the virtual node
-            return torch.cat([r_1, r_2], dim=0)
-
-        def belief_update(belief):
-            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
-            updated_beliefs = []
-            # Do you mean ... ?
-            # Answer No
-            beliefs_no = belief["target_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
-            beliefs_no *= (1. - I)
-            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim = -1, keepdim=True), min=1e-10)
-            # Answer Yes
-            beliefs_yes = I.clone()
-            for i in range(beliefs_no.shape[0] - 1):
-                updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
-
-            # Is the target detected? Where is it?
-            updated_beliefs.append([beliefs_no[-1], I[-1],])
-            return updated_beliefs
-
-        def is_onehot(vec, epsilon = 1e-2):
-            return (torch.abs(vec - 1) < epsilon).sum().item() > 0
-
-        def estimate_q_vec(belief, current_d):
-            if current_d == planning_depth - 1:
-                q_vec = grasp_reward_estimate(belief)
-                return q_vec
+    def decision_making_heuristic(self):
+        def choose_target(target_prob):
+            if len(target_prob.shape) == 1:
+                target_prob = target_prob.reshape(-1, 1)
+            cluster_res = KMeans(n_clusters=2).fit_predict(target_prob)
+            mean0 = target_prob[cluster_res==0].mean()
+            mean1 = target_prob[cluster_res==1].mean()
+            pos_label = 0 if mean0 > mean1 else 1
+            pos_num = (cluster_res==pos_label).sum()
+            if pos_num > 1:
+                return ("Q1_{:d}".format(np.argmax(target_prob[:-1].reshape(-1))))
             else:
-                # branches of grasping
-                q_vec = grasp_reward_estimate(belief).tolist()
-                ground_prob = belief["target_prob"]
-                new_beliefs = belief_update(belief)
-                new_belief_dict = copy.deepcopy(belief)
+                if cluster_res[-1] == pos_label:
+                    return "Q2"
+                else:
+                    return "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1)))
 
-                # Q1
-                for i, new_belief in enumerate(new_beliefs[:-1]):
-                    q = 0
-                    for j, b in enumerate(new_belief):
-                        new_belief_dict["target_prob"] = b
-                        # branches of asking questions
-                        if is_onehot(b):
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
-                        else:
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
-                        if j == 0:
-                            # Answer is No
-                            q += t_q * (1 - ground_prob[i])
-                        else:
-                            # Answer is Yes
-                            q += t_q * ground_prob[i]
-                    q_vec.append(q.item())
+        num_box = self.observations['num_box']
+        target_prob = self.belief['target_prob']
+        leaf_desc_prob = self.belief['leaf_desc_prob']
 
-                # Q2
-                q = 0
-                new_belief = new_beliefs[-1]
-                for j, b in enumerate(new_belief):
-                    new_belief_dict["ground_prob"] = b
-                    if j == 0:
-                        # target has been detected
-                        if is_onehot(b):
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
-                        else:
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
-                        q += t_q * (1 - ground_prob[-1])
-                    else:
-                        new_belief_dict["leaf_desc_prob"][:, -1] = new_belief_dict["leaf_desc_prob"][:, :-1].sum(-1) / num_obj
-                        t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
-                        q += t_q * ground_prob[-1]
-                q_vec.append(q.item())
-                return torch.Tensor(q_vec).type_as(belief["ground_prob"])
+        action = choose_target(target_prob.copy())
+        if action.startswith("Q2"):
+            if action == "Q2":
+                action = 3 * num_box
+            else:
+                action = int(action.split("_")[1]) + 2 * num_box
+        else:
+            selected_obj = int(action.split("_")[1])
+            l_d_probs = leaf_desc_prob[:, selected_obj]
+            current_tgt = np.argmax(l_d_probs)
+            if current_tgt == selected_obj:
+                # grasp and end program
+                action = current_tgt
+            else:
+                # grasp and continue
+                action = current_tgt + num_box
 
-        q_vec = estimate_q_vec(belief, 0)
-        print("Q Value for Each Action: ")
-        print(q_vec.tolist()[:num_obj])
-        print(q_vec.tolist()[num_obj:2*num_obj])
-        print(q_vec.tolist()[2*num_obj:3*num_obj])
-        print(q_vec.tolist()[3*num_obj])
-        best_action = torch.argmax(q_vec).item()
-        return best_action
+            # if the action is asking Q2, it is necessary to check whether the previous answer is useful.
+            # if useful, the robot will use the previous answer instead of requiring a new answer from the user.
+            # if a != 3 * num_box or self.clue is None:
+            #     self.result_container.append(
+            #         save_visualization(img, bboxes, rel_mat, vis_rel_score_mat, expr, ground_result, a, self.data_viewer))
+
+        return action
 
     def transit_state(self, action):
+        num_box = self.observations['num_box']
+        ind_match_dict = self.observations['ind_match_dict']
+
         action_type = self.get_action_type(action)
         if action_type == 'Q1' or action_type == 'Q2':
             # asking question does not change state
             return
         else:
             # mark object as being removed
-            self.object_pool[ind_match[action % num_box]]["removed"] = True
+            self.object_pool[ind_match_dict[action % num_box]]["removed"] = True
 
     def _init_kde(self):
         cur_dir = osp.dirname(osp.abspath(__file__))
@@ -419,19 +292,74 @@ class Invigorate():
         self.kdes = [kde_neg, kde_pos]
 
     def _faster_rcnn_client(self, img):
-        img_msg = self.br.cv2_to_imgmsg(img)
-        res = self.obj_det(img_msg, False)
+        img_msg = self._br.cv2_to_imgmsg(img)
+        res = self._obj_det(img_msg, False)
         return res.num_box, res.bbox, res.cls, res.cls_scores
 
     def _vmrn_client(self, img, bbox):
-        img_msg = self.br.cv2_to_imgmsg(img)
-        res = self.vmr_det(img_msg, bbox)
+        img_msg = self._br.cv2_to_imgmsg(img)
+        res = self._vmr_det(img_msg, bbox)
         return res.rel_mat, res.rel_score_mat, res.grasps
 
     def _mattnet_client(self, img, bbox, cls, expr):
-        img_msg = self.br.cv2_to_imgmsg(img)
-        res = self.grounding(img_msg, bbox, cls, expr)
+        img_msg = self._br.cv2_to_imgmsg(img)
+        res = self._grounding(img_msg, bbox, cls, expr)
         return res.ground_prob
+
+    def _object_detection(self, img):
+        obj_result = self._faster_rcnn_client(img)
+        num_box = obj_result[0]
+        bboxes = np.array(obj_result[1]).reshape(num_box, -1)
+        classes = np.array(obj_result[2]).reshape(num_box, 1)
+        class_scores = np.array(obj_result[3]).reshape(num_box, -1)
+        bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
+
+        return bboxes, classes, class_scores
+
+    def _bbox_post_process(self, bboxes, scores):
+        prev_boxes = np.array([b["bbox"] for b in self.object_pool])
+        ind_match_dict = self._bbox_match(bboxes, prev_boxes)
+        not_matched = set(range(bboxes.shape[0])) - set(ind_match_dict.keys())
+        # updating the information of matched bboxes
+        for k, v in ind_match_dict.items():
+            self.object_pool[v]["bbox"] = bboxes[k]
+            self.object_pool[v]["cls_scores"] = scores[k]
+        # initialize newly detected bboxes
+        for i in not_matched:
+            new_box = self._init_object(bboxes[i], scores[i])
+            self.object_pool.append(new_box)
+            ind_match_dict[i] = len(self.object_pool) - 1
+        return ind_match_dict, not_matched
+
+    def _init_object(self, bbox, score):
+        new_box = {}
+        new_box["bbox"] = bbox
+        new_box["cls_scores"] = score
+        new_box["cand_belief"] = object_belief()
+        new_box["ground_belief"] = 0.
+        new_box["ground_scores_history"] = []
+        new_box["clue"] = None
+        new_box["clue_belief"] = object_belief()
+        if self.target_in_pool:
+            new_box["confirmed"] = True
+        else:
+            new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
+        new_box["removed"] = False
+        return new_box
+
+    def _mrt_detection(self, img, bboxes):
+        num_box = bboxes.shape[0]
+        rel_result = self._vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
+        rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
+        rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
+        grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
+        grasps = self._grasp_filter(bboxes, grasps)
+        return rel_mat, rel_score_mat, grasps
+
+    def _multi_step_grounding(self, img, bboxes, expr, ind_match_dict):
+        num_box = bboxes.shape[0]
+        grounding_scores = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), expr)
+        return grounding_scores
 
     def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
         pcand = torch.Tensor(pcand).reshape(1, -1)
@@ -469,50 +397,33 @@ class Invigorate():
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
 
-    def _bbox_match(self, bbox, prev_bbox, scores, prev_scores, mode="hungarian"):
+    def _bbox_match(self, bbox, prev_bbox):
         # TODO: apply Hungarian algorithm to match boxes
+        # match bboxes between two steps.
         if prev_bbox.size == 0:
             return {}
-        ovs = _bbox_overlaps(torch.from_numpy(bbox[:, :4]), torch.from_numpy(prev_bbox[:, :4])).numpy()
+
+        ovs = self._bbox_overlaps(torch.from_numpy(bbox[:, :4]), torch.from_numpy(prev_bbox[:, :4])).numpy()
+        cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
+        for i, cls in enumerate(bbox[:, -1]):
+            cls_mask[i][prev_bbox[:, -1] == cls] = 1
+        ovs_mask = (ovs > 0.8)
+        ovs *= ((cls_mask + ovs_mask) > 0)
+
+        mapping = np.argsort(ovs, axis=-1)[:, ::-1]
+        ovs_sorted = np.sort(ovs, axis=-1)[:, ::-1]
+        matched = (np.max(ovs, axis=-1) > 0.5)
+        occupied = {i: False for i in range(mapping.shape[-1])}
         ind_match_dict = {}
-        if mode=="heuristic":
-            # match bboxes between two steps.
-            cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
-            for i, cls in enumerate(bbox[:, -1]):
-                cls_mask[i][prev_bbox[:, -1] == cls] = 1
-            ovs_mask = (ovs > 0.8)
-            ovs *= ((cls_mask + ovs_mask) > 0)
-            mapping = np.argsort(ovs, axis=-1)[:, ::-1]
-            ovs_sorted = np.sort(ovs, axis=-1)[:, ::-1]
-            matched = (np.max(ovs, axis=-1) > 0.5)
-            occupied = {i: False for i in range(mapping.shape[-1])}
-            for i in range(mapping.shape[0]):
-                if matched[i]:
-                    for j in range(mapping.shape[-1]):
-                        if not occupied[mapping[i][j]] and ovs_sorted[i][j] > 0.5:
-                            ind_match_dict[i] = mapping[i][j]
-                            occupied[mapping[i][j]] = True
-                            break
-                        elif ovs_sorted[i][j] <= 0.5:
-                            break
-
-        elif mode=="hungarian":
-            ov_cost = 1. - ovs
-            # normalize scores
-            scores /= np.expand_dims(np.linalg.norm(scores, axis=-1), axis=-1)
-            prev_scores /= np.expand_dims(np.linalg.norm(prev_scores, axis=-1), axis=-1)
-            scores_cost = np.expand_dims(scores, 1) * np.expand_dims(prev_scores, 0)
-            scores_cost = 1 - scores_cost.sum(-1)
-            cost = 0.6 * ov_cost + 0.4 * scores_cost
-            mapping = optimize.linear_sum_assignment(cost)
-
-            thresh = 0.5
-            for i in range(mapping[0].size):
-                ind1 = mapping[0][i]
-                ind2 = mapping[1][i]
-                if cost[ind1][ind2] < thresh:
-                    ind_match_dict[ind1] = ind2
-
+        for i in range(mapping.shape[0]):
+            if matched[i]:
+                for j in range(mapping.shape[-1]):
+                    if not occupied[mapping[i][j]] and ovs_sorted[i][j] > 0.5:
+                        ind_match_dict[i] = mapping[i][j]
+                        occupied[mapping[i][j]] = True
+                        break
+                    elif ovs_sorted[i][j] <= 0.5:
+                        break
         return ind_match_dict
 
         def _bbox_overlaps(anchors, gt_boxes):
@@ -616,7 +527,7 @@ class Invigorate():
         if cuda_data:
             leaf_desc_prob = leaf_desc_prob.cuda()
         return leaf_desc_prob
-    
+
     def get_action_type(self, action, num_box=None):
         if num_box is None:
             num_box = self.observations['num_box']
@@ -633,7 +544,7 @@ class Invigorate():
     def _estimate_state_with_user_clue(self, clue):
         # 3. incorporate the provided clue by the user
         # clue contains the tentative target contained in anwer of user for 'where is '
-        
+
         leaf_desc_prob = self.belief['leaf_desc_prob']
         img = self.observations['img']
         bboxes = self.observations['bboxes']
@@ -641,14 +552,24 @@ class Invigorate():
         ind_match_dict = self.observations['ind_match_dict']
         num_box = self.observations['num_box']
 
-        tentative_ground = self._mattnet_client(img, bboxes, classes, clue) # find clue object
-        for i, score in enumerate(tentative_ground):
+        t_ground = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), self.clue)
+        for i, score in enumerate(t_ground):
             obj_ind = ind_match_dict[i]
             self.object_pool[obj_ind]["clue_belief"].update(score, self.kdes)
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
-        tentative_ground = self.p_cand_to_belief_mc(pcand)
-        tentative_ground = np.expand_dims(tentative_ground, 0)
-        leaf_desc_prob[:, -1] = (tentative_ground * leaf_desc_prob[:, :-1]).sum(-1) # assume l&d prob of target == l%d prob of bg
+        t_ground = self.p_cand_to_belief_mc(pcand)
+        t_ground = np.append(t_ground, 1. - t_ground.sum())
+        cluster_res = KMeans(n_clusters=2).fit_predict(t_ground.reshape(-1, 1))
+        mean0 = t_ground[cluster_res == 0].mean()
+        mean1 = t_ground[cluster_res == 1].mean()
+        pos_label = 0 if mean0 > mean1 else 1
+        pos_num = (cluster_res == pos_label).sum()
+        if pos_num == 1 and cluster_res[-1] == pos_label:
+            # cannot successfully ground the clue object, reset clue
+            self.clue = None
+        else:
+            t_ground = np.expand_dims(t_ground, 0)
+            leaf_desc_prob[:, -1] = (t_ground * leaf_desc_prob[:, :-1]).sum(-1)
         print('Update leaf_desc_prob with clue completed')
-        
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
+
+        return leaf_desc_prob

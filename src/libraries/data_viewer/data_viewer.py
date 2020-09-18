@@ -16,16 +16,19 @@ from PIL import Image
 import time
 import datetime
 
+import vmrn._init_path
 # from model.utils.config import cfg
 from vmrn.model.utils.net_utils import create_mrt
 # from sklearn.manifold import TSNE
 from config.config import *
-
 from paper_fig_generator import gen_paper_fig
 
 def split_long_string(in_str, len_thresh = 30):
+    if in_str =='':
+        return ''
+
     in_str = in_str.split(" ")
-    out_str = ""
+    out_str = ''
     len_counter = 0
     for word in in_str:
         len_counter += len(word) + 1
@@ -75,6 +78,7 @@ class DataViewer(object):
     def draw_single_bbox(self, img, bbox, bbox_color=(163, 68, 187), text_str="", test_bg_color = None):
         if test_bg_color is None:
             test_bg_color = bbox_color
+        bbox = bbox.astype(np.int)
         bbox = tuple(bbox)
         text_rd = (bbox[2], bbox[1] + 25)
         cv2.rectangle(img, bbox[0:2], bbox[2:4], bbox_color, 2)
@@ -258,7 +262,7 @@ class DataViewer(object):
                     cv2.FONT_HERSHEY_PLAIN,
                     2, (255, 255, 255), thickness=2)
         return img
-    
+
     def add_grasp_to_img(self, im, g_dets, g_inds=None):
         im = np.ascontiguousarray(im)
         im = self.draw_graspdet(im, g_dets, g_inds)
@@ -274,14 +278,14 @@ class DataViewer(object):
                     cv2.FONT_HERSHEY_PLAIN,
                     2, (255, 255, 255), thickness=2)
         return im
-    
+
     def display_obj_to_grasp(self, im, bboxes, grasps, grasp_target_idx):
         im = np.ascontiguousarray(im)
         bboxes = bboxes.astype(np.int)
         im = self.draw_single_bbox(im, bboxes[grasp_target_idx][:4])
         im = self.draw_single_grasp(im, grasps[grasp_target_idx])
         return im
-    
+
     def vis_action(self, action_str, shape, draw_arrow = False):
         im = 255. * np.ones(shape)
         action_str = action_str.split("\n")
@@ -297,30 +301,29 @@ class DataViewer(object):
             cv2.arrowedLine(im, (0, mid_line), (im.shape[1], mid_line), (0, 0, 0), thickness = 2, tipLength = 0.03)
         return im
 
-    def generate_visualization_imgs(self, img, bboxes, rel_mat, rel_score_mat, 
-        expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
-        
+    def generate_visualization_imgs(self, img, bboxes, classes, rel_mat, rel_score_mat,
+        expr, target_prob, action=None, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500, save=True):
+
         if im_id is None:
             current_date = datetime.datetime.now()
             image_id = "{}-{}-{}-{}".format(current_date.year, current_date.month, current_date.day,
                                             time.strftime("%H:%M:%S"))
-        
+
         ############ visualize
         # resize img for visualization
         scalar = float(tgt_size) / img.shape[0]
         img_show = cv2.resize(img, None, None, fx=scalar, fy=scalar, interpolation=cv2.INTER_LINEAR)
         vis_bboxes = bboxes * scalar
-        vis_bboxes[:, -1] = bboxes[:, -1]
+        vis_bboxes = np.concatenate([vis_bboxes, classes], axis=-1)
         if grasps is not None:
             grasps[:, :8] = grasps[:, :8] * scalar
         num_box = bboxes.shape[0]
 
         # object detection
-        cls = bboxes[:, -1]
         if grasps is not None:
             object_det_img = self.draw_graspdet_with_owner(img_show.copy(), vis_bboxes, grasps)
         else:
-            object_det_img = self.draw_objdet(img_show.copy(), vis_bboxes, list(range(cls.shape[0])))
+            object_det_img = self.draw_objdet(img_show.copy(), vis_bboxes, list(range(classes.shape[0])))
 
         # relationship detection
         vis_rel_score_mat = self.relscores_to_visscores(rel_score_mat)
@@ -336,45 +339,50 @@ class DataViewer(object):
         ground_img = self.add_obj_classes_to_img(ground_img, vis_bboxes)
 
         # action
-        target_idx = -1
-        question_type = None
-        print("Optimal Action:")
-        if action < num_box:
-            target_idx = action
-            action_str = "Grasping object " + str(action) + " and ending the program"
-        elif action < 2 * num_box:
-            target_idx = action - num_box
-            action_str = "Grasping object " + str(target_idx) + " and continuing"
-        elif action < 3 * num_box:
-            if question_str is not None:
-                action_str = question_str
+        if action != None:
+            target_idx = -1
+            question_type = None
+            print("Optimal Action:")
+            if action < num_box:
+                target_idx = action
+                action_str = "Grasping object " + str(action) + " and ending the program"
+            elif action < 2 * num_box:
+                target_idx = action - num_box
+                action_str = "Grasping object " + str(target_idx) + " and continuing"
+            elif action < 3 * num_box:
+                if question_str is not None:
+                    action_str = question_str
+                else:
+                    action_str = integrase.Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
+                question_type = "Q1_TYPE1"
             else:
-                action_str = integrase.Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
-            question_type = "Q1_TYPE1"
-        else:
-            if target_prob[-1] == 1:
-                action_str = Q2["type2"]
-                question_type = "Q2_TYPE2"
-            elif (target_prob[:-1] > 0.02).sum() == 1:
-                action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
-                question_type = "Q2_TYPE3"
-            else:
-                action_str = Q2["type1"]
-                question_type = "Q2_TYPE1"
-        print(action_str)
-        # append answer
-        if answer is not None:
-            action_str += '\n' + answer
+                if target_prob[-1] == 1:
+                    action_str = Q2["type2"]
+                    question_type = "Q2_TYPE2"
+                elif (target_prob[:-1] > 0.02).sum() == 1:
+                    action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
+                    question_type = "Q2_TYPE3"
+                else:
+                    action_str = Q2["type1"]
+                    question_type = "Q2_TYPE1"
+            print(action_str)
+            # append answer
+            if answer is not None:
+                action_str += '\n' + answer
 
-        action_img_shape = list(img_show.shape)
-        action_img = self.vis_action(split_long_string(action_str), action_img_shape)
+            action_img_shape = list(img_show.shape)
+            action_img = self.vis_action(split_long_string(action_str), action_img_shape)
+        else:
+            action_str = ''
+            question_type = None
+            action_img = np.zeros((img_show.shape), np.uint8)
 
         # grasps
-        ## Only visualize this if action is grasping. 
+        ## Only visualize this if action is grasping.
         ## Only visualize for the target object.
-        print("Grasping score: ")
-        print(grasps[:, -1].tolist())
         if grasps is not None and target_idx >= 0:
+            print("Grasping score: ")
+            print(grasps[:, -1].tolist())
             ground_img = self.add_grasp_to_img(ground_img, np.expand_dims(grasps[target_idx], axis=0))
 
         # save result
@@ -384,38 +392,40 @@ class DataViewer(object):
             np.concatenate([ground_img, action_img], axis=1),
         ], axis=0)
 
-        if im_id is None:
-            im_id = str(datetime.datetime.now())
-            origin_name = im_id + "_origin.png"
-            save_name = im_id + "_result.png"
-        else:
-            origin_name = im_id.split(".")[0] + "_origin.png"
-            save_name = im_id.split(".")[0] + "_result.png"
-        origin_path = os.path.join(out_dir, origin_name)
-        save_path = os.path.join(out_dir, save_name)
-        i = 1
-        while (os.path.exists(save_path)):
-            i += 1
-            save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
+        if save:
+            if im_id is None:
+                im_id = str(datetime.datetime.now())
+                origin_name = im_id + "_origin.png"
+                save_name = im_id + "_result.png"
+            else:
+                origin_name = im_id.split(".")[0] + "_origin.png"
+                save_name = im_id.split(".")[0] + "_result.png"
+            origin_path = os.path.join(out_dir, origin_name)
             save_path = os.path.join(out_dir, save_name)
-        
-        cv2.imwrite(origin_path, img)
-        cv2.imwrite(save_path, final_img)
+            i = 1
+            while (os.path.exists(save_path)):
+                i += 1
+                save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
+                save_path = os.path.join(out_dir, save_name)
 
-        return {"origin_img": img_show,
+            cv2.imwrite(origin_path, img)
+            cv2.imwrite(save_path, final_img)
+
+        return {"final_img": final_img,
+                "origin_img": img_show,
                 "od_img": object_det_img,
                 "mrt_img": rel_det_img,
                 "ground_img": ground_img,
                 "action_str": split_long_string(action_str),
                 "q_type": question_type}
 
-    def save_visualization_imgs(self, img, bboxes, rel_mat, rel_score_mat, 
+    def gen_final_paper_fig(self, img, bboxes, classes, rel_mat, rel_score_mat,
         expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
-        imgs = self.generate_visualization_imgs(img, bboxes, rel_mat, rel_score_mat, expr,
+        imgs = self.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr,
             target_prob, action, grasps, question_str, answer, im_id, tgt_size)
         gen_paper_fig(expr, [imgs])
         return True
-    
+
     def relscores_to_visscores(self, rel_score_mat):
         return np.max(rel_score_mat, axis=0)
 
