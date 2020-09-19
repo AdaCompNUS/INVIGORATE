@@ -1,13 +1,4 @@
-'''
-TODO
-1. bug where only 1 object is detected line 290
-2. question asking for where is it?
-3. grasp random objects when background has high prob?
-4. The questions to be asked
-5. clue is persistent??
-6. what is this? if (target_prob[:-1] > 0.02).sum() == 1:
-7. grasp representation
-'''
+
 
 #!/usr/bin/env python
 import warnings
@@ -206,6 +197,7 @@ class Invigorate():
                 target_prob[:] = 0
                 target_prob[-1] = 1
 
+                self.belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob)
                 leaf_desc_prob = self._estimate_state_with_user_clue(answer)
 
         self.belief["target_prob"] = torch.from_numpy(target_prob)
@@ -310,6 +302,7 @@ class Invigorate():
         obj_result = self._faster_rcnn_client(img)
         num_box = obj_result[0]
         bboxes = np.array(obj_result[1]).reshape(num_box, -1)
+        print('_object_detection: bboxes {}'.format(bboxes))
         classes = np.array(obj_result[2]).reshape(num_box, 1)
         class_scores = np.array(obj_result[3]).reshape(num_box, -1)
         bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
@@ -349,15 +342,20 @@ class Invigorate():
 
     def _mrt_detection(self, img, bboxes):
         num_box = bboxes.shape[0]
+        # print(num_box)
         rel_result = self._vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
-        rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
+        # print(rel_result[1])
+        if num_box == 1: # TODO hack!!
+            rel_score_mat = (0.0, 0.0, 0.0)
+        else:
+            rel_score_mat = rel_result[1]
+        rel_score_mat = np.array(rel_score_mat).reshape((3, num_box, num_box))
         grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
         grasps = self._grasp_filter(bboxes, grasps)
         return rel_mat, rel_score_mat, grasps
 
     def _multi_step_grounding(self, img, bboxes, expr, ind_match_dict):
-        num_box = bboxes.shape[0]
         grounding_scores = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), expr)
         return grounding_scores
 
@@ -400,33 +398,7 @@ class Invigorate():
     def _bbox_match(self, bbox, prev_bbox):
         # TODO: apply Hungarian algorithm to match boxes
         # match bboxes between two steps.
-        if prev_bbox.size == 0:
-            return {}
-
-        ovs = self._bbox_overlaps(torch.from_numpy(bbox[:, :4]), torch.from_numpy(prev_bbox[:, :4])).numpy()
-        cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
-        for i, cls in enumerate(bbox[:, -1]):
-            cls_mask[i][prev_bbox[:, -1] == cls] = 1
-        ovs_mask = (ovs > 0.8)
-        ovs *= ((cls_mask + ovs_mask) > 0)
-
-        mapping = np.argsort(ovs, axis=-1)[:, ::-1]
-        ovs_sorted = np.sort(ovs, axis=-1)[:, ::-1]
-        matched = (np.max(ovs, axis=-1) > 0.5)
-        occupied = {i: False for i in range(mapping.shape[-1])}
-        ind_match_dict = {}
-        for i in range(mapping.shape[0]):
-            if matched[i]:
-                for j in range(mapping.shape[-1]):
-                    if not occupied[mapping[i][j]] and ovs_sorted[i][j] > 0.5:
-                        ind_match_dict[i] = mapping[i][j]
-                        occupied[mapping[i][j]] = True
-                        break
-                    elif ovs_sorted[i][j] <= 0.5:
-                        break
-        return ind_match_dict
-
-        def _bbox_overlaps(anchors, gt_boxes):
+        def bbox_overlaps(anchors, gt_boxes):
             """
             anchors: (N, 4) ndarray of float
             gt_boxes: (K, 4) ndarray of float
@@ -457,6 +429,32 @@ class Invigorate():
             overlaps = iw * ih / ua
 
             return overlaps
+
+        if prev_bbox.size == 0:
+            return {}
+
+        ovs = bbox_overlaps(torch.from_numpy(bbox[:, :4]), torch.from_numpy(prev_bbox[:, :4])).numpy()
+        cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
+        for i, cls in enumerate(bbox[:, -1]):
+            cls_mask[i][prev_bbox[:, -1] == cls] = 1
+        ovs_mask = (ovs > 0.8)
+        ovs *= ((cls_mask + ovs_mask) > 0)
+
+        mapping = np.argsort(ovs, axis=-1)[:, ::-1]
+        ovs_sorted = np.sort(ovs, axis=-1)[:, ::-1]
+        matched = (np.max(ovs, axis=-1) > 0.5)
+        occupied = {i: False for i in range(mapping.shape[-1])}
+        ind_match_dict = {}
+        for i in range(mapping.shape[0]):
+            if matched[i]:
+                for j in range(mapping.shape[-1]):
+                    if not occupied[mapping[i][j]] and ovs_sorted[i][j] > 0.5:
+                        ind_match_dict[i] = mapping[i][j]
+                        occupied[mapping[i][j]] = True
+                        break
+                    elif ovs_sorted[i][j] <= 0.5:
+                        break
+        return ind_match_dict
 
     def _leaf_and_descendant_stats(self, rel_prob_mat, sample_num = 1000):
         # TODO: Numpy may support a faster implementation.
@@ -552,7 +550,7 @@ class Invigorate():
         ind_match_dict = self.observations['ind_match_dict']
         num_box = self.observations['num_box']
 
-        t_ground = self.mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), self.clue)
+        t_ground = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), self.clue)
         for i, score in enumerate(t_ground):
             obj_ind = ind_match_dict[i]
             self.object_pool[obj_ind]["clue_belief"].update(score, self.kdes)

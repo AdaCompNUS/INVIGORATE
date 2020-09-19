@@ -77,6 +77,7 @@ def main():
         # perception
         bboxes, scores, rel_mat, rel_score_mat, leaf_desc_prob, ground_score, target_prob, ind_match, grasps = \
             s_ing_client.single_step_perception_new(img, expr, cls_filter=related_classes)
+        bboxes = bboxes[:, :4]
         classes = bboxes[:, -1]
         num_box = bboxes.shape[0]
         question_str = None
@@ -105,7 +106,7 @@ def main():
                     target_idx = a - 2 * num_box
                     if GENERATE_CAPTIONS:
                         # generate caption
-                        caption = caption_generator.generate_caption(img, bboxes, target_idx)
+                        caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
                         question_str = Q1["type1"].format(caption)
                     else:
                         question_str = Q1["type1"].format(str(target_idx) + "th object")
@@ -116,7 +117,7 @@ def main():
                         target_idx = np.argmax(target_prob[:-1])
                         if GENERATE_CAPTIONS:
                             # generate caption
-                            caption = caption_generator.generate_caption(img, bboxes, target_idx)
+                            caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
                             question_str = Q1["type1"].format(caption)
                         else:
                             question_str = Q2["type3"].format(target_idx + "th object")
@@ -126,8 +127,8 @@ def main():
                 robot.say(question_str)
 
                 data = {"img": img,
-                        "bbox": bboxes[:, :4].reshape(-1).tolist(),
-                        "cls": bboxes[:, 4].reshape(-1).tolist(),
+                        "bbox": bboxes.reshape(-1).tolist(),
+                        "cls": bboxes.reshape(-1).tolist(),
                         "mapping": ind_match}
                 ans = robot.listen()
 

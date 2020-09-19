@@ -1,4 +1,16 @@
 #!/usr/bin/env python
+
+'''
+TODO
+1. bug where only 1 object is detected line 290
+2. question answering for where is it?
+3. grasp random objects when background has high prob?
+5. clue is persistent??
+6. what is this? if (target_prob[:-1] > 0.02).sum() == 1:
+7. where is it mattnet client error
+8. it does not ask questions when there are two same objects
+'''
+
 import sys
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
@@ -24,7 +36,7 @@ from libraries.robots.fetch_robot import FetchRobot
 from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
 
 # -------- Constants --------
@@ -63,7 +75,8 @@ def main():
     question_str = None
     answer = None
     dummy_question_answer = None
-    while (True):
+    to_end = False
+    while not to_end:
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
@@ -77,10 +90,10 @@ def main():
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
-            invigorate_client.estimate_state_with_user_clue(action, answer)
+            invigorate_client.estimate_state_with_user_answer(action, answer)
         elif exec_type == EXEC_DUMMY_ASK:
             answer = dummy_question_answer
-            invigorate_client.estimate_state_with_user_clue(action, answer)
+            invigorate_client.estimate_state_with_user_answer(action, answer)
         else:
             raise RuntimeError('Invalid exec_type')
 
@@ -103,6 +116,7 @@ def main():
             grasp_target_idx = action
             print("Grasping object " + str(grasp_target_idx) + " and ending the program")
             exec_type = EXEC_GRASP
+            to_end = True
         elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
             grasp_target_idx = action - num_box
             print("Grasping object " + str(grasp_target_idx) + " and continuing")
@@ -111,8 +125,7 @@ def main():
             target_idx = action_type - 2 * num_box
             if GENERATE_CAPTIONS:
                 # generate caption
-                bboxes = observations['bboxes']
-                caption = caption_generator.generate_caption(img, bboxes, target_idx)
+                caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
                 question_str = Q1["type1"].format(caption)
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
@@ -129,7 +142,7 @@ def main():
                 target_idx = np.argmax(target_prob[:-1])
                 if GENERATE_CAPTIONS:
                     # generate caption
-                    caption = caption_generator.generate_caption(img, bboxes, target_idx)
+                    caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
                     question_str = Q2["type3"].format(caption)
                 else:
                     question_str = Q2["type3"].format(target_idx + "th object")
@@ -166,7 +179,7 @@ def main():
         rel_mat = observations['rel_mat']
         rel_score_mat = observations['rel_score_mat']
         target_prob = invigorate_client.belief['target_prob']
-        data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps.copy(), question_str, answer)
+        data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
         to_cont = raw_input('To_continue?')
         if to_cont != 'y':
