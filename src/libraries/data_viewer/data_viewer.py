@@ -10,14 +10,34 @@ import cv2
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-
-# from model.utils.config import cfg
-from vmrn.model.utils.net_utils import create_mrt
-# from sklearn.manifold import TSNE
+import os
+import os.path as osp
+from PIL import Image
 import time
 import datetime
 
-from _init_path import ROOT_DIR
+import vmrn._init_path
+# from model.utils.config import cfg
+from vmrn.model.utils.net_utils import create_mrt
+# from sklearn.manifold import TSNE
+from config.config import *
+from paper_fig_generator import gen_paper_fig
+
+def split_long_string(in_str, len_thresh = 30):
+    if in_str =='':
+        return ''
+
+    in_str = in_str.split(" ")
+    out_str = ''
+    len_counter = 0
+    for word in in_str:
+        len_counter += len(word) + 1
+        if len_counter > len_thresh:
+            out_str += "\n" + word + " "
+            len_counter = len(word) + 1
+        else:
+            out_str += word + " "
+    return out_str
 
 def fig2data(fig):
     """
@@ -58,6 +78,7 @@ class DataViewer(object):
     def draw_single_bbox(self, img, bbox, bbox_color=(163, 68, 187), text_str="", test_bg_color = None):
         if test_bg_color is None:
             test_bg_color = bbox_color
+        bbox = bbox.astype(np.int)
         bbox = tuple(bbox)
         text_rd = (bbox[2], bbox[1] + 25)
         cv2.rectangle(img, bbox[0:2], bbox[2:4], bbox_color, 2)
@@ -241,7 +262,7 @@ class DataViewer(object):
                     cv2.FONT_HERSHEY_PLAIN,
                     2, (255, 255, 255), thickness=2)
         return img
-    
+
     def add_grasp_to_img(self, im, g_dets, g_inds=None):
         im = np.ascontiguousarray(im)
         im = self.draw_graspdet(im, g_dets, g_inds)
@@ -257,218 +278,159 @@ class DataViewer(object):
                     cv2.FONT_HERSHEY_PLAIN,
                     2, (255, 255, 255), thickness=2)
         return im
-    
-    def display_obj_to_grasp(self, im, bboxes, grasp_target_idx):
+
+    def display_obj_to_grasp(self, im, bboxes, grasps, grasp_target_idx):
         im = np.ascontiguousarray(im)
         bboxes = bboxes.astype(np.int)
         im = self.draw_single_bbox(im, bboxes[grasp_target_idx][:4])
+        im = self.draw_single_grasp(im, grasps[grasp_target_idx])
         return im
 
+    def vis_action(self, action_str, shape, draw_arrow = False):
+        im = 255. * np.ones(shape)
+        action_str = action_str.split("\n")
 
-class paperFig(object):
-    def __init__(self, data, size):
-        """
-        :param data: a list of dict. each element includes "data" and "type"
-        :param layout:
-        :param size:
-        """
+        mid_line = im.shape[0] / 2
+        dy = 32
+        y_b = mid_line - dy * len(action_str)
+        for i, string in enumerate(action_str):
+            cv2.putText(im, string, (0, y_b + i * dy),
+                        cv2.FONT_HERSHEY_PLAIN,
+                        2, (0, 0, 0), thickness=2)
+        if draw_arrow:
+            cv2.arrowedLine(im, (0, mid_line), (im.shape[1], mid_line), (0, 0, 0), thickness = 2, tipLength = 0.03)
+        return im
 
-        self.data = data
-        self.size = size
+    def generate_visualization_imgs(self, img, bboxes, classes, rel_mat, rel_score_mat,
+        expr, target_prob, action=None, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500, save=True):
 
-        self.fig = plt.figure(figsize=self.size, facecolor='white')
+        if im_id is None:
+            current_date = datetime.datetime.now()
+            image_id = "{}-{}-{}-{}".format(current_date.year, current_date.month, current_date.day,
+                                            time.strftime("%H:%M:%S"))
 
-    def color_transfer(self, color):
-        assert len(color) == 3
-        return [float(color[i]) / 256. for i in range(3)]
+        ############ visualize
+        # resize img for visualization
+        scalar = float(tgt_size) / img.shape[0]
+        img_show = cv2.resize(img, None, None, fx=scalar, fy=scalar, interpolation=cv2.INTER_LINEAR)
+        vis_bboxes = bboxes * scalar
+        vis_bboxes = np.concatenate([vis_bboxes, classes], axis=-1)
+        if grasps is not None:
+            grasps[:, :8] = grasps[:, :8] * scalar
+        num_box = bboxes.shape[0]
 
-    def draw_sub_fig(self, ax, data, axis_off = False):
-        if data["type"] == "image":
-            imgplot = plt.imshow(data["data"])
-            ax.set_title(data["title"])
-            if axis_off:
-                ax.set_xticks([])
-                ax.set_yticks([])
+        # object detection
+        if grasps is not None:
+            object_det_img = self.draw_graspdet_with_owner(img_show.copy(), vis_bboxes, grasps)
+        else:
+            object_det_img = self.draw_objdet(img_show.copy(), vis_bboxes, list(range(classes.shape[0])))
 
-    def draw_figure_simple(self, layout, axis_off=False):
-        for i, d in enumerate(self.data):
-            ax = self.fig.add_subplot(layout[0], layout[1], i + 1)
-            self.draw_sub_fig(ax, d, axis_off)
+        # relationship detection
+        vis_rel_score_mat = self.relscores_to_visscores(rel_score_mat)
+        rel_det_img = self.draw_mrt(img_show.copy(), rel_mat, class_names=target_prob.tolist()[:-1],
+                                        rel_score=vis_rel_score_mat, with_img=False, rel_img_size=500)
+        rel_det_img = cv2.resize(rel_det_img, (img_show.shape[1], img_show.shape[0]))
+        rel_det_img = self.add_bg_score_to_img(rel_det_img, target_prob.tolist()[-1])
 
-    def draw_figure_with_locs_and_size(self, locs, axis_off=False):
-        assert len(locs) == len(self.data)
-        for i, d in enumerate(self.data):
-            ax = self.fig.add_axes([locs[i][0], locs[i][1], locs[i][2], locs[i][3]])
-            self.draw_sub_fig(ax, d, axis_off)
+        # grounding
+        print("Target Probability: ")
+        print(target_prob.tolist())
+        ground_img = self.draw_grounding_probs(img_show.copy(), expr, vis_bboxes, target_prob)
+        ground_img = self.add_obj_classes_to_img(ground_img, vis_bboxes)
 
-    def draw_arrows(self, arrow_locs, arrow_size = 20):
-        for i, loc in enumerate(arrow_locs):
-            self.draw_single_arrow(loc[:2], loc[2:], arrow_size)
+        # action
+        if action != None:
+            target_idx = -1
+            question_type = None
+            print("Optimal Action:")
+            if action < num_box:
+                target_idx = action
+                action_str = "Grasping object " + str(action) + " and ending the program"
+            elif action < 2 * num_box:
+                target_idx = action - num_box
+                action_str = "Grasping object " + str(target_idx) + " and continuing"
+            elif action < 3 * num_box:
+                if question_str is not None:
+                    action_str = question_str
+                else:
+                    action_str = integrase.Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
+                question_type = "Q1_TYPE1"
+            else:
+                if target_prob[-1] == 1:
+                    action_str = Q2["type2"]
+                    question_type = "Q2_TYPE2"
+                elif (target_prob[:-1] > 0.02).sum() == 1:
+                    action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
+                    question_type = "Q2_TYPE3"
+                else:
+                    action_str = Q2["type1"]
+                    question_type = "Q2_TYPE1"
+            print(action_str)
+            # append answer
+            if answer is not None:
+                action_str += '\n' + answer
 
-    def draw_single_arrow(self, tail_coord, head_coord, arrow_size):
-        x_head, y_head = head_coord
-        x_tail, y_tail = tail_coord
-        ax = self.fig.add_axes([0, 0, 1, 1])
-        ax.patch.set_facecolor('None')
-        arrow = mpatches.FancyArrowPatch((x_tail, y_tail), (x_head, y_head),
-                                         mutation_scale=arrow_size, arrowstyle="simple",
-                                         edgecolor = None, color = self.color_transfer((66, 66, 66)))
-        ax.add_patch(arrow)
-        self.hide_axis(ax)
+            action_img_shape = list(img_show.shape)
+            action_img = self.vis_action(split_long_string(action_str), action_img_shape)
+        else:
+            action_str = ''
+            question_type = None
+            action_img = np.zeros((img_show.shape), np.uint8)
 
-    def draw_single_text(self, loc, content, fontsize = 16, color = (0,0,0),
-                         v="center", h="center"):
-        ax = self.fig.add_axes([0, 0, 1, 1])
-        x, y = loc
-        ax.text(x, y, content,
-                horizontalalignment=h,
-                verticalalignment=v,
-                transform=ax.transAxes,
-                fontsize = fontsize,
-                color = self.color_transfer(color))
-        self.hide_axis(ax)
+        # grasps
+        ## Only visualize this if action is grasping.
+        ## Only visualize for the target object.
+        if grasps is not None and target_idx >= 0:
+            print("Grasping score: ")
+            print(grasps[:, -1].tolist())
+            ground_img = self.add_grasp_to_img(ground_img, np.expand_dims(grasps[target_idx], axis=0))
 
-    def draw_rect(self, loc, size, linestyle = '-.'):
-        ax = self.fig.add_axes([0, 0, 1, 1])
-        ax.patch.set_facecolor('None')
-        x_min, y_min = loc
-        width, height = size
-        p = mpatches.Rectangle(
-            (x_min, y_min), width, height,
-            fill=False, transform=ax.transAxes, clip_on=False,
-            linestyle=linestyle
-        )
-        ax.add_patch(p)
-        self.hide_axis(ax)
+        # save result
+        out_dir = osp.join(ROOT_DIR, "images/output")
+        final_img = np.concatenate([
+            np.concatenate([object_det_img, rel_det_img], axis=1),
+            np.concatenate([ground_img, action_img], axis=1),
+        ], axis=0)
 
-    def hide_axis(self, ax):
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.spines['top'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
-        ax.spines['right'].set_visible(False)
+        if save:
+            if im_id is None:
+                im_id = str(datetime.datetime.now())
+                origin_name = im_id + "_origin.png"
+                save_name = im_id + "_result.png"
+            else:
+                origin_name = im_id.split(".")[0] + "_origin.png"
+                save_name = im_id.split(".")[0] + "_result.png"
+            origin_path = os.path.join(out_dir, origin_name)
+            save_path = os.path.join(out_dir, save_name)
+            i = 1
+            while (os.path.exists(save_path)):
+                i += 1
+                save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
+                save_path = os.path.join(out_dir, save_name)
 
-def gen_paper_fig(expr, results):
-    # od_data = [
-    #     {"data": r["od_img"][:,:,::-1].astype(np.float32) / 256.,
-    #      "type": "image",
-    #      "title": ""}
-    #     for r in results]
-    od_data = [
-        {"data": r["ground_img"][:,:,::-1].astype(np.float32) / 256.,
-         "type": "image",
-         "title": ""}
-        for r in results]
-    action_data = [r["action_str"] if "answer" not in r else r["action_str"] + "\n" + r["answer"] for r in results]
-    mrt_data = [
-        {"data": r["mrt_img"][:,:,::-1].astype(np.float32) / 256.,
-         "type": "image",
-         "title": ""}
-        for r in results]
-    ori_data = [
-        {"data": r["origin_img"][:,:,::-1].astype(np.float32) / 256.,
-         "type": "image",
-         "title": ""}
-        for r in results]
-    fig_size = (10 * len(results), 20)
+            cv2.imwrite(origin_path, img)
+            cv2.imwrite(save_path, final_img)
 
-    # data = ori_data + od_data + mrt_data
-    data = mrt_data + od_data + ori_data
-    paper_fig = paperFig(data, size=fig_size)
+        return {"final_img": final_img,
+                "origin_img": img_show,
+                "od_img": object_det_img,
+                "mrt_img": rel_det_img,
+                "ground_img": ground_img,
+                "action_str": split_long_string(action_str),
+                "q_type": question_type}
 
-    sub_fig_width = 9
-    interval = 1
-    left = 0.5
+    def gen_final_paper_fig(self, img, bboxes, classes, rel_mat, rel_score_mat,
+        expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
+        imgs = self.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr,
+            target_prob, action, grasps, question_str, answer, im_id, tgt_size)
+        gen_paper_fig(expr, [imgs])
+        return True
 
-    # (x, y, w, h)
-    interval = float(interval) / fig_size[0]
-    left = float(left) / fig_size[0]
-    width = float(sub_fig_width) / fig_size[0]
-    # ori_locs = [[left + i * (width + interval), 0.02, width, 0.24] for i in range(len(results))]
-    # od_locs = [[left + i * (width + interval), 0.3, width, 0.24] for i in range(len(results))]
-    # mrt_locs = [[left + i * (width + interval), 0.58, width, 0.24] for i in range(len(results))]
-    mrt_locs = [[left + i * (width + interval), 0.1, width, 0.24] for i in range(len(results))]
-    od_locs = [[left + i * (width + interval), 0.38, width, 0.24] for i in range(len(results))]
-    ori_locs = [[left + i * (width + interval), 0.66, width, 0.24] for i in range(len(results))]
-    locs = mrt_locs + od_locs + ori_locs
-    paper_fig.draw_figure_with_locs_and_size(locs, axis_off=False)
+    def relscores_to_visscores(self, rel_score_mat):
+        return np.max(rel_score_mat, axis=0)
 
-    # arrow_locs = [
-    #     [(2 * loc[0] + loc[2]) / 2.,
-    #      loc[1] + loc[3],
-    #      (2 * loc[0] + loc[2]) / 2.,
-    #      loc[1] + loc[3] + 0.03]
-    #     for loc in locs
-    # ]
+    def display_img(self, img):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        im_pil = Image.fromarray(img)
+        im_pil.show()
 
-    # draw vertical arrows
-    arrow_locs = [
-        [
-            (2 * loc[0] + loc[2]) / 2., loc[1],        # head position
-            (2 * loc[0] + loc[2]) / 2., loc[1] - 0.03  # tail position
-        ] 
-        for loc in locs
-    ]
-
-    for i, action_str in enumerate(action_data):
-        text_loc = ((2 * od_locs[i][0] + od_locs[i][2]) / 2., 0.05)
-        paper_fig.draw_single_text(text_loc, action_str)
-    text_loc = ((0.5, 0.95))
-    paper_fig.draw_single_text(text_loc, "User's Command: " + expr)
-
-    for i, pic_loc in enumerate(od_locs):
-        rec_loc = (pic_loc[0] - 0.2 * interval, 0.01)
-        rec_size = (width + 0.4 * interval, 0.92)
-        paper_fig.draw_rect(rec_loc, rec_size)
-
-    # draw horizontal arrows
-    arrow_locs += [
-        [
-            od_locs[i][0] + width + 0.2 * interval, 0.5,
-            od_locs[i+1][0] - 0.2 * interval, 0.5,
-        ]
-        for i in range(len(od_locs[:-1]))
-    ]
-    paper_fig.draw_arrows(arrow_locs)
-
-    current_date = datetime.datetime.now()
-    image_id = "{}-{}-{}-{}".format(current_date.year, current_date.month, current_date.day,
-                                    time.strftime("%H:%M:%S"))
-    plt.savefig(ROOT_DIR +  "images/output/paper_fig/" + image_id + ".png")
-
-if __name__=="__main__":
-    img = cv2.imread("../../images/1.png")
-    img = img[:,:,::-1].astype(np.float32) / 256.
-    data = [
-        {"data": img, "type": "image", "title": ""},
-        {"data": img, "type": "image", "title": ""},
-        {"data": img, "type": "image", "title": ""},
-        {"data": img, "type": "image", "title": ""},
-    ]
-
-    fig_size = (4 * len(data), 8)
-    sub_fig_width = 2
-    interval = 2
-    left = 0.5
-
-    test = paperFig(data, fig_size)
-
-    # (x, y, w, h)
-    interval = float(interval) / fig_size[0]
-    left = float(left) / fig_size[0]
-    width = float(sub_fig_width) / fig_size[0]
-    locs = [
-        [left + i * (width + interval), 0.05, width, 0.35] for i in range(len(data))
-    ]
-    test.draw_figure_with_locs_and_size(locs, axis_off=True)
-
-    # arrow locs
-    arrow_locs = [
-        [(2 * loc[0] + loc[2]) / 2., 0.35, (2 * loc[0] + loc[2]) / 2., 0.45] for loc in locs
-    ]
-    test.draw_arrows(arrow_locs)
-    test.draw_single_text(loc = (0.5,0.5), content="This is a test string")
-
-    plt.show()
-    plt.close()
