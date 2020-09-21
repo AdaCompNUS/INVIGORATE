@@ -197,12 +197,11 @@ class Invigorate():
                 target_prob[:] = 0
                 target_prob[-1] = 1
 
-                self.belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob)
+                self.belief["leaf_desc_prob"] = leaf_desc_prob
                 leaf_desc_prob = self._estimate_state_with_user_clue(answer)
 
-        self.belief["target_prob"] = torch.from_numpy(target_prob)
-        self.belief["leaf_desc_prob"] = torch.from_numpy(leaf_desc_prob)
-        return belief
+        self.belief["target_prob"] = target_prob
+        self.belief["leaf_desc_prob"] = leaf_desc_prob
 
     def decision_making_heuristic(self):
         def choose_target(target_prob):
@@ -550,12 +549,13 @@ class Invigorate():
         ind_match_dict = self.observations['ind_match_dict']
         num_box = self.observations['num_box']
 
-        t_ground = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), self.clue)
+        t_ground = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), clue)
+        self.clue = clue
         for i, score in enumerate(t_ground):
             obj_ind = ind_match_dict[i]
             self.object_pool[obj_ind]["clue_belief"].update(score, self.kdes)
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
-        t_ground = self.p_cand_to_belief_mc(pcand)
+        t_ground = self._cal_target_prob_from_p_cand(pcand)
         t_ground = np.append(t_ground, 1. - t_ground.sum())
         cluster_res = KMeans(n_clusters=2).fit_predict(t_ground.reshape(-1, 1))
         mean0 = t_ground[cluster_res == 0].mean()

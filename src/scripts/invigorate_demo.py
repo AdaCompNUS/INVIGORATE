@@ -164,7 +164,8 @@ def main():
             grasp = grasps[action % num_box][:8]
             res = robot.grasp(grasp)
             if not res:
-                raise RuntimeError('grasp failed!!!')
+                print('grasp failed!!!')
+                to_end = True
             # TODO: Determine whether the grasp is successful and then assign this "removed" flag
         elif exec_type == EXEC_ASK:
             robot.say(question_str)
@@ -181,9 +182,9 @@ def main():
         target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
-        to_cont = raw_input('To_continue?')
-        if to_cont != 'y':
-            break
+        # to_cont = raw_input('To_continue?')
+        # if to_cont != 'y':
+        #     break
 
 if __name__ == '__main__':
     main()
