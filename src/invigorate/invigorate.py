@@ -125,6 +125,10 @@ class Invigorate():
                 box_score += det_scores[i][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
                 target_prob[i] = 0.
+        # TODO. This means candidate belief estimation has problem
+        # if after name filter, all prob sum to zero, the object is in background
+        if target_prob.sum() == 0.0:
+            target_prob[-1] = 1.0
         target_prob /= target_prob.sum()
         print('Step 3.1: class name filter completed')
         print('target_prob : {}'.format(target_prob))

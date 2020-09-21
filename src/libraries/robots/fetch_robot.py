@@ -17,6 +17,13 @@ from moveit_msgs.msg import Grasp
 from config.config import CLASSES
 from libraries.data_viewer.data_viewer import DataViewer
 
+
+# ------- Settings ---------
+GRASP_BOX_FOR_SEG = 1
+BBOX_FOR_SEG = 2
+GRASP_BOX_6DOF_PICK = 3
+USE_REALSENSE = True
+
 # ------- Constants ---------
 # ORIG_IMAGE_SIZE = (480, 640)
 # SCALE = 0.8
@@ -24,18 +31,16 @@ from libraries.data_viewer.data_viewer import DataViewer
 # X_OFFSET = int(ORIG_IMAGE_SIZE[1] * (1 - SCALE) / 2)
 # YCROP = (Y_OFFSET, ORIG_IMAGE_SIZE[0] - Y_OFFSET)
 # XCROP = (X_OFFSET, ORIG_IMAGE_SIZE[1] - X_OFFSET)
-YCROP = (180, 450)
-XCROP = (150, 490)
-REALSENSE_YCROP = (180, 450)
-REALSENSE_XCROP = (200, 500)
+if USE_REALSENSE:
+    YCROP = (180, 450)
+    XCROP = (200, 500)
+else:
+    YCROP = (180, 450)
+    XCROP = (150, 490)
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.04
-
-# ------- Settings ---------
-GRASP_BOX_FOR_SEG = 1
-BBOX_FOR_SEG = 2
-GRASP_BOX_6DOF_PICK = 3
-USE_REALSESNE = False
+GRASP_POSE_X_OFFST = 0
+GRIPPER_OPENING_OFFSET = 0.01
 
 class FetchRobot():
     def __init__(self):
@@ -63,11 +68,11 @@ class FetchRobot():
     def read_imgs(self):
         # resp = self._fetch_image_client()
         # img = self._br.imgmsg_to_cv2(resp.image, desired_encoding='bgr8')
-        if USE_REALSESNE:
+        if USE_REALSENSE:
             img_msg = rospy.wait_for_message('/camera/color/image_raw', Image)
             img = self._br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
             print('img_size : {}'.format(img.shape))
-            img = img[REALSENSE_YCROP[0]:REALSENSE_YCROP[1], REALSENSE_XCROP[0]:REALSENSE_XCROP[1]]
+            img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
             print('img_size : {}'.format(img.shape))
         else:
             resp = self._fetch_image_client()
@@ -127,6 +132,7 @@ class FetchRobot():
         grasp = Grasp()
         grasp.grasp_pose.header = seg_resp.object.header
         grasp.grasp_pose.pose = seg_resp.object.primitive_pose
+        grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
         grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH + approach_dist + FETCH_GRIPPER_LENGTH
         quat = t.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                               # rotate by z to align with bbox orientation
@@ -144,13 +150,21 @@ class FetchRobot():
         grasp.post_grasp_retreat.desired_distance = approach_dist
 
         pnp_req.grasp = grasp
-        pnp_req.gripper_opening = obj_width
+        pnp_req.gripper_opening = obj_width + GRIPPER_OPENING_OFFSET
 
         resp = self._pnp_client(pnp_req)
         if not resp.success:
             print('ERROR: robot grasp failed!!')
         return resp.success
 
+
+
+
+
+
+
+"""
+Legacy
     def _top_grasp_2(self, bbox, grasp):
         # use bbox for segmentation
         print('grasp_box: {}'.format(grasp))
@@ -253,7 +267,6 @@ class FetchRobot():
         grasp_pose = PoseStamped()
         grasp_pose.header = seg_resp.object.header
         grasp_pose.pose = seg_resp.object.primitive_pose
-        grasp_pose.pose.position.x += 0.1 # HACK!!!
         grasp_pose.pose.position.z -= obj_height / 2 - 0.01 + approach_dist + FETCH_GRIPPER_LENGTH
         quat = t.quaternion_from_euler(0, -math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                                # rotate by z to align with bbox orientation
@@ -285,3 +298,4 @@ class FetchRobot():
         if not resp.success:
             print('ERROR: robot grasp failed!!')
         return resp.success
+"""
