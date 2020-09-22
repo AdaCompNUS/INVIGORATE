@@ -17,6 +17,7 @@ import pickle as pkl
 import os.path as osp
 import copy
 from sklearn.cluster import KMeans
+from scipy import optimize
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
@@ -410,8 +411,7 @@ class Invigorate():
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
 
-    def _bbox_match(self, bbox, prev_bbox):
-        # TODO: apply Hungarian algorithm to match boxes
+    def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):
         # match bboxes between two steps.
         def bbox_overlaps(anchors, gt_boxes):
             """
@@ -447,28 +447,45 @@ class Invigorate():
 
         if prev_bbox.size == 0:
             return {}
-
         ovs = bbox_overlaps(torch.from_numpy(bbox[:, :4]), torch.from_numpy(prev_bbox[:, :4])).numpy()
-        cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
-        for i, cls in enumerate(bbox[:, -1]):
-            cls_mask[i][prev_bbox[:, -1] == cls] = 1
-        ovs_mask = (ovs > 0.8)
-        ovs *= ((cls_mask + ovs_mask) > 0)
-
-        mapping = np.argsort(ovs, axis=-1)[:, ::-1]
-        ovs_sorted = np.sort(ovs, axis=-1)[:, ::-1]
-        matched = (np.max(ovs, axis=-1) > 0.5)
-        occupied = {i: False for i in range(mapping.shape[-1])}
         ind_match_dict = {}
-        for i in range(mapping.shape[0]):
-            if matched[i]:
-                for j in range(mapping.shape[-1]):
-                    if not occupied[mapping[i][j]] and ovs_sorted[i][j] > 0.5:
-                        ind_match_dict[i] = mapping[i][j]
-                        occupied[mapping[i][j]] = True
-                        break
-                    elif ovs_sorted[i][j] <= 0.5:
-                        break
+        if mode == "heuristic":
+            # match bboxes between two steps.
+            cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
+            for i, cls in enumerate(bbox[:, -1]):
+                cls_mask[i][prev_bbox[:, -1] == cls] = 1
+            ovs_mask = (ovs > 0.8)
+            ovs *= ((cls_mask + ovs_mask) > 0)
+            mapping = np.argsort(ovs, axis=-1)[:, ::-1]
+            ovs_sorted = np.sort(ovs, axis=-1)[:, ::-1]
+            matched = (np.max(ovs, axis=-1) > 0.5)
+            occupied = {i: False for i in range(mapping.shape[-1])}
+            for i in range(mapping.shape[0]):
+                if matched[i]:
+                    for j in range(mapping.shape[-1]):
+                        if not occupied[mapping[i][j]] and ovs_sorted[i][j] > 0.5:
+                            ind_match_dict[i] = mapping[i][j]
+                            occupied[mapping[i][j]] = True
+                            break
+                        elif ovs_sorted[i][j] <= 0.5:
+                            break
+        elif mode == "hungarian":
+            ov_cost = 1. - ovs
+            # normalize scores
+            scores /= np.expand_dims(np.linalg.norm(scores, axis=-1), axis=-1)
+            prev_scores /= np.expand_dims(np.linalg.norm(prev_scores, axis=-1), axis=-1)
+            scores_cost = np.expand_dims(scores, 1) * np.expand_dims(prev_scores, 0)
+            scores_cost = 1 - scores_cost.sum(-1)
+            cost = 0.6 * ov_cost + 0.4 * scores_cost
+            mapping = optimize.linear_sum_assignment(cost)
+
+            thresh = 0.5
+            for i in range(mapping[0].size):
+                ind1 = mapping[0][i]
+                ind2 = mapping[1][i]
+                if cost[ind1][ind2] < thresh:
+                    ind_match_dict[ind1] = ind2
+
         return ind_match_dict
 
     def _leaf_and_descendant_stats(self, rel_prob_mat, sample_num = 1000):
