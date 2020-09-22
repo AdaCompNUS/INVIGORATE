@@ -157,6 +157,7 @@ def main():
                 question_str = Q2["type1"]
                 exec_type = EXEC_ASK
 
+        # exec action
         if exec_type == EXEC_GRASP:
             grasps = observations['grasps']
             print("grasps.shape {}".format(grasps.shape))
@@ -169,7 +170,8 @@ def main():
 
             # execute grasping action
             grasp = grasps[action % num_box][:8]
-            res = robot.grasp(grasp)
+            is_target = (action_type == 'GRASP_AND_END')
+            res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 print('grasp failed!!!')
                 to_end = True

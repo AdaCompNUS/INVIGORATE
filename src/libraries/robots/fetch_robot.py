@@ -7,6 +7,7 @@ import tf
 from tf import transformations as t
 import math
 import numpy as np
+import random
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
@@ -17,7 +18,6 @@ from moveit_msgs.msg import Grasp
 from config.config import CLASSES
 from libraries.data_viewer.data_viewer import DataViewer
 
-
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
 BBOX_FOR_SEG = 2
@@ -25,7 +25,7 @@ GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 
 # ------- Constants ---------
-# ORIG_IMAGE_SIZE = (480, 640)
+ORIG_IMAGE_SIZE = (480, 640)
 # SCALE = 0.8
 # Y_OFFSET = int(ORIG_IMAGE_SIZE[0] * (1 - SCALE) / 2)
 # X_OFFSET = int(ORIG_IMAGE_SIZE[1] * (1 - SCALE) / 2)
@@ -41,6 +41,10 @@ FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.04
 GRASP_POSE_X_OFFST = 0
 GRIPPER_OPENING_OFFSET = 0.01
+PLACE_BBOX_SIZE = 50
+APPROACH_DIST = 0.1
+RETREAT_DIST = 0.15
+
 
 class FetchRobot():
     def __init__(self):
@@ -85,9 +89,43 @@ class FetchRobot():
         depth = None
         return img, depth
 
-    def grasp(self, grasp):
+    def grasp(self, grasp, is_target=False):
         # return self._top_grasp(bbox, grasp)
-        return self._top_grasp(grasp)
+        if not is_target:
+            print('sampling where to place!!')
+            target_pose = self._sample_target_pose()
+
+        res = self._top_grasp(grasp)
+        if not res:
+            return False
+
+        if not is_target:
+            self.place_object(target_pose)
+            self.move_arm_to_home()
+        else:
+            self.give_obj_to_human()
+
+        return res
+
+    def place_object(self, target_pose):
+        print('place_object')
+        if target_pose is None:
+            print('ERROR: fail to find a place to place!!')
+            return False
+
+        pnp_req = PickPlaceRequest()
+        pnp_req.action = PickPlaceRequest.PLACE
+        pnp_req.place_type = PickPlaceRequest.DROP
+
+        pnp_req.target_pose = target_pose
+
+        resp = self._pnp_client(pnp_req)
+        if not resp.success:
+            print('ERROR: place_object failed!!')
+        return resp.success
+
+    def give_obj_to_human(self):
+        print('Dummy execution of give_obj_to_human')
 
     def say(self, text):
         print('Dummy execution of say: {}'.format(text))
@@ -113,9 +151,9 @@ class FetchRobot():
         # resp = self._table_segmentor_client(1)  # get existing result
         # seg_req.min_z = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.003
 
-        print('calling bbox segmentation service')
+        # print('calling bbox segmentation service')
         seg_resp = self._bbox_segmentation_client(seg_req)
-        print(seg_resp.object)
+        # print(seg_resp.object)
 
         # to_continue = raw_input('to_continue?')
         # if to_continue != 'y':
@@ -124,7 +162,6 @@ class FetchRobot():
         obj_pose = seg_resp.object.primitive_pose
         obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
         obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
-        approach_dist = 0.1
 
         pnp_req = PickPlaceRequest()
         pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
@@ -133,7 +170,7 @@ class FetchRobot():
         grasp.grasp_pose.header = seg_resp.object.header
         grasp.grasp_pose.pose = seg_resp.object.primitive_pose
         grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
-        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH + approach_dist + FETCH_GRIPPER_LENGTH
+        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH + APPROACH_DIST + FETCH_GRIPPER_LENGTH
         quat = t.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                               # rotate by z to align with bbox orientation
         grasp.grasp_pose.pose.orientation.x = quat[0]
@@ -143,11 +180,11 @@ class FetchRobot():
 
         grasp.pre_grasp_approach.direction.header = seg_resp.object.header
         grasp.pre_grasp_approach.direction.vector.z = -1 # top pick
-        grasp.pre_grasp_approach.desired_distance = approach_dist
+        grasp.pre_grasp_approach.desired_distance = APPROACH_DIST
 
         grasp.post_grasp_retreat.direction.header = seg_resp.object.header
         grasp.post_grasp_retreat.direction.vector.z = 1 # top pick
-        grasp.post_grasp_retreat.desired_distance = approach_dist
+        grasp.post_grasp_retreat.desired_distance = RETREAT_DIST
 
         pnp_req.grasp = grasp
         pnp_req.gripper_opening = obj_width + GRIPPER_OPENING_OFFSET
@@ -157,11 +194,46 @@ class FetchRobot():
             print('ERROR: robot grasp failed!!')
         return resp.success
 
+    def move_arm_to_home(self):
+        pnp_req = PickPlaceRequest()
+        pnp_req.action = PickPlaceRequest.MOVE_ARM_TO_HOME
 
+        resp = self._pnp_client(pnp_req)
+        if not resp.success:
+            print('ERROR: move_arm_to_home failed!!')
+        return resp.success
 
+    def _sample_target_pose(self):
+        resp = self._table_segmentor_client(1)  # get existing result
+        table_height = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.03
 
+        # try 10 times
+        for i in range(10):
+            print("_sample_target_pose, trying {} time".format(i))
+            btmright_x = random.randint(PLACE_BBOX_SIZE, XCROP[0])
+            btmright_y = random.randint(YCROP[0] + PLACE_BBOX_SIZE, YCROP[1])
 
+            seg_req = BBoxSegmentationRequest()
+            seg_req.x = btmright_x - PLACE_BBOX_SIZE
+            seg_req.y = btmright_y - PLACE_BBOX_SIZE
+            seg_req.width = PLACE_BBOX_SIZE
+            seg_req.height = PLACE_BBOX_SIZE
+            seg_req.transform_to_reference_frame = True
+            seg_req.reference_frame = 'base_link'
 
+            seg_resp = self._bbox_segmentation_client(seg_req)
+            obj_pose = seg_resp.object.primitive_pose
+            obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
+            obj_pose.position.z += obj_height / 2
+            if obj_pose.position.z < table_height:
+                target_pose = PoseStamped()
+                target_pose.header.frame_id="base_link"
+                target_pose.pose = obj_pose
+                print('_sample_target_pose: place_pose found!!!')
+                return target_pose
+
+        print('ERROR: _sample_target_pose: failed to find a place_pose!!!')
+        return None
 
 """
 Legacy
