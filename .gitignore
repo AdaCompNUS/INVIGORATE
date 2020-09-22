@@ -4,6 +4,7 @@ devel/
 logs/
 .catkin_tools/
 .vscode/
+.idea/
 
 *.pyc
 *.png
@@ -18,3 +19,4 @@ logs/
 
 # pickle file
 *.pkl
+*.xml
