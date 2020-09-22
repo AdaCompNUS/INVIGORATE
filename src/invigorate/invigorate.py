@@ -71,6 +71,10 @@ class Invigorate():
 
         # object detection
         bboxes, classes, scores = self._object_detection(img)
+        if bboxes is None:
+            print("WARNING: nothing is detected")
+            return None
+
         ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores)
         num_box = bboxes.shape[0]
         print('Perceive_img: _object_detection finished')
@@ -317,6 +321,9 @@ class Invigorate():
     def _object_detection(self, img):
         obj_result = self._faster_rcnn_client(img)
         num_box = obj_result[0]
+        if num_box == 0:
+            return None, None, None
+
         bboxes = np.array(obj_result[1]).reshape(num_box, -1)
         print('_object_detection: bboxes {}'.format(bboxes))
         classes = np.array(obj_result[2]).reshape(num_box, 1)
@@ -327,7 +334,8 @@ class Invigorate():
 
     def _bbox_post_process(self, bboxes, scores):
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
-        ind_match_dict = self._bbox_match(bboxes, prev_boxes)
+        prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
+        ind_match_dict = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
         not_matched = set(range(bboxes.shape[0])) - set(ind_match_dict.keys())
         # updating the information of matched bboxes
         for k, v in ind_match_dict.items():

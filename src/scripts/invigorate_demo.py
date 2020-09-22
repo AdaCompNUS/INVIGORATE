@@ -83,6 +83,9 @@ def main():
 
             # perception
             observations = invigorate_client.perceive_img(img, expr)
+            if observations is None:
+                print("WARNING: nothing is detected, abort!!!")
+                break
             num_box = observations['bboxes'].shape[0]
 
             # state_estimation
@@ -194,6 +197,8 @@ def main():
         # to_cont = raw_input('To_continue?')
         # if to_cont != 'y':
         #     break
+
+    print("exit!")
 
 if __name__ == '__main__':
     main()
