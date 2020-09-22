@@ -22,8 +22,18 @@ from libraries.density_estimator.density_estimator import object_belief, gaussia
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from config.config import *
 
+# -------- Settings ---------
+DEBUG = True
+
 # -------- Constants ---------
 
+
+# -------- Statics ---------
+def dbg_print(text):
+    if DEBUG:
+        print(text)
+
+# -------- Code ---------
 class Invigorate():
     def __init__(self):
         rospy.loginfo('waiting for services...')
@@ -174,6 +184,7 @@ class Invigorate():
 
         # Q1
         if self.get_action_type(action, num_box) == 'Q1':
+            dbg_print("Invigorate: handling answer for Q1")
             target_idx = action - 2 * num_box
             if ans in {"yes", "yeah", "yep", "sure"}:
                 # set non-target
@@ -189,6 +200,7 @@ class Invigorate():
                 self.object_pool[ind_match_dict[target_idx]]["is_target"] = False
         # Q2
         elif self.get_action_type(action, num_box) == 'Q2':
+            dbg_print("Invigorate: handling answer for Q2")
             target_idx = np.argmax(target_prob[:-1])
             if ans in {"yes", "yeah", "yep", "sure"}:
                 target_prob[:] = 0
@@ -229,7 +241,7 @@ class Invigorate():
         leaf_desc_prob = self.belief['leaf_desc_prob']
 
         action = choose_target(target_prob.copy())
-        if action.startswith("Q2"):
+        if action.startswith("Q"):
             if action == "Q2":
                 action = 3 * num_box
             else:

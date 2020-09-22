@@ -6,7 +6,6 @@ TODO
 2. question answering for where is it?
 3. grasp random objects when background has high prob?
 5. clue is persistent??
-6. what is this? if (target_prob[:-1] > 0.02).sum() == 1:
 7. where is it mattnet client error
 8. it does not ask questions when there are two same objects
 '''
@@ -66,6 +65,7 @@ def main():
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
 
+    # get user command
     expr = robot.listen()
 
     all_results = []
@@ -90,9 +90,14 @@ def main():
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
+
+            # state_estimation
             invigorate_client.estimate_state_with_user_answer(action, answer)
         elif exec_type == EXEC_DUMMY_ASK:
+            # get user answer
             answer = dummy_question_answer
+
+            # state_estimation
             invigorate_client.estimate_state_with_user_answer(action, answer)
         else:
             raise RuntimeError('Invalid exec_type')
@@ -122,13 +127,14 @@ def main():
             print("Grasping object " + str(grasp_target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
-            target_idx = action_type - 2 * num_box
+            target_idx = action - 2 * num_box
             if GENERATE_CAPTIONS:
                 # generate caption
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
                 question_str = Q1["type1"].format(caption)
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
+            exec_type = EXEC_ASK
         else: # action type is Q2
             if invigorate_client.clue is not None:
                 # special case.
@@ -153,6 +159,7 @@ def main():
 
         if exec_type == EXEC_GRASP:
             grasps = observations['grasps']
+            print("grasps.shape {}".format(grasps.shape))
 
             # display grasp
             im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)

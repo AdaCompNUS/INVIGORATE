@@ -117,9 +117,9 @@ class FetchRobot():
         seg_resp = self._bbox_segmentation_client(seg_req)
         print(seg_resp.object)
 
-        to_continue = raw_input('to_continue?')
-        if to_continue != 'y':
-            return False
+        # to_continue = raw_input('to_continue?')
+        # if to_continue != 'y':
+        #     return False
 
         obj_pose = seg_resp.object.primitive_pose
         obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
