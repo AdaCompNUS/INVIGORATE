@@ -2,9 +2,9 @@
 import warnings
 try:
     NO_ROS = False
-    from ros_utils.baxter_api import *
-    from ros_utils.calibrate import calibrate_kinect
-    from ros_utils.kinect_subscriber import kinect_reader
+    from libraries.ros_utils.baxter_api import *
+    from libraries.ros_utils.calibrate import calibrate_kinect
+    from libraries.ros_utils.kinect_subscriber import kinect_reader
 except:
     NO_ROS = True
     warnings.warn("Baxter interface not available")

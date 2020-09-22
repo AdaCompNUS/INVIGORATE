@@ -2,13 +2,6 @@
 import cv2
 import numpy as np
 import getco
-import baxter_interface
-from baxter_interface import CHECK_VERSION
-import rospy
-from geometry_msgs.msg import (
-    Point,
-    Quaternion,
-)
 
 
 def calibrate(c_Image, c_Robot):
@@ -53,7 +46,7 @@ if __name__ == '__main__':
 
     trans_matrix = calibrate(image_coordinate, robot_coordinate)
     print trans_matrix
-    matfile = open('trans_mat.txt','w+')
+    matfile = open('trans_mat.txt', 'w+')
     for row in range(3):
        for rank in range(4):
            matfile.write(str(trans_matrix[row][rank])+' ')

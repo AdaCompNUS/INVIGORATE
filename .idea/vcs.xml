@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/faster_rcnn_detector/vmrn" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/ingress-proj" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/mattnet_server/MAttNet" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/mattnet_server/MAttNet/pyutils/mask-faster-rcnn" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/mattnet_server/MAttNet/pyutils/mask-faster-rcnn/data/refer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/mattnet_server/MAttNet/pyutils/refer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/mattnet_server/MAttNet/pyutils/refer-parser2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/src/mattnet_server/MAttNet/pyutils/refer-parser2/pyutils/refer" vcs="Git" />
+  </component>
+</project>
