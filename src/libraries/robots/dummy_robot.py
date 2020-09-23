@@ -14,7 +14,7 @@ class DummyRobot():
         depth = None
         return img, depth
 
-    def grasp(self, grasp):
+    def grasp(self, grasp, is_target = False):
         print('Dummy execution of grasp {}'.format(grasp))
         return True
 

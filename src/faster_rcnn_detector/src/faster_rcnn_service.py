@@ -6,6 +6,7 @@ import json
 import cv2
 from cv_bridge import CvBridge
 import sys
+sys.path.append("..")
 import os.path as osp
 
 cur_dir = osp.dirname(osp.abspath(__file__))
@@ -283,7 +284,8 @@ if __name__ == '__main__':
     rospy.init_node('faster_rcnn_server')
     # we need to read configs of VMRN that were used in training and also need to be used in this demo
     args = read_cfgs()
-    fasterrcnn_service = FasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, args.save_dir , args.dataset , args.net, "faster_rcnn_1_13_18301.pth"))
+    args.cuda = True
+    fasterrcnn_service = FasterRCNNService(args, os.path.join(VMRN_ROOT_DIR, "output" , "vmrdext" , "res101", "faster_rcnn_1_13_18301.pth"))
     rospy.spin()
 
 

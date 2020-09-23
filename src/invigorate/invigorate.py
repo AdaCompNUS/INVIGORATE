@@ -27,7 +27,7 @@ from config.config import *
 DEBUG = True
 
 # -------- Constants ---------
-
+MAX_Q2_NUM = 1 # the robot can at most ask MAX_Q2_NUM Q2s.
 
 # -------- Statics ---------
 def dbg_print(text):
@@ -53,6 +53,7 @@ class Invigorate():
         self._init_kde()
         self.belief = {}
         self.clue = None
+        self.q2_num_asked = 0
 
     def perceive_img(self, img, expr):
         '''
@@ -170,11 +171,13 @@ class Invigorate():
         print('target_prob: {}'.format(target_prob))
 
         # 3. incorporate the provided clue by the user
+        clue_leaf_desc_prob = None
         if self.clue is not None:
-            leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
+            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
+        self.belief['clue_leaf_desc_prob'] = clue_leaf_desc_prob
 
     def estimate_state_with_user_answer(self, action, answer):
         target_prob = self.belief["target_prob"]
@@ -182,7 +185,7 @@ class Invigorate():
         num_box = self.observations['num_box']
         ind_match_dict = self.observations['ind_match_dict']
         ans = answer.lower()
-
+        clue_leaf_desc_prob = None
         # Q1
         if self.get_action_type(action, num_box) == 'Q1':
             dbg_print("Invigorate: handling answer for Q1")
@@ -202,23 +205,13 @@ class Invigorate():
         # Q2
         elif self.get_action_type(action, num_box) == 'Q2':
             dbg_print("Invigorate: handling answer for Q2")
-            target_idx = np.argmax(target_prob[:-1])
-            if ans in {"yes", "yeah", "yep", "sure"}:
-                target_prob[:] = 0
-                target_prob[target_idx] = 1
-                target_prob /= np.sum(target_prob)
-                self.object_pool[ind_match_dict[obj_ind]]["is_target"] = True
-            else:
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = False
 
-                target_prob[:] = 0
-                target_prob[-1] = 1
-
-                self.belief["leaf_desc_prob"] = leaf_desc_prob
-                leaf_desc_prob = self._estimate_state_with_user_clue(answer)
+            ans = self._process_q2_ans(ans)
+            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
 
         self.belief["target_prob"] = target_prob
         self.belief["leaf_desc_prob"] = leaf_desc_prob
+        self.belief["clue_leaf_desc_prob"] = clue_leaf_desc_prob
 
     def decision_making_heuristic(self):
         def choose_target(target_prob):
@@ -240,11 +233,30 @@ class Invigorate():
         num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
         leaf_desc_prob = self.belief['leaf_desc_prob']
+        clue_desc_prob = self.belief['clue_leaf_desc_prob']
 
         action = choose_target(target_prob.copy())
         if action.startswith("Q"):
             if action == "Q2":
-                action = 3 * num_box
+                if self.clue is None:
+                    if self.q2_num_asked < MAX_Q2_NUM:
+                        # here we:
+                        # 1. cannot ground the clue object successfully.
+                        # 2. cannot ground the target successfully.
+                        # 3. have asked too many Q2s.
+                        # therefore, we should grasp a random leaf object and continue.
+                        l_probs = np.diagonal(leaf_desc_prob)
+                        current_tgt = np.argmax(l_probs)
+                        action = current_tgt + num_box
+                    else:
+                        action = 3 * num_box
+                        self.q2_num_asked += 1
+                else:
+                    # clue is not None, the robot will grasp the clue object first
+                    l_d_probs = clue_desc_prob
+                    current_tgt = np.argmax(l_d_probs)
+                    # grasp and continue
+                    action = current_tgt + num_box
             else:
                 action = int(action.split("_")[1]) + 2 * num_box
         else:
@@ -318,7 +330,7 @@ class Invigorate():
         obj_result = self._faster_rcnn_client(img)
         num_box = obj_result[0]
         bboxes = np.array(obj_result[1]).reshape(num_box, -1)
-        print('_object_detection: bboxes {}'.format(bboxes))
+        print('_object_detection: \n{}'.format(bboxes))
         classes = np.array(obj_result[2]).reshape(num_box, 1)
         class_scores = np.array(obj_result[3]).reshape(num_box, -1)
         bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
@@ -327,7 +339,8 @@ class Invigorate():
 
     def _bbox_post_process(self, bboxes, scores):
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
-        ind_match_dict = self._bbox_match(bboxes, prev_boxes)
+        prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
+        ind_match_dict = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
         not_matched = set(range(bboxes.shape[0])) - set(ind_match_dict.keys())
         # updating the information of matched bboxes
         for k, v in ind_match_dict.items():
@@ -597,10 +610,16 @@ class Invigorate():
         pos_num = (cluster_res == pos_label).sum()
         if pos_num == 1 and cluster_res[-1] == pos_label:
             # cannot successfully ground the clue object, reset clue
+            clue_leaf_desc_prob = None
             self.clue = None
         else:
             t_ground = np.expand_dims(t_ground, 0)
-            leaf_desc_prob[:, -1] = (t_ground * leaf_desc_prob[:, :-1]).sum(-1)
+            clue_leaf_desc_prob = (t_ground[:, :-1] * leaf_desc_prob).sum(-1).squeeze()
         print('Update leaf_desc_prob with clue completed')
 
-        return leaf_desc_prob
+        return leaf_desc_prob, clue_leaf_desc_prob
+
+    def _process_q2_ans(self, ans):
+        # TODO: Concatenate the target to the answer for Q2,
+        #  which will be used for re-grounding the clue object
+        return ans[6:]

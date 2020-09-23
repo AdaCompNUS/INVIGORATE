@@ -2,12 +2,12 @@
 
 '''
 TODO
-1. bug where only 1 object is detected line 290
+1. bug where only 1 object is detected line 290. RESOLVED
 2. question answering for where is it?
 3. grasp random objects when background has high prob?
-5. clue is persistent??
-7. where is it mattnet client error
-8. it does not ask questions when there are two same objects
+5. clue is persistent?? RESOLVED
+7. where is it mattnet client error. RESOLVED
+8. it does not ask questions when there are two same objects. RESOLVED
 '''
 
 import sys
@@ -31,11 +31,14 @@ from config.config import *
 from invigorate.invigorate import Invigorate
 from libraries.data_viewer.data_viewer import DataViewer
 from libraries.caption_generator import caption_generator
-from libraries.robots.fetch_robot import FetchRobot
+try:
+    from libraries.robots.fetch_robot import FetchRobot
+except:
+    warnings.warn("Fail to import Fetch Robot. Fetch cannot work.")
 from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
-ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 GENERATE_CAPTIONS = True
 
 # -------- Constants --------
@@ -141,7 +144,7 @@ def main():
                 dummy_question_answer = invigorate_client.clue
                 question_str = ''
                 exec_type = EXEC_DUMMY_ASK
-            if target_prob[-1] == 1:
+            elif target_prob[-1] == 1:
                 question_str = Q2["type2"]
                 exec_type = EXEC_ASK
             elif (target_prob[:-1] > 0.02).sum() == 1:
