@@ -23,6 +23,11 @@ from libraries.density_estimator.density_estimator import object_belief, gaussia
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from config.config import *
 
+try:
+    import stanza
+except:
+    warnings.warn("No NLP models are loaded.")
+
 # -------- Settings ---------
 DEBUG = True
 
@@ -244,6 +249,9 @@ class Invigorate():
             if action == "Q2":
                 if self.clue is None:
                     if self.q2_num_asked < MAX_Q2_NUM:
+                        action = 3 * num_box
+                        self.q2_num_asked += 1
+                    else:
                         # here we:
                         # 1. cannot ground the clue object successfully.
                         # 2. cannot ground the target successfully.
@@ -252,9 +260,6 @@ class Invigorate():
                         l_probs = np.diagonal(leaf_desc_prob)
                         current_tgt = np.argmax(l_probs)
                         action = current_tgt + num_box
-                    else:
-                        action = 3 * num_box
-                        self.q2_num_asked += 1
                 else:
                     # clue is not None, the robot will grasp the clue object first
                     l_d_probs = clue_desc_prob
