@@ -40,7 +40,7 @@ else:
     YCROP = (180, 450)
     XCROP = (150, 490)
 FETCH_GRIPPER_LENGTH = 0.2
-GRASP_DEPTH = 0.03
+GRASP_DEPTH = 0.04
 GRASP_POSE_X_OFFST = 0
 GRIPPER_OPENING_OFFSET = 0.01
 PLACE_BBOX_SIZE = 50
@@ -57,6 +57,7 @@ class FetchRobot():
         self._table_segmentor_client = rospy.ServiceProxy('/segment_table', TableSegmentation)
         self._tf_transformer = tf.TransformerROS()
         self._fetch_image_client = rospy.ServiceProxy('/rls_perception_service/fetch/rgb_image_service', RetrieveImage)
+        self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
 
         # call pnp service to get ready
         pnp_req = PickPlaceRequest()
@@ -130,7 +131,9 @@ class FetchRobot():
         print('Dummy execution of give_obj_to_human')
 
     def say(self, text):
-        print('Dummy execution of say: {}'.format(text))
+        # print('Dummy execution of say: {}'.format(text))
+        resp = self._fetch_speaker_client(text)
+        return resp.success
 
     def listen(self, timeout=None):
         print('Dummy execution of listen')
