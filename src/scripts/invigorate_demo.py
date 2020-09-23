@@ -182,6 +182,8 @@ def main():
                 print('grasp failed!!!')
                 to_end = True
             # TODO: Determine whether the grasp is successful and then assign this "removed" flag
+            if is_target:
+                robot.say("this is for you")
         elif exec_type == EXEC_ASK:
             robot.say(question_str)
 

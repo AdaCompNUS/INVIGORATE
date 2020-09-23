@@ -182,6 +182,7 @@ class Invigorate():
         # 3. incorporate the provided clue by the user
         clue_leaf_desc_prob = None
         if self.clue is not None:
+            self.belief['leaf_desc_prob'] = leaf_desc_prob
             leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
