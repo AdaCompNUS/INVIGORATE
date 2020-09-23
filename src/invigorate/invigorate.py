@@ -411,17 +411,27 @@ class Invigorate():
             sampled /= sampled.sum()
         return sampled
 
-    def _grasp_filter(self, boxes, grasps):
+    def _grasp_filter(self, boxes, grasps, mode="high score"):
+        """
+        mode: "high score" or "near center"
+        TODO: support "collision free" mode
+        """
         keep_g = []
-        for i, b in enumerate(boxes):
-            g = grasps[i]
-            bcx = (b[0] + b[2]) / 2
-            bcy = (b[1] + b[3]) / 2
-            gcx = (g[:, 0] + g[:, 2] + g[:, 4] + g[:, 6]) / 4
-            gcy = (g[:, 1] + g[:, 3] + g[:, 5] + g[:, 7]) / 4
-            dis = np.power(gcx - bcx, 2) + np.power(gcy - bcy, 2)
-            selected = np.argmin(dis)
-            keep_g.append(g[selected])
+        if mode == "near center":
+            for i, b in enumerate(boxes):
+                g = grasps[i]
+                bcx = (b[0] + b[2]) / 2
+                bcy = (b[1] + b[3]) / 2
+                gcx = (g[:, 0] + g[:, 2] + g[:, 4] + g[:, 6]) / 4
+                gcy = (g[:, 1] + g[:, 3] + g[:, 5] + g[:, 7]) / 4
+                dis = np.power(gcx - bcx, 2) + np.power(gcy - bcy, 2)
+                selected = np.argmin(dis)
+                keep_g.append(g[selected])
+        elif mode == "high score":
+            for i, b in enumerate(boxes):
+                g = grasps[i]
+                selected = np.argmax(g[:, -1])
+                keep_g.append(g[selected])
         return np.array(keep_g)
 
     def _bbox_filter(self, bbox, cls, cls_scores):
