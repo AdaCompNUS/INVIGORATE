@@ -72,6 +72,20 @@ class FetchRobot():
         if not resp.success:
             raise RuntimeError('fetch failed to move arm to home!!!')
 
+        self.gripper_model = self._init_gripper_model()
+
+    def _init_gripper_model(self):
+        """
+        In this function, a gripper model should be initialized.
+        The model includes a list of convex hulls represented by meshes.
+        Each mesh can simply include a list of points (x, y, z) and
+        triangle surfaces (p1, p2, p3), or be represented by a .obj object
+        (a python library named pywavefront can provide a standard
+        representation for .obj object). Coordinates should be w.r.t. the
+        frame of the gripper itself.
+        """
+        pass
+
     def read_imgs(self):
         # resp = self._fetch_image_client()
         # img = self._br.imgmsg_to_cv2(resp.image, desired_encoding='bgr8')

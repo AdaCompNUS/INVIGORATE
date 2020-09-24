@@ -64,9 +64,9 @@ def init_robot(robot):
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
 
-    invigorate_client = Invigorate()
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
+    invigorate_client = Invigorate(robot)
 
     # get user command
     expr = robot.listen()
@@ -117,6 +117,7 @@ def main():
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
         data_viewer.display_img(imgs['final_img'])
+        cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
         action = invigorate_client.decision_making_heuristic() # action_idx.
@@ -171,8 +172,9 @@ def main():
             # display grasp
             im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-            im_pil = Image.fromarray(im)
-            im_pil.show()
+            cv2.imwrite("outputs/grasp.png", im)
+            # im_pil = Image.fromarray(im)
+            # im_pil.show()
 
             # execute grasping action
             grasp = grasps[action % num_box][:8]
