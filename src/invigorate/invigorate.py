@@ -12,12 +12,12 @@ from scipy import optimize
 import os
 from torchvision.ops import nms
 import time
-# from stanfordcorenlp import StanfordCoreNLP
 import pickle as pkl
 import os.path as osp
 import copy
 from sklearn.cluster import KMeans
 from scipy import optimize
+import nltk
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
@@ -217,7 +217,8 @@ class Invigorate():
             dbg_print("Invigorate: handling answer for Q2")
 
             ans = self._process_q2_ans(ans)
-            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
+            if len(ans) > 0:
+                leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
 
         self.belief["target_prob"] = target_prob
         self.belief["leaf_desc_prob"] = leaf_desc_prob
@@ -643,7 +644,25 @@ class Invigorate():
         return leaf_desc_prob, clue_leaf_desc_prob
 
     def _process_q2_ans(self, ans):
-        # TODO: Concatenate the target to the answer for Q2,
-        #  which will be used for re-grounding the clue object
-        return ans[6:]
+        # just a heuristic analysis of the possible answers of question 2.
+        # if no clue is included, it should return a empty string.
+        # has been tested for, e.g., it's right there, i don't know,
+        # oh, emm, i think i don't know, etc.
+        text = nltk.word_tokenize(ans)
+        pos_tags = nltk.pos_tag(text)
 
+        verb_ind = -1
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag.startswith("VB"):
+                verb_ind = i
+
+        prep_ind = -1
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"IN", "TO"}:
+                prep_ind = i
+
+        ind = max(verb_ind, prep_ind)
+        clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
+        clue = ' '.join(clue_tokens)
+        print("Processed clue: {:s}".format(clue if clue != '' else "None"))
+        return clue
