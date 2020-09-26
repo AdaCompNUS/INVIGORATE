@@ -188,7 +188,9 @@ class FetchRobot():
         ]).T
 
     def _trans_world_points_to_gripper(self, scene_pc, grasp):
+        # TODO: This function should be replaced by the one implemented in some well-known libraries.
         rot_mat = self._grasp_pose_to_rotmat(grasp)
+
         inv_rot_mat = rot_mat.I
         scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
         scene_pc = (scene_pc * inv_rot_mat.T)[:, :3]
@@ -254,6 +256,9 @@ class FetchRobot():
         collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
         # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
         # number of points in between the two grippers. 2 is a factor to measure how important collision is.
+        # Also, you can use some other tricks. For example, you can choose the grasp with the maximum number of points
+        # in between two grippers only from the collision free grasps (collision score = 0). However, in clutter, there
+        # may be no completely collision-free grasps. Also, the noisy can make this method invalid.
         selected_ind = valid_grasp_inds[np.argmax(np.array(in_gripper_scores) - 2 * np.array(collision_scores))]
         selected_grasp = grasps[selected_ind]
         if vis:
