@@ -15,8 +15,17 @@ from geometry_msgs.msg import *
 from shape_msgs.msg import SolidPrimitive
 from moveit_msgs.msg import Grasp
 
+import sys
+this_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, osp.join(this_dir, '../../'))
 from config.config import CLASSES
 from libraries.data_viewer.data_viewer import DataViewer
+import stl
+from mpl_toolkits import mplot3d
+from matplotlib import pyplot
+import open3d as o3d
+from scipy.spatial.transform import Rotation as R
+
 
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
@@ -25,6 +34,16 @@ GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 
 # ------- Constants ---------
+CONFIG_DIR = "../../config"
+GRIPPER_FILE = "gripper_link.STL"
+LEFT_GRIPPER_FINGER_FILE = "l_gripper_finger_link.STL"
+RIGHT_GRIPPER_FINGER_FILE = "r_gripper_finger_link.STL"
+LEFT_FINGER_POSE = {"link":[0., -0.101425, 0., 0., 0., 0.],
+                    "joint": [0., -0.015425, 0., 0., 0., 0.],
+                    "min_max_translate":[0.0, -0.04]} # - means the direction
+RIGHT_FINGER_POSE = {"link":[0., 0.101425, 0., 0., 0., 0.],
+                     "joint": [0., 0.015425, 0., 0., 0., 0.],
+                     "min_max_translate":[0.0, 0.04]}
 ORIG_IMAGE_SIZE = (480, 640)
 # SCALE = 0.8
 # Y_OFFSET = int(ORIG_IMAGE_SIZE[0] * (1 - SCALE) / 2)
@@ -46,6 +65,51 @@ GRIPPER_OPENING_OFFSET = 0.01
 PLACE_BBOX_SIZE = 50
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.15
+
+def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
+    # Create a new plot
+    # rotation: 0 means no rotation,
+    #           1 means rotate w.r.t. x axis for 90 degrees
+    #           2 means rotate w.r.t. y axis for 90 degrees
+    #           3 means rotate w.r.t. z axis for 90 degrees
+    figure = pyplot.figure()
+    axes = mplot3d.Axes3D(figure)
+
+    rot_mat_x = np.array(
+        [[1, 0, 0],
+         [0, 0, -1],
+         [0, 1, 0]]
+    )
+    for pc in pc_list:
+        if rotation == 1:
+            pc = np.dot(pc, rot_mat_x.T)
+        elif rotation == 2:
+            raise NotImplementedError
+        elif rotation == 3:
+            raise NotImplementedError
+        x = pc[:, 0]
+        y = pc[:, 1]
+        z = pc[:, 2]
+        axes.scatter(x, y, z)
+
+    for i, mesh in enumerate(mesh_list):
+        if isinstance(mesh_color, (list, tuple)):
+            c = mesh_color[i]
+        else:
+            c = mesh_color
+        if rotation == 1:
+            mesh.rotate([0.5, 0.0, 0.0], math.radians(90))
+        elif rotation == 2:
+            mesh.rotate([0.0, 0.5, 0.0], math.radians(90))
+        elif rotation == 3:
+            mesh.rotate([0.0, 0.0, 0.5], math.radians(90))
+        axes.add_collection3d(mplot3d.art3d.Poly3DCollection(mesh.vectors, facecolors=c))
+
+    # Auto scale to the mesh size
+    scale = np.concatenate([mesh.points.flatten(-1) for mesh in mesh_list])
+    axes.auto_scale_xyz(scale, scale, scale)
+    # Show the plot to the screen
+    pyplot.show()
 
 
 class FetchRobot():
@@ -71,7 +135,6 @@ class FetchRobot():
         resp = self._pnp_client(pnp_req)  # get existing result
         if not resp.success:
             raise RuntimeError('fetch failed to move arm to home!!!')
-
         self.gripper_model = self._init_gripper_model()
 
     def _init_gripper_model(self):
@@ -84,7 +147,127 @@ class FetchRobot():
         representation for .obj object). Coordinates should be w.r.t. the
         frame of the gripper itself.
         """
-        pass
+        gripper_model_path = osp.join(CONFIG_DIR, GRIPPER_FILE)
+        l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
+        r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+        gripper_mesh = stl.mesh.Mesh.from_file(gripper_model_path)
+        l_finger_mesh = stl.mesh.Mesh.from_file(l_finger_model_path)
+        r_finger_mesh = stl.mesh.Mesh.from_file(r_finger_model_path)
+        items = 1, 4, 7
+        # since the model only imposes a y axis translate on the two fingers,
+        # we here only consider this translate.
+        l_finger_mesh.points[:, items] += LEFT_FINGER_POSE["link"][1] + LEFT_FINGER_POSE["joint"][1]
+        r_finger_mesh.points[:, items] += RIGHT_FINGER_POSE["link"][1] + RIGHT_FINGER_POSE["joint"][1]
+        # gripper_model = stl.mesh.Mesh(np.concatenate([gripper_mesh.data, l_finger_mesh.data, r_finger_mesh.data]))
+        return {"gripper": gripper_mesh, "left_finger": l_finger_mesh, "right_finger": r_finger_mesh}
+
+    def _sample_grasps(self, grasp_cfg, sampler_cfg={"z_step": 0.005, "xy_step": 0.01, "w_step": 0.015}):
+        """
+        sample grasp configuration according to the rectangle representation.
+        grasp: {"pos":[x,y,z], "quat": [x,y,z,w]}
+        """
+        def sample_dist(item, step, n_step):
+            return [i * step + item for i in range(-n_step/2 + 1, n_step/2 + 1)]
+
+        grasps = []
+        x_ori, y_ori, z_ori = grasp_cfg["pos"]
+        for x in sample_dist(x_ori, sampler_cfg["xy_step"], 3):
+            for y in sample_dist(y_ori, sampler_cfg["xy_step"], 3):
+                for z in sample_dist(z_ori, sampler_cfg["z_step"], 10):
+                    for w in np.arange(0.02, 0.09, sampler_cfg["w_step"]):
+                        grasps.append({"pos": [x,y,z], "quat": grasp_cfg["quat"], "width": w})
+        return grasps
+
+    def _grasp_pose_to_rotmat(self, grasp):
+        x, y, z, w = grasp["quat"]
+        return np.mat([
+            [1 - 2*y*y - 2*z*z, 2*x*y + 2*w*z, 2*x*z-2*w*y, grasp["pos"][0]],
+            [2*x*y - 2*w*z, 1 - 2*x*x - 2*z*z, 2*z*y + 2*w*x, grasp["pos"][1]],
+            [2*x*z + 2*w*y, 2*z*y - 2*w*x,1 - 2*x*x - 2*y*y, grasp["pos"][2]],
+            [0, 0, 0, 1]
+        ]).T
+
+    def _trans_world_points_to_gripper(self, scene_pc, grasp):
+        rot_mat = self._grasp_pose_to_rotmat(grasp)
+        inv_rot_mat = rot_mat.I
+        scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
+        scene_pc = (scene_pc * inv_rot_mat.T)[:, :3]
+        return scene_pc
+
+    def _check_collison_for_cube(self, points, cube, epsilon=0.005):
+        # input: a vertical cube representing a collision model, a point clouds to be checked
+        # epsilon is the maximum tolerable error
+        # output: whether the points collide with the cube
+        dif_min = points - cube[0].reshape(1, 3) + epsilon
+        dif_max = cube[1].reshape(1, 3) - points + epsilon
+        return (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum()
+
+    def _check_grasp_collision(self, scene_pc, grasps):
+        """
+        given a 6-d pose of the gripper and the scene point cloud, return whether the grasp is collision-free
+        collision-free grasp satisfies:
+        1. some points in the point cloud are in the gripper range, i.e., the convex hull of the whole gripper
+            will collide with the scene point cloud
+        2. the gripper itself cannot collide with the point cloud.
+        """
+
+        base_grasp = grasps[0]
+        scene_pc = self._trans_world_points_to_gripper(scene_pc, grasps[0])
+
+        valid_grasp_inds = []
+        collision_scores = []
+        in_gripper_scores = []
+
+        for ind, g in enumerate(grasps):
+            gripper_width = g["width"]
+            # for the left finger, the opening along the y-axis is negative
+            l_finger_min = self.gripper_model["left_finger"].min_.copy()
+            l_finger_max = self.gripper_model["left_finger"].max_.copy()
+            l_finger_min[1] -= gripper_width / 2
+            l_finger_max[1] -= gripper_width / 2
+            # for the right finger, the opening along the y-axis is positive
+            r_finger_min = self.gripper_model["right_finger"].min_.copy()
+            r_finger_max = self.gripper_model["right_finger"].max_.copy()
+            r_finger_min[1] += gripper_width / 2
+            r_finger_max[1] += gripper_width / 2
+
+            # convex hull
+            gripper_min = np.minimum(l_finger_min, r_finger_min)
+            gripper_max = np.maximum(l_finger_max, r_finger_max)
+            # offsets w.r.t. base_grasp
+            xyz_offset = np.expand_dims(np.array(base_grasp["pos"]) - np.array(g["pos"]), axis=0)
+            pc_in_g = scene_pc + xyz_offset
+
+            p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger_min, l_finger_max))
+            p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger_min, r_finger_max))
+            p_num_collided_convex_hull = self._check_collison_for_cube(pc_in_g, (gripper_min, gripper_max))
+            if in_gripper_scores > 0:
+                collision_score = p_num_collided_l_finger + p_num_collided_r_finger
+                collision_scores.append(collision_score)
+                in_gripper_scores.append(p_num_collided_convex_hull - collision_score)
+                valid_grasp_inds.append(ind)
+
+        return collision_scores, in_gripper_scores, valid_grasp_inds
+
+    def _get_collision_free_grasp_cfg(self, grasp, scene_pc, vis=False):
+        grasps = self._sample_grasps(grasp)
+        collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
+        selected_ind = valid_grasp_inds[np.argmax(in_gripper_scores)]
+        selected_grasp = grasps[selected_ind]
+        if vis:
+            gripper_width = selected_grasp["width"]
+            gripper = stl.mesh.Mesh(self.gripper_model["gripper"].data.copy())
+            l_finger = stl.mesh.Mesh(self.gripper_model["left_finger"].data.copy())
+            r_finger = stl.mesh.Mesh(self.gripper_model["right_finger"].data.copy())
+            items = 1, 4, 7
+            l_finger.points[:, items] -= gripper_width / 2
+            r_finger.points[:, items] += gripper_width / 2
+            pc_in_g = self._trans_world_points_to_gripper(scene_pc, selected_grasp)
+            p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger.min_, l_finger.max_))
+            p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger.min_, r_finger.max_))
+            print(p_num_collided_l_finger, p_num_collided_r_finger)
+            vis_mesh([gripper, l_finger, r_finger], [pc_in_g], ["r", "b", "g"])
+        return
 
     def read_imgs(self):
         # resp = self._fetch_image_client()
@@ -121,7 +304,6 @@ class FetchRobot():
             self.move_arm_to_home()
         else:
             self.give_obj_to_human()
-
         return res
 
     def place_object(self, target_pose):
@@ -390,3 +572,17 @@ Legacy
             print('ERROR: robot grasp failed!!')
         return resp.success
 """
+
+if __name__=="__main__":
+    r = R.from_euler("zyx", [0, math.pi / 2, 0])
+
+    ply_model_path = "../../config/visual.ply"
+    scene_pc = np.array(o3d.io.read_point_cloud(ply_model_path).points)
+    scene_pc[:, 2] -= 0.01
+    grasps = [{
+        "pos": [0, 0, 0],
+        "quat":r.as_quat().tolist(),
+        "width": 0.05
+    }]
+    robot = FetchRobot()
+    robot._get_collision_free_grasp_cfg(grasps[0], scene_pc, vis = True)

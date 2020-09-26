@@ -41,7 +41,7 @@ def dbg_print(text):
 
 # -------- Code ---------
 class Invigorate():
-    def __init__(self, robot):
+    def __init__(self):
         rospy.loginfo('waiting for services...')
         rospy.wait_for_service('faster_rcnn_server')
         rospy.wait_for_service('vmrn_server')
@@ -59,7 +59,6 @@ class Invigorate():
         self.belief = {}
         self.clue = None
         self.q2_num_asked = 0
-        self.robot = robot
 
     def perceive_img(self, img, expr):
         '''
@@ -647,10 +646,4 @@ class Invigorate():
         # TODO: Concatenate the target to the answer for Q2,
         #  which will be used for re-grounding the clue object
         return ans[6:]
-
-    def _grasp_collision_checking(self, scene_pc, grasp):
-        """
-        return a collision score indicating the number of collision points
-        """
-        pass
 

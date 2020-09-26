@@ -63,10 +63,9 @@ def init_robot(robot):
 
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
-
+    invigorate_client = Invigorate()
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
-    invigorate_client = Invigorate(robot)
 
     # get user command
     expr = robot.listen()
