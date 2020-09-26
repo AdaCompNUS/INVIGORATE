@@ -252,7 +252,9 @@ class FetchRobot():
     def _get_collision_free_grasp_cfg(self, grasp, scene_pc, vis=False):
         grasps = self._sample_grasps(grasp)
         collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
-        selected_ind = valid_grasp_inds[np.argmax(in_gripper_scores)]
+        # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
+        # number of points in between the two grippers. 2 is a factor to measure how important collision is.
+        selected_ind = valid_grasp_inds[np.argmax(np.array(in_gripper_scores) - 2 * np.array(collision_scores))]
         selected_grasp = grasps[selected_ind]
         if vis:
             gripper_width = selected_grasp["width"]
