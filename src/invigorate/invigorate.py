@@ -1,5 +1,3 @@
-
-
 #!/usr/bin/env python
 import warnings
 
@@ -18,8 +16,9 @@ import copy
 from sklearn.cluster import KMeans
 from scipy import optimize
 import nltk
+import stanza
 
-from libraries.density_estimator.density_estimator import object_belief, gaussian_kde
+from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from config.config import *
 
@@ -54,11 +53,17 @@ class Invigorate():
 
         self.history_scores = []
         self.object_pool = []
+        self.rel_pool = {}
         self.target_in_pool = None
         self._init_kde()
         self.belief = {}
         self.clue = None
         self.q2_num_asked = 0
+        try:
+            self.stanford_nlp_server = stanza.Pipeline("en")
+        except:
+            warnings.warn("stanza needs python 3.6 or higher. "
+                          "please update your python version and run 'pip install stanza'")
 
     def perceive_img(self, img, expr):
         '''
@@ -80,17 +85,19 @@ class Invigorate():
         if bboxes is None:
             print("WARNING: nothing is detected")
             return None
-
-        ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores)
-        num_box = bboxes.shape[0]
         print('Perceive_img: _object_detection finished')
 
         # relationship and grasp detection
         rel_mat, rel_score_mat, grasps = self._mrt_detection(img, bboxes)
         print('Perceive_img: mrt and grasp detection finished')
 
+        # object and relationship detection post process
+        ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat)
+        num_box = bboxes.shape[0]
+        print('Perceive_img: post process of object and mrt detection finished')
+
         # grounding
-        grounding_scores = self._multi_step_grounding(img, bboxes, expr, ind_match_dict)
+        grounding_scores = self._mattnet_grounding(img, bboxes, expr)
         print('Perceive_img: mattnet grounding finished')
 
         observations = {}
@@ -120,20 +127,9 @@ class Invigorate():
         ind_match_dict = observations['ind_match_dict']
         num_box = observations['num_box']
 
-        # Estimate leaf_and_desc_prob
-        # TODO: updating the relationship probability according to the new observation
-        with torch.no_grad():
-            triu_mask = torch.triu(torch.ones(num_box, num_box), diagonal=1)
-            triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-            leaf_desc_prob = self._leaf_and_descendant_stats(torch.from_numpy(rel_score_mat) * triu_mask).numpy()
-
-        for i, score in enumerate(grounding_scores):
-            obj_ind = ind_match_dict[i]
-            self.object_pool[obj_ind]["cand_belief"].update(score, self.kdes)
-            self.object_pool[obj_ind]["ground_scores_history"].append(score)
-        pcand = [self.object_pool[ind_match_dict[i]]["cand_belief"].belief[1] for i in range(num_box)]
-        target_prob = self._cal_target_prob_from_p_cand(pcand)
-        target_prob = np.append(target_prob, 1. - target_prob.sum()) # append bg
+        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
         print('Step 3: raw grounding completed')
         print('raw target_prob: {}'.format(target_prob))
 
@@ -320,7 +316,17 @@ class Invigorate():
         neg_data = np.sort(neg_data, axis=0)[5:-5]
         kde_pos = gaussian_kde(pos_data)
         kde_neg = gaussian_kde(neg_data)
-        self.kdes = [kde_neg, kde_pos]
+        self.obj_kdes = [kde_neg, kde_pos]
+
+        with open(osp.join(cur_dir, "rel_density_estimation.pkl"), "rb") as f:
+            rel_data = pkl.load(f)
+        parents = np.array([d["det_score"] for d in rel_data if d["gt"] == 1])
+        children = np.array([d["det_score"] for d in rel_data if d["gt"] == 2])
+        norel = np.array([d["det_score"] for d in rel_data if d["gt"] == 3])
+        kde_parents = gaussian_kde(parents, bandwidth=0.1)
+        kde_children = gaussian_kde(children, bandwidth=0.1)
+        kde_norel = gaussian_kde(norel, bandwidth=0.1)
+        self.rel_kdes = [kde_parents, kde_children, kde_norel]
 
     def _faster_rcnn_client(self, img):
         img_msg = self._br.cv2_to_imgmsg(img)
@@ -351,21 +357,28 @@ class Invigorate():
 
         return bboxes, classes, class_scores
 
-    def _bbox_post_process(self, bboxes, scores):
+    def _bbox_post_process(self, bboxes, scores, rel_scores):
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
         prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
-        ind_match_dict = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
-        not_matched = set(range(bboxes.shape[0])) - set(ind_match_dict.keys())
+        det_to_pool = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
+        pool_to_det = {v: i for i, v in det_to_pool.items()}
+        not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         # updating the information of matched bboxes
-        for k, v in ind_match_dict.items():
+        for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"] = scores[k]
         # initialize newly detected bboxes
         for i in not_matched:
             new_box = self._init_object(bboxes[i], scores[i])
             self.object_pool.append(new_box)
-            ind_match_dict[i] = len(self.object_pool) - 1
-        return ind_match_dict, not_matched
+            det_to_pool[i] = len(self.object_pool) - 1
+            pool_to_det[len(self.object_pool) - 1] = i
+            for j in range(len(self.object_pool[:-1])):
+                if j in pool_to_det.keys():
+                    # det_to_pool[i] > all possible j.
+                    new_rel = self._init_relation(rel_scores[:, pool_to_det[j], i])
+                    self.rel_pool[(j, det_to_pool[i])] = new_rel
+        return det_to_pool, not_matched
 
     def _init_object(self, bbox, score):
         new_box = {}
@@ -383,6 +396,13 @@ class Invigorate():
         new_box["removed"] = False
         return new_box
 
+    def _init_relation(self, rel_score):
+        new_rel = {}
+        new_rel["rel_score"] = rel_score
+        new_rel["rel_score_history"] = []
+        new_rel["rel_belief"] = relation_belief()
+        return new_rel
+
     def _mrt_detection(self, img, bboxes):
         num_box = bboxes.shape[0]
         # print(num_box)
@@ -398,9 +418,50 @@ class Invigorate():
         grasps = self._grasp_filter(bboxes, grasps)
         return rel_mat, rel_score_mat, grasps
 
-    def _multi_step_grounding(self, img, bboxes, expr, ind_match_dict):
-        grounding_scores = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), expr)
-        return grounding_scores
+    def _mattnet_grounding(self, img, bboxes, expr):
+        return self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), expr)
+
+    def _multi_step_grounding(self, mattnet_score, ind_match_dict):
+        num_box = len(mattnet_score)
+        for i, score in enumerate(mattnet_score):
+            obj_ind = ind_match_dict[i]
+            self.object_pool[obj_ind]["cand_belief"].update(score, self.obj_kdes)
+            self.object_pool[obj_ind]["ground_scores_history"].append(score)
+        pcand = [self.object_pool[ind_match_dict[i]]["cand_belief"].belief[1] for i in range(num_box)]
+        ground_result = self._cal_target_prob_from_p_cand(pcand)
+        ground_result = np.append(ground_result, 1. - ground_result.sum())
+        return ground_result
+
+    def _multi_step_mrt_estimation(self, rel_score_mat, ind_match_dict):
+        # multi-step observations for relationship probability estimation
+        box_inds = ind_match_dict.keys()
+        rel_prob_mat = np.zeros(rel_score_mat.shape)
+        for i in range(len(box_inds)):
+            box_ind_i = box_inds[i]
+            for j in range(i + 1, len(box_inds)):
+                box_ind_j = box_inds[j]
+                pool_ind_i = ind_match_dict[box_ind_i]
+                pool_ind_j = ind_match_dict[box_ind_j]
+                if pool_ind_i < pool_ind_j:
+                    rel_score = rel_score_mat[:, box_ind_i, box_ind_j]
+                    self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
+                    rel_prob_mat[:, box_ind_j, box_ind_i] = [rel_prob_mat[:, box_ind_i, box_ind_j][1],
+                                                             rel_prob_mat[:, box_ind_i, box_ind_j][0],
+                                                             rel_prob_mat[:, box_ind_i, box_ind_j][2]]
+                else:
+                    rel_score = rel_score_mat[:, box_ind_j, box_ind_i]
+                    self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(rel_score, self.rel_kdes)
+                    rel_prob_mat[:, box_ind_j, box_ind_i] = self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = [rel_prob_mat[:, box_ind_j, box_ind_i][1],
+                                                             rel_prob_mat[:, box_ind_j, box_ind_i][0],
+                                                             rel_prob_mat[:, box_ind_j, box_ind_i][2]]
+
+        with torch.no_grad():
+            triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
+            triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
+            leaf_desc_prob = self._leaf_and_descendant_stats(torch.from_numpy(rel_prob_mat) * triu_mask).numpy()
+        return rel_prob_mat, leaf_desc_prob
 
     def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
         pcand = torch.Tensor(pcand).reshape(1, -1)
@@ -623,7 +684,7 @@ class Invigorate():
         self.clue = clue
         for i, score in enumerate(t_ground):
             obj_ind = ind_match_dict[i]
-            self.object_pool[obj_ind]["clue_belief"].update(score, self.kdes)
+            self.object_pool[obj_ind]["clue_belief"].update(score, self.obj_kdes)
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
         t_ground = self._cal_target_prob_from_p_cand(pcand)
         t_ground = np.append(t_ground, 1. - t_ground.sum())
@@ -643,13 +704,23 @@ class Invigorate():
 
         return leaf_desc_prob, clue_leaf_desc_prob
 
-    def _process_q2_ans(self, ans):
+    def _process_q2_ans(self, ans, nlp_server="nltk"):
         # just a heuristic analysis of the possible answers of question 2.
         # if no clue is included, it should return a empty string.
-        # has been tested for, e.g., it's right there, i don't know,
+        # MAIN IDEA:
+        # 1. Find the last prep or verb in the sentence
+        # 2. Return the subsequence after this word
+
+        # it has been tested for, e.g., it's right there, i don't know,
         # oh, emm, i think i don't know, etc.
-        text = nltk.word_tokenize(ans)
-        pos_tags = nltk.pos_tag(text)
+        # the stanford core nlp (stanza) seems a little better than nltk according to my test.
+
+        if nlp_server == "nltk":
+            text = nltk.word_tokenize(ans)
+            pos_tags = nltk.pos_tag(text)
+        else:
+            doc = self.stanford_nlp_server(ans)
+            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
 
         verb_ind = -1
         for i, (token, postag) in enumerate(pos_tags):
