@@ -38,7 +38,7 @@ except:
 from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
 
 # -------- Constants --------

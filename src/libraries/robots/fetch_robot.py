@@ -9,6 +9,7 @@ import math
 import numpy as np
 import random
 
+from std_msgs.msg import String
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
 from geometry_msgs.msg import *
@@ -62,9 +63,9 @@ FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.04
 GRASP_POSE_X_OFFST = 0
 GRIPPER_OPENING_OFFSET = 0.01
-PLACE_BBOX_SIZE = 50
+PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
-RETREAT_DIST = 0.15
+RETREAT_DIST = 0.2
 
 def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
     # Create a new plot
@@ -339,8 +340,15 @@ class FetchRobot():
         return resp.success
 
     def listen(self, timeout=None):
-        print('Dummy execution of listen')
-        text = raw_input('Enter: ')
+        # print('Dummy execution of listen')
+        # text = raw_input('Enter: ')
+        print('robot is listening')
+        msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
+        text = msg.data.lower()
+        if text.startswith("pick up"):
+            text = text[7: ] # HACK remove pick up
+        print('robot heard {}'.format(text))
+
         return text
 
     def _top_grasp(self, grasp):
