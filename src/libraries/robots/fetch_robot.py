@@ -8,24 +8,29 @@ from tf import transformations as t
 import math
 import numpy as np
 import random
-
-from std_msgs.msg import String
-from rls_perception_msgs.srv import *
-from rls_control_msgs.srv import *
-from geometry_msgs.msg import *
-from shape_msgs.msg import SolidPrimitive
-from moveit_msgs.msg import Grasp
-
-import sys
-this_dir = osp.dirname(osp.abspath(__file__))
-sys.path.insert(0, osp.join(this_dir, '../../'))
-from config.config import CLASSES
-from libraries.data_viewer.data_viewer import DataViewer
 import stl
 from mpl_toolkits import mplot3d
 from matplotlib import pyplot
 import open3d as o3d
 from scipy.spatial.transform import Rotation as R
+from std_msgs.msg import String
+from geometry_msgs.msg import *
+from shape_msgs.msg import SolidPrimitive
+from moveit_msgs.msg import Grasp
+from sensor_msgs.msg import PointCloud2
+from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
+import tf2_ros
+
+from rls_perception_msgs.srv import *
+from rls_control_msgs.srv import *
+
+# import sys
+# this_dir = osp.dirname(osp.abspath(__file__))
+# sys.path.insert(0, osp.join(this_dir, '../../'))
+
+from config.config import CLASSES, ROOT_DIR
+from libraries.data_viewer.data_viewer import DataViewer
+import libraries.utils.o3d_ros_pc_converter as pc_converter
 
 
 # ------- Settings ---------
@@ -35,7 +40,7 @@ GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 
 # ------- Constants ---------
-CONFIG_DIR = "../../config"
+CONFIG_DIR = osp.join(ROOT_DIR, "config")
 GRIPPER_FILE = "gripper_link.STL"
 LEFT_GRIPPER_FINGER_FILE = "l_gripper_finger_link.STL"
 RIGHT_GRIPPER_FINGER_FILE = "r_gripper_finger_link.STL"
@@ -181,12 +186,21 @@ class FetchRobot():
 
     def _grasp_pose_to_rotmat(self, grasp):
         x, y, z, w = grasp["quat"]
-        return np.mat([
+        matrix1 = np.mat([
             [1 - 2*y*y - 2*z*z, 2*x*y + 2*w*z, 2*x*z-2*w*y, grasp["pos"][0]],
             [2*x*y - 2*w*z, 1 - 2*x*x - 2*z*z, 2*z*y + 2*w*x, grasp["pos"][1]],
             [2*x*z + 2*w*y, 2*z*y - 2*w*x,1 - 2*x*x - 2*y*y, grasp["pos"][2]],
             [0, 0, 0, 1]
         ]).T
+
+        r = R.from_quat([x, y, z, w])
+        matrix = r.as_dcm()
+        translation = np.array([grasp["pos"][0], grasp["pos"][1], grasp["pos"][2]]).reshape((3, 1))
+        matrix = np.concatenate([matrix, translation], axis = 1)
+        matrix = np.concatenate([matrix, np.array([0, 0, 0, 1]).reshape((1, 4))], axis = 0)
+        print(matrix)
+
+        return np.mat(matrix)
 
     def _trans_world_points_to_gripper(self, scene_pc, grasp):
         # TODO: This function should be replaced by the one implemented in some well-known libraries.
@@ -271,11 +285,13 @@ class FetchRobot():
             l_finger.points[:, items] -= gripper_width / 2
             r_finger.points[:, items] += gripper_width / 2
             pc_in_g = self._trans_world_points_to_gripper(scene_pc, selected_grasp)
+            print("pc_in_g: {}".format(pc_in_g))
             p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger.min_, l_finger.max_))
             p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger.min_, r_finger.max_))
-            print(p_num_collided_l_finger, p_num_collided_r_finger)
+            print("p_num_collided_l_finger: {}, p_num_collided_r_finger: {}".format(p_num_collided_l_finger, p_num_collided_r_finger))
             vis_mesh([gripper, l_finger, r_finger], [pc_in_g], ["r", "b", "g"])
-        return
+
+        return selected_grasp
 
     def read_imgs(self):
         # resp = self._fetch_image_client()
@@ -340,16 +356,49 @@ class FetchRobot():
         return resp.success
 
     def listen(self, timeout=None):
-        # print('Dummy execution of listen')
-        # text = raw_input('Enter: ')
-        print('robot is listening')
-        msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
-        text = msg.data.lower()
-        if text.startswith("pick up"):
-            text = text[7: ] # HACK remove pick up
-        print('robot heard {}'.format(text))
+        print('Dummy execution of listen')
+        text = raw_input('Enter: ')
+        # print('robot is listening')
+        # msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
+        # text = msg.data.lower()
+        # if text.startswith("pick up"):
+        #     text = text[7: ] # HACK remove pick up
+        # print('robot heard {}'.format(text))
 
         return text
+
+    def _get_scene_pc(self):
+        tfBuffer = tf2_ros.Buffer()
+        listener = tf2_ros.TransformListener(tfBuffer)
+
+        try:
+            msg = rospy.wait_for_message("/head_camera/depth_registered/points", PointCloud2, timeout=10.0)
+            listener = tf.TransformListener()
+            trans = tfBuffer.lookup_transform('base_link', msg.header.frame_id, rospy.Time(0))
+        except Exception as e:
+            rospy.logwarn(e)
+            return None
+
+        raw_pc = do_transform_cloud(msg, trans)
+        o3d_pc = pc_converter.convertCloudFromRosToOpen3d(raw_pc)
+        scene_pc = np.array(o3d_pc.points)
+        print(scene_pc.shape)
+        return scene_pc
+
+    def _get_collision_free_grasp(self, orig_grasp, orig_opening):
+        print("checking grasp collision!!!")
+        scene_pc = self._get_scene_pc()
+
+        orig_grasp_dict = {
+            "pos": [orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z],
+            "quat": [orig_grasp.pose.orientation.x, orig_grasp.pose.orientation.y, orig_grasp.pose.orientation.z, orig_grasp.pose.orientation.w],
+            "width": orig_opening
+        }
+        print("orig_grasp: {} ".format(orig_grasp_dict))
+
+        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=False)
+        print("check grasp collision completed: {}".format(new_grasp))
+        return new_grasp
 
     def _top_grasp(self, grasp):
         print('grasp_box: {}'.format(grasp))
@@ -405,6 +454,19 @@ class FetchRobot():
         pnp_req.grasp = grasp
         pnp_req.gripper_opening = obj_width + GRIPPER_OPENING_OFFSET
 
+        # TODO test
+        grasp_pose_tmp = grasp.grasp_pose
+        grasp_pose_tmp.pose.position.z -= (APPROACH_DIST + FETCH_GRIPPER_LENGTH)
+        new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
+
+        grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
+        grasp.grasp_pose.pose.position.y = new_grasp["pos"][1]
+        grasp.grasp_pose.pose.position.z = new_grasp["pos"][2]
+        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH
+
+        pnp_req.grasp = grasp
+        pnp_req.gripper_opening = new_grasp["width"]
+
         resp = self._pnp_client(pnp_req)
         if not resp.success:
             print('ERROR: robot grasp failed!!')
@@ -450,6 +512,23 @@ class FetchRobot():
 
         print('ERROR: _sample_target_pose: failed to find a place_pose!!!')
         return None
+
+if __name__=="__main__":
+    r = R.from_euler("zyx", [0, math.pi / 2, 0])
+
+    ply_model_path = "../../config/visual.ply"
+    scene_pc = np.array(o3d.io.read_point_cloud(ply_model_path).points)
+    scene_pc[:, 2] -= 0.01
+    grasps = [{
+        "pos": [0, 0, 0],
+        "quat":r.as_quat().tolist(),
+        "width": 0.05
+    }]
+    robot = FetchRobot()
+    robot._get_collision_free_grasp_cfg(grasps[0], scene_pc, vis = True)
+
+
+
 
 """
 Legacy
@@ -587,17 +666,3 @@ Legacy
             print('ERROR: robot grasp failed!!')
         return resp.success
 """
-
-if __name__=="__main__":
-    r = R.from_euler("zyx", [0, math.pi / 2, 0])
-
-    ply_model_path = "../../config/visual.ply"
-    scene_pc = np.array(o3d.io.read_point_cloud(ply_model_path).points)
-    scene_pc[:, 2] -= 0.01
-    grasps = [{
-        "pos": [0, 0, 0],
-        "quat":r.as_quat().tolist(),
-        "width": 0.05
-    }]
-    robot = FetchRobot()
-    robot._get_collision_free_grasp_cfg(grasps[0], scene_pc, vis = True)

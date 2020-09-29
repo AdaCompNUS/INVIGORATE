@@ -31,15 +31,14 @@ from config.config import *
 from invigorate.invigorate import Invigorate
 from libraries.data_viewer.data_viewer import DataViewer
 from libraries.caption_generator import caption_generator
-try:
-    from libraries.robots.fetch_robot import FetchRobot
-except:
-    warnings.warn("Fail to import Fetch Robot. Fetch cannot work.")
 from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
 ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
+
+if ROBOT == 'Fetch':
+    from libraries.robots.fetch_robot import FetchRobot
 
 # -------- Constants --------
 EXEC_GRASP = 0
@@ -172,8 +171,8 @@ def main():
             im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             cv2.imwrite("outputs/grasp.png", im)
-            # im_pil = Image.fromarray(im)
-            # im_pil.show()
+            im_pil = Image.fromarray(im)
+            im_pil.show()
 
             # execute grasping action
             grasp = grasps[action % num_box][:8]
