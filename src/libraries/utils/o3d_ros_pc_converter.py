@@ -67,11 +67,11 @@ def convertCloudFromOpen3dToRos(open3d_cloud, frame_id="odom"):
     # create ros_cloud
     return pc2.create_cloud(header, fields, cloud_data)
 
-def convertCloudFromRosToOpen3d(ros_cloud):
+def convertCloudFromRosToOpen3d(ros_cloud, uvs=[]):
 
     # Get cloud data from ros_cloud
     field_names=[field.name for field in ros_cloud.fields]
-    cloud_data = list(pc2.read_points(ros_cloud, skip_nans=True, field_names = field_names))
+    cloud_data = list(pc2.read_points(ros_cloud, skip_nans=True, field_names = field_names, uvs=uvs))
 
     # Check empty
     open3d_cloud = open3d.geometry.PointCloud()

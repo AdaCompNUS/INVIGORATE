@@ -186,12 +186,12 @@ class FetchRobot():
 
     def _grasp_pose_to_rotmat(self, grasp):
         x, y, z, w = grasp["quat"]
-        matrix1 = np.mat([
-            [1 - 2*y*y - 2*z*z, 2*x*y + 2*w*z, 2*x*z-2*w*y, grasp["pos"][0]],
-            [2*x*y - 2*w*z, 1 - 2*x*x - 2*z*z, 2*z*y + 2*w*x, grasp["pos"][1]],
-            [2*x*z + 2*w*y, 2*z*y - 2*w*x,1 - 2*x*x - 2*y*y, grasp["pos"][2]],
-            [0, 0, 0, 1]
-        ]).T
+        # matrix1 = np.mat([
+        #     [1 - 2*y*y - 2*z*z, 2*x*y + 2*w*z, 2*x*z-2*w*y, grasp["pos"][0]],
+        #     [2*x*y - 2*w*z, 1 - 2*x*x - 2*z*z, 2*z*y + 2*w*x, grasp["pos"][1]],
+        #     [2*x*z + 2*w*y, 2*z*y - 2*w*x,1 - 2*x*x - 2*y*y, grasp["pos"][2]],
+        #     [0, 0, 0, 1]
+        # ]).T
 
         r = R.from_quat([x, y, z, w])
         matrix = r.as_dcm()
@@ -379,8 +379,14 @@ class FetchRobot():
             rospy.logwarn(e)
             return None
 
+        # build uv array for segmentation
+        uvs = []
+        for x in range(XCROP[0], XCROP[1]):
+            for y in range(YCROP[0], YCROP[1]):
+                uvs.append([x, y])
+
         raw_pc = do_transform_cloud(msg, trans)
-        o3d_pc = pc_converter.convertCloudFromRosToOpen3d(raw_pc)
+        o3d_pc = pc_converter.convertCloudFromRosToOpen3d(raw_pc, uvs = uvs)
         scene_pc = np.array(o3d_pc.points)
         print(scene_pc.shape)
         return scene_pc

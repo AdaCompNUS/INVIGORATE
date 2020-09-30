@@ -2,12 +2,10 @@
 
 '''
 TODO
-1. bug where only 1 object is detected line 290. RESOLVED
-2. question answering for where is it?
-3. grasp random objects when background has high prob?
-5. clue is persistent?? RESOLVED
-7. where is it mattnet client error. RESOLVED
-8. it does not ask questions when there are two same objects. RESOLVED
+*. question answering for where is it?
+*. grasp random objects when background has high prob?
+*. Crop pc for collision checking
+*.
 '''
 
 import sys
