@@ -22,6 +22,7 @@ import sensor_msgs.point_cloud2 as pcl2
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
+import fetch_api
 
 # import sys
 # this_dir = osp.dirname(osp.abspath(__file__))
@@ -393,6 +394,22 @@ class FetchRobot():
 
     def give_obj_to_human(self):
         print('Dummy execution of give_obj_to_human')
+
+        # Hard code for demo
+        target_pose = PoseStamped()
+        target_pose.header.frame_id="base_link"
+        target_pose.pose.position.x = 0.6
+        target_pose.pose.position.y = -0.15
+        target_pose.pose.position.z = 0.98
+        quat = T.quaternion_from_euler(0, 0, -math.pi/4, 'rzyx') # rotate by y to make it facing downwards
+                                                                              # rotate by z to align with bbox orientation
+        target_pose.pose.orientation.x = quat[0]
+        target_pose.pose.orientation.y = quat[1]
+        target_pose.pose.orientation.z = quat[2]
+        target_pose.pose.orientation.w = quat[3]
+
+        arm = fetch_api.ArmV2()
+        arm.move_to_pose(target_pose)
 
     def say(self, text):
         # print('Dummy execution of say: {}'.format(text))

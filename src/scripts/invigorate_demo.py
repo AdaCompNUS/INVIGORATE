@@ -202,6 +202,8 @@ def main():
         #     break
 
     print("exit!")
+    rospy.sleep(10) # wait 10 second
+    robot.move_arm_to_home()
 
 if __name__ == '__main__':
     main()

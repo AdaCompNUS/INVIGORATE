@@ -15,7 +15,7 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
     cxt_obj_name = CLASSES[int(cxt_obj_cls)]
 
     if cxt_obj_cls == 0:
-        rel_caption_sentence = '{} {} (of image)'.format(obj_name, rel_caption)
+        rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
     else:
         rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
     rel_caption_sentence = rel_caption_sentence.replace('.', '')
