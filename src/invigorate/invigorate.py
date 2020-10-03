@@ -16,7 +16,6 @@ import copy
 from sklearn.cluster import KMeans
 from scipy import optimize
 import nltk
-import stanza
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
@@ -212,9 +211,19 @@ class Invigorate():
         elif self.get_action_type(action, num_box) == 'Q2':
             dbg_print("Invigorate: handling answer for Q2")
 
-            ans = self._process_q2_ans(ans)
-            if len(ans) > 0:
-                leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
+            target_idx = np.argmax(target_prob[:-1])
+            if ans in {"yes", "yeah", "yep", "sure"}:
+                # set non-target
+                target_prob[:] = 0
+                for obj in self.object_pool:
+                    obj["is_target"] = False
+                # set target
+                target_prob[target_idx] = 1
+                self.object_pool[ind_match_dict[target_idx]]["is_target"] = True
+            else:
+                ans = self._process_q2_ans(ans)
+                if len(ans) > 0:
+                    leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
 
         self.belief["target_prob"] = target_prob
         self.belief["leaf_desc_prob"] = leaf_desc_prob

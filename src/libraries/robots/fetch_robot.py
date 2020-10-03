@@ -37,6 +37,7 @@ GRASP_BOX_FOR_SEG = 1
 BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
+ABSOLUTE_COLLISION_SCORE_THRESHOLD = 75
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -64,14 +65,16 @@ else:
     YCROP = (180, 450)
     XCROP = (150, 490)
 FETCH_GRIPPER_LENGTH = 0.2
-GRASP_DEPTH = 0.04
-GRASP_POSE_X_OFFST = 0
+GRASP_DEPTH = 0.01
+GRASP_POSE_X_OFFST = 0.01
+GRASP_POSE_Y_OFFST = 0
+GRASP_POSE_Z_OFFST = -0.01
 GRIPPER_OPENING_OFFSET = 0.01
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.2
 
-def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 3):
+def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
     # Create a new plot
     # rotation: 0 means no rotation,
     #           1 means rotate w.r.t. x axis for 90 degrees
@@ -176,7 +179,7 @@ class FetchRobot():
         # gripper_model = stl.mesh.Mesh(np.concatenate([gripper_mesh.data, l_finger_mesh.data, r_finger_mesh.data]))
         return {"gripper": gripper_mesh, "left_finger": l_finger_mesh, "right_finger": r_finger_mesh}
 
-    def _sample_grasps(self, grasp_cfg, sampler_cfg={"z_step": 0.005, "xy_step": 0.01, "w_step": 0.015}):
+    def _sample_grasps(self, grasp_cfg, sampler_cfg={"z_step": 0.005, "xy_step": 0.01, "w_step": 0.01}):
         """
         sample grasp configuration according to the rectangle representation.
         grasp: {"pos":[x,y,z], "quat": [x,y,z,w]}
@@ -186,8 +189,8 @@ class FetchRobot():
 
         grasps = []
         x_ori, y_ori, z_ori = grasp_cfg["pos"]
-        for x in sample_dist(x_ori, sampler_cfg["xy_step"], 3):
-            for y in sample_dist(y_ori, sampler_cfg["xy_step"], 3):
+        for x in sample_dist(x_ori, sampler_cfg["xy_step"], 4):
+            for y in sample_dist(y_ori, sampler_cfg["xy_step"], 4):
                 for z in sample_dist(z_ori, sampler_cfg["z_step"], 10):
                     for w in np.arange(0.02, 0.09, sampler_cfg["w_step"]):
                         grasps.append({"pos": [x,y,z], "quat": grasp_cfg["quat"], "width": w})
@@ -195,19 +198,12 @@ class FetchRobot():
 
     def _grasp_pose_to_rotmat(self, grasp):
         x, y, z, w = grasp["quat"]
-        # matrix1 = np.mat([
-        #     [1 - 2*y*y - 2*z*z, 2*x*y + 2*w*z, 2*x*z-2*w*y, grasp["pos"][0]],
-        #     [2*x*y - 2*w*z, 1 - 2*x*x - 2*z*z, 2*z*y + 2*w*x, grasp["pos"][1]],
-        #     [2*x*z + 2*w*y, 2*z*y - 2*w*x,1 - 2*x*x - 2*y*y, grasp["pos"][2]],
-        #     [0, 0, 0, 1]
-        # ]).T
 
         r = R.from_quat([x, y, z, w])
         matrix = r.as_dcm()
         translation = np.array([grasp["pos"][0], grasp["pos"][1], grasp["pos"][2]]).reshape((3, 1))
         matrix = np.concatenate([matrix, translation], axis = 1)
         matrix = np.concatenate([matrix, np.array([0, 0, 0, 1]).reshape((1, 4))], axis = 0)
-        print(matrix)
 
         return np.mat(matrix)
 
@@ -218,6 +214,7 @@ class FetchRobot():
         inv_rot_mat = rot_mat.I
         scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
         scene_pc = (scene_pc * inv_rot_mat.T)[:, :3]
+        # scene_pc = np.dot(scene_pc, rot_mat)[:, :3]
         return scene_pc
 
     def _check_collison_for_cube(self, points, cube, epsilon=0.005):
@@ -239,6 +236,9 @@ class FetchRobot():
 
         base_grasp = grasps[0]
         scene_pc = self._trans_world_points_to_gripper(scene_pc, grasps[0])
+        scene_pc_max = np.max(scene_pc, axis = 0)
+        scene_pc_min = np.min(scene_pc, axis = 0)
+        # print("scene_pc_diff: {}".format(scene_pc_max - scene_pc_min)) # sanity check
 
         valid_grasp_inds = []
         collision_scores = []
@@ -251,26 +251,47 @@ class FetchRobot():
             l_finger_max = self.gripper_model["left_finger"].max_.copy()
             l_finger_min[1] -= gripper_width / 2
             l_finger_max[1] -= gripper_width / 2
+            l_finger_min[0] -= 0.031
+            l_finger_max[0] -= 0.031
             # for the right finger, the opening along the y-axis is positive
             r_finger_min = self.gripper_model["right_finger"].min_.copy()
             r_finger_max = self.gripper_model["right_finger"].max_.copy()
             r_finger_min[1] += gripper_width / 2
             r_finger_max[1] += gripper_width / 2
+            r_finger_min[0] -= 0.031
+            r_finger_max[0] -= 0.031
+
+            diff = np.array(g["pos"]) - np.array(base_grasp["pos"])
+            l_finger_min[0] -= diff[2]
+            l_finger_min[1] += diff[0]
+            l_finger_min[2] -= diff[1]
+            l_finger_max[0] -= diff[2]
+            l_finger_max[1] += diff[0]
+            l_finger_max[2] -= diff[1]
+            r_finger_min[0] -= diff[2]
+            r_finger_min[1] += diff[0]
+            r_finger_min[2] -= diff[1]
+            r_finger_max[0] -= diff[2]
+            r_finger_max[1] += diff[0]
+            r_finger_max[2] -= diff[1]
 
             # convex hull
             gripper_min = np.minimum(l_finger_min, r_finger_min)
             gripper_max = np.maximum(l_finger_max, r_finger_max)
+
             # offsets w.r.t. base_grasp
-            xyz_offset = np.expand_dims(np.array(base_grasp["pos"]) - np.array(g["pos"]), axis=0)
-            pc_in_g = scene_pc + xyz_offset
+            # xyz_offset = np.expand_dims(np.array(base_grasp["pos"]) - np.array(g["pos"]), axis=0)
+            # pc_in_g = scene_pc + xyz_offset
+            pc_in_g = scene_pc
 
             p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger_min, l_finger_max))
             p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger_min, r_finger_max))
             p_num_collided_convex_hull = self._check_collison_for_cube(pc_in_g, (gripper_min, gripper_max))
-            if in_gripper_scores > 0:
-                collision_score = p_num_collided_l_finger + p_num_collided_r_finger
+            collision_score = p_num_collided_l_finger + p_num_collided_r_finger
+            in_gripper_score = p_num_collided_convex_hull - collision_score
+            if in_gripper_score > 0:
                 collision_scores.append(collision_score)
-                in_gripper_scores.append(p_num_collided_convex_hull - collision_score)
+                in_gripper_scores.append(in_gripper_score)
                 valid_grasp_inds.append(ind)
 
         return collision_scores, in_gripper_scores, valid_grasp_inds
@@ -283,8 +304,21 @@ class FetchRobot():
         # Also, you can use some other tricks. For example, you can choose the grasp with the maximum number of points
         # in between two grippers only from the collision free grasps (collision score = 0). However, in clutter, there
         # may be no completely collision-free grasps. Also, the noisy can make this method invalid.
-        selected_ind = valid_grasp_inds[np.argmax(np.array(in_gripper_scores) - 2 * np.array(collision_scores))]
-        selected_grasp = grasps[selected_ind]
+        collision_scores = np.array(collision_scores)
+        in_gripper_scores = np.array(in_gripper_scores)
+        valid_grasp_inds = np.array(valid_grasp_inds)
+
+        # hard threshold
+        min_collision_score = np.min(collision_scores)
+        print("min_collision_score: {}".format(min_collision_score))
+        valid_grasp_mask = collision_scores <= max(min_collision_score, ABSOLUTE_COLLISION_SCORE_THRESHOLD)
+        valid_grasp_inds = valid_grasp_inds[valid_grasp_mask]
+        collision_scores = collision_scores[valid_grasp_mask]
+        in_gripper_scores = in_gripper_scores[valid_grasp_mask]
+
+        selected_ind = np.argmax(in_gripper_scores - collision_scores)
+        selected_grasp = grasps[valid_grasp_inds[selected_ind]]
+        print("collision_score: {}, in_gripper_score: {}".format(collision_scores[selected_ind], in_gripper_scores[selected_ind]))
         if vis:
             gripper_width = selected_grasp["width"]
             gripper = stl.mesh.Mesh(self.gripper_model["gripper"].data.copy())
@@ -294,10 +328,10 @@ class FetchRobot():
             l_finger.points[:, items] -= gripper_width / 2
             r_finger.points[:, items] += gripper_width / 2
             pc_in_g = self._trans_world_points_to_gripper(scene_pc, selected_grasp)
-            print("pc_in_g: {}".format(pc_in_g))
+            # print("pc_in_g: {}".format(pc_in_g))
             p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger.min_, l_finger.max_))
             p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger.min_, r_finger.max_))
-            print("p_num_collided_l_finger: {}, p_num_collided_r_finger: {}".format(p_num_collided_l_finger, p_num_collided_r_finger))
+            # print("p_num_collided_l_finger: {}, p_num_collided_r_finger: {}".format(p_num_collided_l_finger, p_num_collided_r_finger))
             vis_mesh([gripper, l_finger, r_finger], [pc_in_g], ["r", "b", "g"])
 
         return selected_grasp
@@ -325,8 +359,9 @@ class FetchRobot():
     def grasp(self, grasp, is_target=False):
         # return self._top_grasp(bbox, grasp)
         if not is_target:
-            print('sampling where to place!!')
-            target_pose = self._sample_target_pose()
+            # print('sampling where to place!!')
+            # target_pose = self._sample_target_pose()
+            target_pose = self._get_place_target_pose()
 
         res = self._top_grasp(grasp)
         if not res:
@@ -397,13 +432,13 @@ class FetchRobot():
         for p in points:
             points_out.append(np.dot(transform_mat44, np.array([p[0], p[1], p[2], 1.0]))[:3])
 
-        print(len(points_out))
+        print("pc shape before downsample: {}".format(len(points_out)))
         open3d_cloud = o3d.geometry.PointCloud()
         open3d_cloud.points = o3d.utility.Vector3dVector(np.array(points_out))
         downpcd = open3d_cloud.voxel_down_sample(voxel_size=0.005)
 
         scene_pc = np.array(downpcd.points)
-        print(scene_pc.shape)
+        print("pc shape after downsample: {}".format(scene_pc.shape))
         return scene_pc
 
     def _get_collision_free_grasp(self, orig_grasp, orig_opening):
@@ -417,7 +452,7 @@ class FetchRobot():
         }
         print("orig_grasp: {} ".format(orig_grasp_dict))
 
-        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=True)
+        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=False)
         print("check grasp collision completed: {}".format(new_grasp))
         return new_grasp
 
@@ -446,8 +481,10 @@ class FetchRobot():
         #     return False
 
         obj_pose = seg_resp.object.primitive_pose
+        obj_length = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_X]
         obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
         obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
+        print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
 
         pnp_req = PickPlaceRequest()
         pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
@@ -455,8 +492,7 @@ class FetchRobot():
         grasp = Grasp()
         grasp.grasp_pose.header = seg_resp.object.header
         grasp.grasp_pose.pose = seg_resp.object.primitive_pose
-        grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
-        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH + APPROACH_DIST + FETCH_GRIPPER_LENGTH
+        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH
         quat = T.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                               # rotate by z to align with bbox orientation
         grasp.grasp_pose.pose.orientation.x = quat[0]
@@ -477,7 +513,6 @@ class FetchRobot():
 
         # TODO test
         grasp_pose_tmp = grasp.grasp_pose
-        grasp_pose_tmp.pose.position.z -= (APPROACH_DIST + FETCH_GRIPPER_LENGTH)
         new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
         to_cont = raw_input("to_continue?")
         if to_cont != "y":
@@ -486,7 +521,9 @@ class FetchRobot():
         grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
         grasp.grasp_pose.pose.position.y = new_grasp["pos"][1]
         grasp.grasp_pose.pose.position.z = new_grasp["pos"][2]
-        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH
+        grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
+        grasp.grasp_pose.pose.position.x += GRASP_POSE_Y_OFFST # HACK!!!
+        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH + GRASP_POSE_Z_OFFST
 
         pnp_req.grasp = grasp
         pnp_req.gripper_opening = new_grasp["width"]
@@ -536,6 +573,20 @@ class FetchRobot():
 
         print('ERROR: _sample_target_pose: failed to find a place_pose!!!')
         return None
+
+    def _get_place_target_pose(self):
+        # this is hard coded for demo
+        target_pose = PoseStamped()
+        target_pose.header.frame_id="base_link"
+        target_pose.pose.position.x = 0.519
+        target_pose.pose.position.y = 0.519
+        target_pose.pose.position.z = 0.98
+        target_pose.pose.orientation.x = -0.515
+        target_pose.pose.orientation.y = -0.482
+        target_pose.pose.orientation.z = 0.517
+        target_pose.pose.orientation.w = -0.485
+
+        return target_pose
 
 if __name__=="__main__":
     r = R.from_euler("zyx", [0, math.pi / 2, 0])
