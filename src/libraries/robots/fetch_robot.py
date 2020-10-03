@@ -4,7 +4,7 @@ from cv_bridge import CvBridge
 import cv2
 import os.path as osp
 import tf
-from tf import transformations as t
+from tf import transformations as T
 import math
 import numpy as np
 import random
@@ -18,8 +18,7 @@ from geometry_msgs.msg import *
 from shape_msgs.msg import SolidPrimitive
 from moveit_msgs.msg import Grasp
 from sensor_msgs.msg import PointCloud2
-from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
-import tf2_ros
+import sensor_msgs.point_cloud2 as pcl2
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
@@ -72,7 +71,7 @@ PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.2
 
-def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
+def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 3):
     # Create a new plot
     # rotation: 0 means no rotation,
     #           1 means rotate w.r.t. x axis for 90 degrees
@@ -86,13 +85,23 @@ def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
          [0, 0, -1],
          [0, 1, 0]]
     )
+    rot_mat_y = np.array(
+        [[1, 0, 0],
+         [0, 0, -1],
+         [0, 1, 0]]
+    )
+    rot_mat_z = np.array(
+        [[1, 0, 0],
+         [0, 0, -1],
+         [0, 1, 0]]
+    )
     for pc in pc_list:
         if rotation == 1:
             pc = np.dot(pc, rot_mat_x.T)
         elif rotation == 2:
-            raise NotImplementedError
+            pc = np.dot(pc, rot_mat_y.T)
         elif rotation == 3:
-            raise NotImplementedError
+            pc = np.dot(pc, rot_mat_z.T)
         x = pc[:, 0]
         y = pc[:, 1]
         z = pc[:, 2]
@@ -368,15 +377,13 @@ class FetchRobot():
         return text
 
     def _get_scene_pc(self):
-        tfBuffer = tf2_ros.Buffer()
-        listener = tf2_ros.TransformListener(tfBuffer)
-
+        tl = tf.TransformListener()
         try:
-            msg = rospy.wait_for_message("/head_camera/depth_registered/points", PointCloud2, timeout=10.0)
-            listener = tf.TransformListener()
-            trans = tfBuffer.lookup_transform('base_link', msg.header.frame_id, rospy.Time(0))
+            raw_pc = rospy.wait_for_message("/camera/depth_registered/points", PointCloud2, timeout=20.0)
+            trans, rot = tl.lookupTransform('base_link', raw_pc.header.frame_id, rospy.Time(0))
+            transform_mat44 = np.dot(T.translation_matrix(trans), T.quaternion_matrix(rot))
         except Exception as e:
-            rospy.logwarn(e)
+            rospy.logerr(e)
             return None
 
         # build uv array for segmentation
@@ -385,9 +392,17 @@ class FetchRobot():
             for y in range(YCROP[0], YCROP[1]):
                 uvs.append([x, y])
 
-        raw_pc = do_transform_cloud(msg, trans)
-        o3d_pc = pc_converter.convertCloudFromRosToOpen3d(raw_pc, uvs = uvs)
-        scene_pc = np.array(o3d_pc.points)
+        points = pcl2.read_points(raw_pc, skip_nans=True, field_names=('x', 'y', 'z'), uvs=uvs)
+        points_out = []
+        for p in points:
+            points_out.append(np.dot(transform_mat44, np.array([p[0], p[1], p[2], 1.0]))[:3])
+
+        print(len(points_out))
+        open3d_cloud = o3d.geometry.PointCloud()
+        open3d_cloud.points = o3d.utility.Vector3dVector(np.array(points_out))
+        downpcd = open3d_cloud.voxel_down_sample(voxel_size=0.005)
+
+        scene_pc = np.array(downpcd.points)
         print(scene_pc.shape)
         return scene_pc
 
@@ -402,7 +417,7 @@ class FetchRobot():
         }
         print("orig_grasp: {} ".format(orig_grasp_dict))
 
-        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=False)
+        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=True)
         print("check grasp collision completed: {}".format(new_grasp))
         return new_grasp
 
@@ -442,7 +457,7 @@ class FetchRobot():
         grasp.grasp_pose.pose = seg_resp.object.primitive_pose
         grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
         grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH + APPROACH_DIST + FETCH_GRIPPER_LENGTH
-        quat = t.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
+        quat = T.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                               # rotate by z to align with bbox orientation
         grasp.grasp_pose.pose.orientation.x = quat[0]
         grasp.grasp_pose.pose.orientation.y = quat[1]
@@ -464,6 +479,9 @@ class FetchRobot():
         grasp_pose_tmp = grasp.grasp_pose
         grasp_pose_tmp.pose.position.z -= (APPROACH_DIST + FETCH_GRIPPER_LENGTH)
         new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
+        to_cont = raw_input("to_continue?")
+        if to_cont != "y":
+            return False
 
         grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
         grasp.grasp_pose.pose.position.y = new_grasp["pos"][1]
