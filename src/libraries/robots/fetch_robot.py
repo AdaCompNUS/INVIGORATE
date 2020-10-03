@@ -19,6 +19,7 @@ from shape_msgs.msg import SolidPrimitive
 from moveit_msgs.msg import Grasp
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs.point_cloud2 as pcl2
+import time
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
@@ -38,7 +39,7 @@ GRASP_BOX_FOR_SEG = 1
 BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
-ABSOLUTE_COLLISION_SCORE_THRESHOLD = 75
+ABSOLUTE_COLLISION_SCORE_THRESHOLD = 50
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -67,13 +68,14 @@ else:
     XCROP = (150, 490)
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.01
-GRASP_POSE_X_OFFST = 0.01
+GRASP_POSE_X_OFFST = -0.005
 GRASP_POSE_Y_OFFST = 0
-GRASP_POSE_Z_OFFST = -0.01
+GRASP_POSE_Z_OFFST = -0.015
 GRIPPER_OPENING_OFFSET = 0.01
+GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
-RETREAT_DIST = 0.2
+RETREAT_DIST = 0.1
 
 def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
     # Create a new plot
@@ -140,7 +142,9 @@ class FetchRobot():
         self._table_segmentor_client = rospy.ServiceProxy('/segment_table', TableSegmentation)
         self._tf_transformer = tf.TransformerROS()
         self._fetch_image_client = rospy.ServiceProxy('/rls_perception_service/fetch/rgb_image_service', RetrieveImage)
+        self._fetch_pc_client = rospy.ServiceProxy('/rls_control_service/fetch/retrieve_pc_service', RetrievePointCloud)
         self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
+        self._tl = tf.TransformListener()
 
         # call pnp service to get ready
         pnp_req = PickPlaceRequest()
@@ -188,12 +192,15 @@ class FetchRobot():
         def sample_dist(item, step, n_step):
             return [i * step + item for i in range(-n_step/2 + 1, n_step/2 + 1)]
 
-        grasps = []
+        grasps = [grasp_cfg]
         x_ori, y_ori, z_ori = grasp_cfg["pos"]
+        width_ori = grasp_cfg["width"]
+        width_min = max(0.02, width_ori - 0.02)
+        width_max = min(0.09, width_ori + 0.02)
         for x in sample_dist(x_ori, sampler_cfg["xy_step"], 4):
             for y in sample_dist(y_ori, sampler_cfg["xy_step"], 4):
                 for z in sample_dist(z_ori, sampler_cfg["z_step"], 10):
-                    for w in np.arange(0.02, 0.09, sampler_cfg["w_step"]):
+                    for w in np.arange(width_min, width_max, sampler_cfg["w_step"]):
                         grasps.append({"pos": [x,y,z], "quat": grasp_cfg["quat"], "width": w})
         return grasps
 
@@ -237,8 +244,8 @@ class FetchRobot():
 
         base_grasp = grasps[0]
         scene_pc = self._trans_world_points_to_gripper(scene_pc, grasps[0])
-        scene_pc_max = np.max(scene_pc, axis = 0)
-        scene_pc_min = np.min(scene_pc, axis = 0)
+        # scene_pc_max = np.max(scene_pc, axis = 0)
+        # scene_pc_min = np.min(scene_pc, axis = 0)
         # print("scene_pc_diff: {}".format(scene_pc_max - scene_pc_min)) # sanity check
 
         valid_grasp_inds = []
@@ -317,7 +324,14 @@ class FetchRobot():
         collision_scores = collision_scores[valid_grasp_mask]
         in_gripper_scores = in_gripper_scores[valid_grasp_mask]
 
-        selected_ind = np.argmax(in_gripper_scores - collision_scores)
+        # if 0 in valid_grasp_inds:
+        #     # if original grasp is collision free, select original grasp
+        #     # original grasp has index of 0
+        #     print("original grasp is good!!!")
+        #     selected_ind = 0
+        #     selected_grasp = grasps[valid_grasp_inds[selected_ind]]
+        # else:
+        selected_ind = np.argmax(in_gripper_scores - 0.5 * collision_scores)
         selected_grasp = grasps[valid_grasp_inds[selected_ind]]
         print("collision_score: {}, in_gripper_score: {}".format(collision_scores[selected_ind], in_gripper_scores[selected_ind]))
         if vis:
@@ -393,16 +407,16 @@ class FetchRobot():
         return resp.success
 
     def give_obj_to_human(self):
-        print('Dummy execution of give_obj_to_human')
+        # print('Dummy execution of give_obj_to_human')
 
         # Hard code for demo
         target_pose = PoseStamped()
         target_pose.header.frame_id="base_link"
-        target_pose.pose.position.x = 0.6
-        target_pose.pose.position.y = -0.15
-        target_pose.pose.position.z = 0.98
-        quat = T.quaternion_from_euler(0, 0, -math.pi/4, 'rzyx') # rotate by y to make it facing downwards
-                                                                              # rotate by z to align with bbox orientation
+        target_pose.pose.position.x = 0.8
+        target_pose.pose.position.y = 0
+        target_pose.pose.position.z = 1.1
+        quat = T.quaternion_from_euler(0, math.pi / 2, 0, 'rzyx') # rotate by y to make it facing downwards
+                                                                  # rotate by z to align with bbox orientation
         target_pose.pose.orientation.x = quat[0]
         target_pose.pose.orientation.y = quat[1]
         target_pose.pose.orientation.z = quat[2]
@@ -410,6 +424,12 @@ class FetchRobot():
 
         arm = fetch_api.ArmV2()
         arm.move_to_pose(target_pose)
+
+        # fetch_joint_values = [0.7376393009216309, 0.13208013016967773, -1.694223683164978,
+        #                       1.561460798010254, 1.3066806024353028, 0.24575690464839936, 0.12663476919866562]
+
+        # arm = fetch_api.ArmV2()
+        # arm.move_to_(fetch_joint_values)
 
     def say(self, text):
         # print('Dummy execution of say: {}'.format(text))
@@ -429,10 +449,15 @@ class FetchRobot():
         return text
 
     def _get_scene_pc(self):
-        tl = tf.TransformListener()
+        start_time = time.time()
+        resp = self._fetch_pc_client()
+        raw_pc = resp.pointcloud
+        end_time = time.time()
+        print("getting pc takes {}".format(end_time - start_time))
+
         try:
-            raw_pc = rospy.wait_for_message("/camera/depth_registered/points", PointCloud2, timeout=20.0)
-            trans, rot = tl.lookupTransform('base_link', raw_pc.header.frame_id, rospy.Time(0))
+            # raw_pc = rospy.wait_for_message("/camera/depth_registered/points", PointCloud2, timeout=20.0)
+            trans, rot = self._tl.lookupTransform('base_link', raw_pc.header.frame_id, rospy.Time(0))
             transform_mat44 = np.dot(T.translation_matrix(trans), T.quaternion_matrix(rot))
         except Exception as e:
             rospy.logerr(e)
@@ -526,7 +551,7 @@ class FetchRobot():
         grasp.post_grasp_retreat.desired_distance = RETREAT_DIST
 
         pnp_req.grasp = grasp
-        pnp_req.gripper_opening = obj_width + GRIPPER_OPENING_OFFSET
+        pnp_req.gripper_opening = min(obj_width, GRIPPER_OPENING_MAX)
 
         # TODO test
         grasp_pose_tmp = grasp.grasp_pose
