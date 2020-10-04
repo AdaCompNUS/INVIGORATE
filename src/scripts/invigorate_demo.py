@@ -4,8 +4,13 @@
 TODO
 *. question answering for where is it?
 *. grasp random objects when background has high prob?
-*. Crop pc for collision checking
-*.
+*. User answer confirmed object bug
+*. Fix collision checking for case 2 -> route to the center of the body
+*. accelerate grasp collision check by
+    *. running on GPU
+    *. Further segment pc
+    *. greedy algo
+*. Bug where gripper opening is not necessary width of the box
 '''
 
 import sys
