@@ -14,10 +14,14 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
     obj_name = CLASSES[int(obj_cls)]
     cxt_obj_name = CLASSES[int(cxt_obj_cls)]
 
-    if cxt_obj_cls == 0:
+    # if cxt_obj_cls == 0:
+    #     rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
+    # else:
+    #     rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
+    if rel_caption.startswith("at") or rel_caption.startswith("on") or rel_caption.startswith("in"):
         rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
     else:
-        rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
+        rel_caption_sentence = '{} {}'.format(rel_caption, obj_name) # HACK to fix the rare bug where the caption is actually semantic
     rel_caption_sentence = rel_caption_sentence.replace('.', '')
     return rel_caption_sentence
 

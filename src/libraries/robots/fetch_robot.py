@@ -38,6 +38,7 @@ BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
+IN_GRIPPER_SCORE_THRESOHOLD = 40
 VISUALIZE_GRASP = False
 
 # ------- Constants ---------
@@ -66,11 +67,11 @@ else:
     YCROP = (180, 450)
     XCROP = (150, 490)
 FETCH_GRIPPER_LENGTH = 0.2
-GRASP_DEPTH = 0.005
+GRASP_DEPTH = 0.01
 
-GRASP_POSE_X_OFFST = -0.005
-GRASP_POSE_Y_OFFST = 0
-GRASP_POSE_Z_OFFST = -0.012
+GRASP_POSE_X_OFFST = -0.026
+GRASP_POSE_Y_OFFST = 0.024
+GRASP_POSE_Z_OFFST = -0.017
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
@@ -249,6 +250,8 @@ class FetchRobot():
     #     return grasps
 
     def _sample_grasps_xyzw(self, grasp_cfg, xy=0, z=0, w=0, xy_step=0.01, z_step=0.0025, w_step=0.01):
+        start_time = time.time()
+
         grasps = [grasp_cfg]
         x_ori, y_ori, z_ori = grasp_cfg["pos"]
         width_ori = grasp_cfg["width"]
@@ -259,6 +262,9 @@ class FetchRobot():
                     for width in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
                         if width > 0.01:
                             grasps.append({"pos": [x, y, z1], "quat": grasp_cfg["quat"], "width": width})
+
+        end_time = time.time()
+        print("_sample_grasps_xyzw takes {}".format(end_time - start_time))
         return grasps
 
     def _grasp_pose_to_rotmat(self, grasp):
@@ -298,7 +304,8 @@ class FetchRobot():
         2. the gripper itself cannot collide with the point cloud.
         """
 
-        base_grasp = grasps[0]
+        start_time = time.time()
+        # base_grasp = grasps[0]
         # scene_pc = self._trans_world_points_to_gripper(scene_pc, grasps[0])
         # scene_pc_max = np.max(scene_pc, axis = 0)
         # scene_pc_min = np.min(scene_pc, axis = 0)
@@ -338,7 +345,7 @@ class FetchRobot():
 
             p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger_min, l_finger_max), epsilon=0)
             p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger_min, r_finger_max), epsilon=0)
-            p_num_collided_convex_hull = self._check_collison_for_cube(pc_in_g, (gripper_min, gripper_max), epsilon=-0.005)
+            p_num_collided_convex_hull = self._check_collison_for_cube(pc_in_g, (gripper_min, gripper_max), epsilon=-0.01)
             collision_score = p_num_collided_l_finger + p_num_collided_r_finger
             in_gripper_score = p_num_collided_convex_hull # - collision_score
             if in_gripper_score > 0:
@@ -346,6 +353,8 @@ class FetchRobot():
                 in_gripper_scores.append(in_gripper_score)
                 valid_grasp_inds.append(ind)
 
+        end_time = time.time()
+        print("_check_grasp_collision takes {}".format(end_time - start_time))
         return collision_scores, in_gripper_scores, valid_grasp_inds
 
     def _select_from_grasps(self, grasps, scene_pc):
@@ -366,7 +375,7 @@ class FetchRobot():
         # hard threshold
         min_collision_score = np.min(collision_scores)
         print("min_collision_score: {}".format(min_collision_score))
-        valid_grasp_mask = collision_scores <= ABSOLUTE_COLLISION_SCORE_THRESHOLD
+        valid_grasp_mask = (collision_scores <= ABSOLUTE_COLLISION_SCORE_THRESHOLD) * (in_gripper_scores >= IN_GRIPPER_SCORE_THRESOHOLD)
         valid_grasp_inds = valid_grasp_inds[valid_grasp_mask]
         collision_scores = collision_scores[valid_grasp_mask]
         in_gripper_scores = in_gripper_scores[valid_grasp_mask]
@@ -392,7 +401,8 @@ class FetchRobot():
 
         # Step1 fine tune z first
         print("Adjusting z!")
-        grasps = self._sample_grasps_xyzw(grasp, z=0.02)
+
+        grasps = self._sample_grasps_xyzw(grasp, z=0.03)
         selected_grasp = self._select_from_grasps(grasps, scene_pc)
         if selected_grasp is None:
             print("Adjusting z failed to produce good grasp, proceed")
@@ -400,7 +410,7 @@ class FetchRobot():
         # step 2 fine tune width
         if selected_grasp is None:
             print("Adjusting z and w!")
-            grasps = self._sample_grasps_xyzw(grasp, w=0.02, z=0.02)
+            grasps = self._sample_grasps_xyzw(grasp, w=0.02, z=0.03)
             selected_grasp = self._select_from_grasps(grasps, scene_pc)
             if selected_grasp is None:
                 print("Adjusting zw failed to produce good grasp, proceed")

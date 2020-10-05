@@ -10,6 +10,7 @@ TODO
     *. running on GPU
     *. Further segment pc <resolved>
     *. greedy algo <resolved>
+*. mattnet can't handle the case where true white box is not detected but false black box is detected.
 '''
 
 import sys
@@ -28,10 +29,12 @@ import time
 import datetime
 from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
+import matplotlib
+matplotlib.use('Agg')
 
 from config.config import *
-from invigorate.invigorate import Invigorate
 from libraries.data_viewer.data_viewer import DataViewer
+from invigorate.invigorate import Invigorate
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 
@@ -177,14 +180,18 @@ def main():
             im_pil.show()
 
             # execute grasping action
+            object_name = CLASSES[classes[grasp_target_idx][0]]
             grasp = grasps[action % num_box][:8]
             is_target = (action_type == 'GRASP_AND_END')
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 print('grasp failed!!!')
-                to_end = True
-            # TODO: Determine whether the grasp is successful and then assign this "removed" flag
-            if is_target:
+                if not is_target:
+                    robot.say("sorry I can't grasp the {}, could you help me remove it?".format(object_name))
+                else:
+                    robot.say("sorry I can't grasp the {}, but it is for you".format(object_name))
+                rospy.sleep(5)
+            if res and is_target:
                 robot.say("this is for you")
         elif exec_type == EXEC_ASK:
             robot.say(question_str)
