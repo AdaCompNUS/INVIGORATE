@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+
+'''
+*. Removed flag not used??
+
+'''
+
 import warnings
 
 import rospy
@@ -152,12 +158,18 @@ class Invigorate():
         # 2. incorporate QA history
         target_prob_backup = target_prob.copy()
         for k, v in ind_match_dict.items():
-            if self.object_pool[v]["confirmed"] == True:
-                if self.object_pool[v]["ground_belief"] == 1.:
-                    target_prob[:] = 0.
-                    target_prob[k] = 1.
-                elif self.object_pool[v]["ground_belief"] == 0.:
-                    target_prob[k] = 0.
+            # if self.object_pool[v]["confirmed"] == True:
+            #     if self.object_pool[v]["ground_belief"] == 1.:
+            #         target_prob[:] = 0.
+            #         target_prob[k] = 1.
+            #     elif self.object_pool[v]["ground_belief"] == 0.:
+            #         target_prob[k] = 0.
+            if self.object_pool[v]["is_target"] == 1:
+                target_prob[:] = 0.
+                target_prob[k] = 1.
+            elif self.object_pool[v]["is_target"] == 0:
+                target_prob[k] = 0.
+        # sanity check
         if target_prob.sum() > 0:
             target_prob /= target_prob.sum()
         else:
@@ -199,14 +211,14 @@ class Invigorate():
                 # set non-target
                 target_prob[:] = 0
                 for obj in self.object_pool:
-                    obj["is_target"] = False
+                    obj["is_target"] = 0
                 # set target
                 target_prob[target_idx] = 1
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = True
+                self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
             elif ans in {"no", "nope", "nah"}:
                 target_prob[target_idx] = 0
                 target_prob /= np.sum(target_prob)
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = False
+                self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
         # Q2
         elif self.get_action_type(action, num_box) == 'Q2':
             dbg_print("Invigorate: handling answer for Q2")
@@ -216,10 +228,10 @@ class Invigorate():
                 # set non-target
                 target_prob[:] = 0
                 for obj in self.object_pool:
-                    obj["is_target"] = False
+                    obj["is_target"] = 0
                 # set target
                 target_prob[target_idx] = 1
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = True
+                self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
             else:
                 ans = self._process_q2_ans(ans)
                 if len(ans) > 0:
@@ -394,14 +406,15 @@ class Invigorate():
         new_box["bbox"] = bbox
         new_box["cls_scores"] = score
         new_box["cand_belief"] = object_belief()
-        new_box["ground_belief"] = 0.
+        new_box["target_prob"] = 0.
         new_box["ground_scores_history"] = []
         new_box["clue"] = None
         new_box["clue_belief"] = object_belief()
-        if self.target_in_pool:
-            new_box["confirmed"] = True
-        else:
-            new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
+        # if self.target_in_pool:
+        #     new_box["confirmed"] = True
+        # else:
+        #     new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
+        new_box["is_target"] = -1 # -1 means unknown
         new_box["removed"] = False
         return new_box
 
