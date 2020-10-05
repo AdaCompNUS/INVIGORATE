@@ -68,7 +68,7 @@ else:
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.005
 
-GRASP_POSE_X_OFFST = 0 # -0.005
+GRASP_POSE_X_OFFST = -0.005
 GRASP_POSE_Y_OFFST = 0
 GRASP_POSE_Z_OFFST = -0.012
 GRIPPER_OPENING_OFFSET = 0.01
@@ -220,33 +220,33 @@ class FetchRobot():
         vis.run()
         vis.destroy_window()
 
-    def _sample_grasps_xyz(self, grasp_cfg, sampler_cfg={"z_step": 0.005, "xy_step": 0.01, "w_step": 0.01}):
-        """
-        sample grasp configuration according to the rectangle representation.
-        grasp: {"pos":[x,y,z], "quat": [x,y,z,w]}
-        """
-        def sample_dist(item, step, n_step):
-            return [i * step + item for i in range(-n_step/2 + 1, n_step/2 + 1)]
+    # def _sample_grasps_xyz(self, grasp_cfg, sampler_cfg={"z_step": 0.005, "xy_step": 0.01, "w_step": 0.01}):
+    #     """
+    #     sample grasp configuration according to the rectangle representation.
+    #     grasp: {"pos":[x,y,z], "quat": [x,y,z,w]}
+    #     """
+    #     def sample_dist(item, step, n_step):
+    #         return [i * step + item for i in range(-n_step/2 + 1, n_step/2 + 1)]
 
-        grasps = [grasp_cfg]
-        x_ori, y_ori, z_ori = grasp_cfg["pos"]
-        width_ori = grasp_cfg["width"]
-        width_min = max(0.02, width_ori - 0.02)
-        width_max = min(0.09, width_ori + 0.02)
-        for x in sample_dist(x_ori, sampler_cfg["xy_step"], 4):
-            for y in sample_dist(y_ori, sampler_cfg["xy_step"], 4):
-                for z in sample_dist(z_ori, sampler_cfg["z_step"], 10):
-                    for w in np.arange(width_min, width_max, sampler_cfg["w_step"]):
-                        grasps.append({"pos": [x,y,z], "quat": grasp_cfg["quat"], "width": w})
-        return grasps
+    #     grasps = [grasp_cfg]
+    #     x_ori, y_ori, z_ori = grasp_cfg["pos"]
+    #     width_ori = grasp_cfg["width"]
+    #     width_min = max(0.02, width_ori - 0.02)
+    #     width_max = min(0.09, width_ori + 0.02)
+    #     for x in sample_dist(x_ori, sampler_cfg["xy_step"], 4):
+    #         for y in sample_dist(y_ori, sampler_cfg["xy_step"], 4):
+    #             for z in sample_dist(z_ori, sampler_cfg["z_step"], 10):
+    #                 for w in np.arange(width_min, width_max, sampler_cfg["w_step"]):
+    #                     grasps.append({"pos": [x,y,z], "quat": grasp_cfg["quat"], "width": w})
+    #     return grasps
 
-    def _sample_grasps_z_only(self, grasp_cfg):
-        grasps = [grasp_cfg]
-        x_ori, y_ori, z_ori = grasp_cfg["pos"]
-        width_ori = grasp_cfg["width"]
-        for z in np.arange(z_ori - 0.02, z_ori + 0.02, 0.0025):
-            grasps.append({"pos": [x_ori,y_ori, z], "quat": grasp_cfg["quat"], "width": width_ori})
-        return grasps
+    # def _sample_grasps_z_only(self, grasp_cfg):
+    #     grasps = [grasp_cfg]
+    #     x_ori, y_ori, z_ori = grasp_cfg["pos"]
+    #     width_ori = grasp_cfg["width"]
+    #     for z in np.arange(z_ori - 0.02, z_ori + 0.02, 0.0025):
+    #         grasps.append({"pos": [x_ori,y_ori, z], "quat": grasp_cfg["quat"], "width": width_ori})
+    #     return grasps
 
     def _sample_grasps_xyzw(self, grasp_cfg, xy=0, z=0, w=0, xy_step=0.01, z_step=0.0025, w_step=0.01):
         grasps = [grasp_cfg]
@@ -255,10 +255,10 @@ class FetchRobot():
 
         for x in np.linspace(x_ori - xy, x_ori + xy, xy * 2 / xy_step + 1):
             for y in np.linspace(y_ori - xy, y_ori + xy, xy * 2 / xy_step + 1):
-                for z in np.linspace(z_ori - z, z_ori + z, z * 2 / z_step + 1):
+                for z1 in np.linspace(z_ori - z, z_ori + z, z * 2 / z_step + 1):
                     for width in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
                         if width > 0.01:
-                            grasps.append({"pos": [x, y, z], "quat": grasp_cfg["quat"], "width": width})
+                            grasps.append({"pos": [x, y, z1], "quat": grasp_cfg["quat"], "width": width})
         return grasps
 
     def _grasp_pose_to_rotmat(self, grasp):
@@ -366,10 +366,13 @@ class FetchRobot():
         # hard threshold
         min_collision_score = np.min(collision_scores)
         print("min_collision_score: {}".format(min_collision_score))
-        valid_grasp_mask = collision_scores <= max(min_collision_score, ABSOLUTE_COLLISION_SCORE_THRESHOLD)
+        valid_grasp_mask = collision_scores <= ABSOLUTE_COLLISION_SCORE_THRESHOLD
         valid_grasp_inds = valid_grasp_inds[valid_grasp_mask]
         collision_scores = collision_scores[valid_grasp_mask]
         in_gripper_scores = in_gripper_scores[valid_grasp_mask]
+
+        if len(in_gripper_scores) <= 0:
+            return None
 
         selected_ind = np.argmax(in_gripper_scores) # - collision_scores
         selected_grasp = grasps[valid_grasp_inds[selected_ind]]
@@ -606,7 +609,7 @@ class FetchRobot():
         obj_length = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_X]
         obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
         obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
-        print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
+        # print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
 
         pnp_req = PickPlaceRequest()
         pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
@@ -633,12 +636,11 @@ class FetchRobot():
         pnp_req.grasp = grasp
         pnp_req.gripper_opening = grasp_box_width * GRASP_BOX_TO_GRIPPER_OPENING
 
-        # TODO test
         grasp_pose_tmp = grasp.grasp_pose
         new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
-        to_cont = raw_input("to_continue?")
-        if to_cont != "y":
-            return False
+        # to_cont = raw_input("to_continue?")
+        # if to_cont != "y":
+        #     return False
 
         if new_grasp is None:
             print('ERROR: robot grasp failed!!')
