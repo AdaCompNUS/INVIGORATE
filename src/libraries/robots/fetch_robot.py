@@ -18,6 +18,7 @@ from moveit_msgs.msg import Grasp
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs.point_cloud2 as pcl2
 import time
+import random
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
@@ -69,7 +70,7 @@ else:
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.01
 
-GRASP_POSE_X_OFFST = -0.026
+GRASP_POSE_X_OFFST = -0.028
 GRASP_POSE_Y_OFFST = 0.024
 GRASP_POSE_Z_OFFST = -0.017
 GRIPPER_OPENING_OFFSET = 0.01
@@ -78,6 +79,8 @@ PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.1
 GRASP_BOX_TO_GRIPPER_OPENING = 0.0006
+
+POSITIVE_RESPONSE_LIST = ["Got it", "Sure", "No Problem", "okay", "certainly", "of course"]
 
 # def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
 #     # Create a new plot
@@ -416,12 +419,12 @@ class FetchRobot():
                 print("Adjusting zw failed to produce good grasp, proceed")
 
         # step 3 fine tune xyzw
-        if selected_grasp is None:
-            print("Adjusting xyzw!")
-            grasps = self._sample_grasps_xyzw(grasp, xy=0.02, z=0.02, w=0.02)
-            selected_grasp = self._select_from_grasps(grasps, scene_pc)
-            if selected_grasp is None:
-                print("Adjusting xyzw failed to produce good grasp, proceed")
+        # if selected_grasp is None:
+        #     print("Adjusting xyzw!")
+        #     grasps = self._sample_grasps_xyzw(grasp, xy=0.02, z=0.02, w=0.02)
+        #     selected_grasp = self._select_from_grasps(grasps, scene_pc)
+        #     if selected_grasp is None:
+        #         print("Adjusting xyzw failed to produce good grasp, proceed")
 
         if vis:
             self._vis_grasp(scene_pc, selected_grasp)
@@ -576,14 +579,18 @@ class FetchRobot():
         return resp.success
 
     def listen(self, timeout=None):
-        print('Dummy execution of listen')
-        text = raw_input('Enter: ')
-        # print('robot is listening')
-        # msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
-        # text = msg.data.lower()
-        # if text.startswith("pick up"):
-        #     text = text[7: ] # HACK remove pick up
-        # print('robot heard {}'.format(text))
+        # print('Dummy execution of listen')
+        # text = raw_input('Enter: ')
+        print('robot is listening')
+        msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
+        text = msg.data.lower()
+        if text.startswith("pick up"):
+            text = text[7: ] # HACK remove pick up
+        print('robot heard {}'.format(text))
+
+        # say acknowledgement
+        resp = random.choice(POSITIVE_RESPONSE_LIST)
+        self.say(resp)
 
         return text
 

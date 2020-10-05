@@ -11,6 +11,7 @@ TODO
     *. Further segment pc <resolved>
     *. greedy algo <resolved>
 *. mattnet can't handle the case where true white box is not detected but false black box is detected.
+*. grasp sequence bug
 '''
 
 import sys
@@ -41,6 +42,7 @@ from libraries.robots.dummy_robot import DummyRobot
 # -------- Settings --------
 ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
+DISPLAY_DEBUG_IMG = False
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -119,7 +121,8 @@ def main():
         rel_score_mat = observations['rel_score_mat']
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
-        data_viewer.display_img(imgs['final_img'])
+        if DISPLAY_DEBUG_IMG:
+            data_viewer.display_img(imgs['final_img'])
         cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
@@ -171,18 +174,26 @@ def main():
         if exec_type == EXEC_GRASP:
             grasps = observations['grasps']
             print("grasps.shape {}".format(grasps.shape))
+            object_name = CLASSES[classes[grasp_target_idx][0]]
+            is_target = (action_type == 'GRASP_AND_END')
 
             # display grasp
             im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             cv2.imwrite("outputs/grasp.png", im)
-            im_pil = Image.fromarray(im)
-            im_pil.show()
+            if DISPLAY_DEBUG_IMG:
+                im_pil = Image.fromarray(im)
+                im_pil.show()
+
+            # say
+            # TODO generate caption??
+            if not is_target:
+                robot.say("I will have to grasp the {} first".format(object_name))
+            else:
+                robot.say("now I can grasp the {}".format(object_name))
 
             # execute grasping action
-            object_name = CLASSES[classes[grasp_target_idx][0]]
             grasp = grasps[action % num_box][:8]
-            is_target = (action_type == 'GRASP_AND_END')
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 print('grasp failed!!!')
