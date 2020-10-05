@@ -70,7 +70,7 @@ GRASP_DEPTH = 0.005
 
 GRASP_POSE_X_OFFST = 0 # -0.005
 GRASP_POSE_Y_OFFST = 0
-GRASP_POSE_Z_OFFST = -0.015
+GRASP_POSE_Z_OFFST = -0.012
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
@@ -256,9 +256,9 @@ class FetchRobot():
         for x in np.linspace(x_ori - xy, x_ori + xy, xy * 2 / xy_step + 1):
             for y in np.linspace(y_ori - xy, y_ori + xy, xy * 2 / xy_step + 1):
                 for z in np.linspace(z_ori - z, z_ori + z, z * 2 / z_step + 1):
-                    for w in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
-                        if w > 0.01:
-                            grasps.append({"pos": [x, y, z], "quat": grasp_cfg["quat"], "width": w})
+                    for width in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
+                        if width > 0.01:
+                            grasps.append({"pos": [x, y, z], "quat": grasp_cfg["quat"], "width": width})
         return grasps
 
     def _grasp_pose_to_rotmat(self, grasp):
@@ -273,7 +273,6 @@ class FetchRobot():
         return np.mat(matrix)
 
     def _trans_world_points_to_gripper(self, scene_pc, grasp):
-        # TODO: This function should be replaced by the one implemented in some well-known libraries.
         rot_mat = self._grasp_pose_to_rotmat(grasp)
 
         inv_rot_mat = rot_mat.I
@@ -444,7 +443,7 @@ class FetchRobot():
         print("pc shape before downsample: {}".format(len(points_out)))
         open3d_cloud = o3d.geometry.PointCloud()
         open3d_cloud.points = o3d.utility.Vector3dVector(np.array(points_out))
-        downpcd = open3d_cloud.voxel_down_sample(voxel_size=0.001)
+        downpcd = open3d_cloud.voxel_down_sample(voxel_size=0.002)
 
         scene_pc = np.array(downpcd.points)
         print("pc shape after downsample: {}".format(scene_pc.shape))
@@ -460,6 +459,16 @@ class FetchRobot():
             "width": orig_opening
         }
         print("orig_grasp: {} ".format(orig_grasp_dict))
+
+        # further reduce the amount of pc to around the orig grasp
+        x_min, x_max = orig_grasp_dict["pos"][0] - 0.1, orig_grasp_dict["pos"][0] + 0.1
+        y_min, y_max = orig_grasp_dict["pos"][1] - 0.1, orig_grasp_dict["pos"][1] + 0.1
+        valid_indices = []
+        for i in range(scene_pc.shape[0]):
+            if scene_pc[i, 0] >= x_min and scene_pc[i, 0] <= x_max and scene_pc[i, 1] >= y_min and scene_pc[i, 1] <= y_max:
+                valid_indices.append(i)
+        scnene_pc_seg = scene_pc[valid_indices]
+        print("pc shape after further seg: {}".format(scnene_pc_seg.shape))
 
         start_time = time.time()
         new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=VISUALIZE_GRASP)
