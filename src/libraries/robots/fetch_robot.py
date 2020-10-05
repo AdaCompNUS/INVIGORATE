@@ -38,7 +38,7 @@ BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
-VISUALIZE_GRASP = True
+VISUALIZE_GRASP = False
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -66,18 +66,17 @@ else:
     YCROP = (180, 450)
     XCROP = (150, 490)
 FETCH_GRIPPER_LENGTH = 0.2
-GRASP_DEPTH = 0.01
-
-PC_Z_OFFSET = -0.01 # empirically, fetch's pc is 1cm too high
+GRASP_DEPTH = 0.005
 
 GRASP_POSE_X_OFFST = 0 # -0.005
 GRASP_POSE_Y_OFFST = 0
-GRASP_POSE_Z_OFFST = PC_Z_OFFSET
+GRASP_POSE_Z_OFFST = -0.015
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.1
+GRASP_BOX_TO_GRIPPER_OPENING = 0.0006
 
 # def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
 #     # Create a new plot
@@ -242,7 +241,7 @@ class FetchRobot():
         grasps = [grasp_cfg]
         x_ori, y_ori, z_ori = grasp_cfg["pos"]
         width_ori = grasp_cfg["width"]
-        for z in np.arange(z_ori - 0.02, z_ori + 0.02, 0.01):
+        for z in np.arange(z_ori - 0.02, z_ori + 0.02, 0.0025):
             grasps.append({"pos": [x_ori,y_ori, z], "quat": grasp_cfg["quat"], "width": width_ori})
         return grasps
 
@@ -265,8 +264,6 @@ class FetchRobot():
         scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
         scene_pc = (scene_pc * inv_rot_mat.T)[:, :3]
 
-        # HACK!!!
-        scene_pc[:, 0] -= PC_Z_OFFSET # after transformation, need to reverse the magnitude of offset
         return scene_pc
 
     def _check_collison_for_cube(self, points, cube, epsilon=0):
@@ -313,20 +310,6 @@ class FetchRobot():
             r_finger_min[0] -= 0.031
             r_finger_max[0] -= 0.031
 
-            # diff = np.array(g["pos"]) - np.array(base_grasp["pos"])
-            # l_finger_min[0] -= diff[2]
-            # l_finger_min[1] += diff[0]
-            # l_finger_min[2] -= diff[1]
-            # l_finger_max[0] -= diff[2]
-            # l_finger_max[1] += diff[0]
-            # l_finger_max[2] -= diff[1]
-            # r_finger_min[0] -= diff[2]
-            # r_finger_min[1] += diff[0]
-            # r_finger_min[2] -= diff[1]
-            # r_finger_max[0] -= diff[2]
-            # r_finger_max[1] += diff[0]
-            # r_finger_max[2] -= diff[1]
-
             # convex hull
             gripper_min = np.minimum(l_finger_min, r_finger_min)
             gripper_max = np.maximum(l_finger_max, r_finger_max)
@@ -360,6 +343,9 @@ class FetchRobot():
             print("original grasp is good, only adjusting z!")
             grasps = self._sample_grasps_z_only(grasp)
         else:
+            if len(collision_scores) > 0:
+                print("original grasp collision: {}, in_gripper_score: {}".format(collision_scores[0], in_gripper_scores[0]))
+
             print("original grasp is not good, adjusting xyz!")
             grasps = self._sample_grasps(grasp)
 
@@ -392,7 +378,7 @@ class FetchRobot():
         #     selected_ind = 0
         #     selected_grasp = grasps[valid_grasp_inds[selected_ind]]
         # else:
-        selected_ind = np.argmax(in_gripper_scores - 0.5 * collision_scores)
+        selected_ind = np.argmax(in_gripper_scores) # - collision_scores
         selected_grasp = grasps[valid_grasp_inds[selected_ind]]
         print("collision_score: {}, in_gripper_score: {}".format(collision_scores[selected_ind], in_gripper_scores[selected_ind]))
         if vis:
@@ -566,6 +552,7 @@ class FetchRobot():
     def _top_grasp(self, grasp):
         print('grasp_box: {}'.format(grasp))
         grasp = grasp + np.tile([XCROP[0], YCROP[0]], 4)
+        # for grasp box, x1,y1 is topleft, x2,y2 is topright, x3,y3 is btmright, x4,y4 is btmleft
         x1, y1, x2, y2, x3, y3, x4, y4 = grasp.tolist()
         seg_req = BBoxSegmentationRequest()
         seg_req.x = x1
@@ -575,6 +562,9 @@ class FetchRobot():
         seg_req.angle = math.atan2(y2 - y1, x2 - x1)
         seg_req.transform_to_reference_frame = True
         seg_req.reference_frame = 'base_link'
+
+        grasp_box_width = seg_req.width
+        print("grasp box width: {}".format(seg_req.width))
 
         # resp = self._table_segmentor_client(1)  # get existing result
         # seg_req.min_z = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.003
@@ -599,7 +589,7 @@ class FetchRobot():
         grasp = Grasp()
         grasp.grasp_pose.header = seg_resp.object.header
         grasp.grasp_pose.pose = seg_resp.object.primitive_pose
-        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH + GRASP_POSE_Z_OFFST
+        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH
         quat = T.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                               # rotate by z to align with bbox orientation
         grasp.grasp_pose.pose.orientation.x = quat[0]
@@ -616,7 +606,7 @@ class FetchRobot():
         grasp.post_grasp_retreat.desired_distance = RETREAT_DIST
 
         pnp_req.grasp = grasp
-        pnp_req.gripper_opening = min(obj_width, GRIPPER_OPENING_MAX)
+        pnp_req.gripper_opening = grasp_box_width * GRASP_BOX_TO_GRIPPER_OPENING
 
         # TODO test
         grasp_pose_tmp = grasp.grasp_pose
@@ -632,9 +622,9 @@ class FetchRobot():
         grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
         grasp.grasp_pose.pose.position.y = new_grasp["pos"][1]
         grasp.grasp_pose.pose.position.z = new_grasp["pos"][2]
-        # grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
-        # grasp.grasp_pose.pose.position.y += GRASP_POSE_Y_OFFST # HACK!!!
-        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH
+        grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
+        grasp.grasp_pose.pose.position.y += GRASP_POSE_Y_OFFST # HACK!!!
+        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH + GRASP_POSE_Z_OFFST #HACK!!!
 
         pnp_req.grasp = grasp
         pnp_req.gripper_opening = new_grasp["width"]
