@@ -5,6 +5,11 @@
 
 '''
 
+'''
+Leaf and desc prob is stored as a NxN matrix.
+M[]
+'''
+
 import warnings
 
 import rospy
@@ -135,8 +140,9 @@ class Invigorate():
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
         rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
-        print('Step 3: raw grounding completed')
+        print('Step 1: raw grounding completed')
         print('raw target_prob: {}'.format(target_prob))
+        print('raw leaf_desc_prob: {}'.format(leaf_desc_prob))
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
@@ -152,7 +158,7 @@ class Invigorate():
         if target_prob.sum() == 0.0:
             target_prob[-1] = 1.0
         target_prob /= target_prob.sum()
-        print('Step 3.1: class name filter completed')
+        print('Step 2: class name filter completed')
         print('target_prob : {}'.format(target_prob))
 
         # 2. incorporate QA history
@@ -183,7 +189,7 @@ class Invigorate():
         for k, v in ind_match_dict.items():
             self.object_pool[v]["target_prob"] = target_prob[k]
 
-        print('Step 3.2: incorporate QA history completed')
+        print('Step 3: incorporate QA history completed')
         print('target_prob: {}'.format(target_prob))
 
         # 3. incorporate the provided clue by the user
@@ -191,6 +197,9 @@ class Invigorate():
         if self.clue is not None:
             self.belief['leaf_desc_prob'] = leaf_desc_prob
             leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
+        print('Step 4: incorporate clue by user completed')
+        print('leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
@@ -237,6 +246,10 @@ class Invigorate():
                 if len(ans) > 0:
                     leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
 
+        print("estimate_state_with_user_answer completed")
+        print('leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
+
         self.belief["target_prob"] = target_prob
         self.belief["leaf_desc_prob"] = leaf_desc_prob
         self.belief["clue_leaf_desc_prob"] = clue_leaf_desc_prob
@@ -262,6 +275,10 @@ class Invigorate():
         target_prob = self.belief['target_prob']
         leaf_desc_prob = self.belief['leaf_desc_prob']
         clue_desc_prob = self.belief['clue_leaf_desc_prob']
+
+        print("decision_making_heuristic: ")
+        print('leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
 
         action = choose_target(target_prob.copy())
         if action.startswith("Q"):
@@ -694,15 +711,18 @@ class Invigorate():
     def _estimate_state_with_user_clue(self, clue):
         # 3. incorporate the provided clue by the user
         # clue contains the tentative target contained in anwer of user for 'where is '
-
+        print('_estimate_state_with_user_clue')
         leaf_desc_prob = self.belief['leaf_desc_prob']
         img = self.observations['img']
         bboxes = self.observations['bboxes']
         classes = self.observations['classes']
         ind_match_dict = self.observations['ind_match_dict']
         num_box = self.observations['num_box']
+        det_scores = self.observations['det_scores']
 
         t_ground = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), clue)
+        print("t_ground: {}".format(t_ground))
+
         self.clue = clue
         for i, score in enumerate(t_ground):
             obj_ind = ind_match_dict[i]
@@ -710,6 +730,20 @@ class Invigorate():
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
         t_ground = self._cal_target_prob_from_p_cand(pcand)
         t_ground = np.append(t_ground, 1. - t_ground.sum())
+        dbg_print("t_ground: {}".format(t_ground))
+
+        # filter scores belonging to unrelated objects
+        cls_filter = [cls for cls in CLASSES if cls in clue or clue in cls]
+        for i in range(bboxes.shape[0]):
+            box_score = 0
+            for class_str in cls_filter:
+                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+            if box_score < 0.02:
+                t_ground[i] = 0.001
+        t_ground /= t_ground.sum()
+        print('class name filter completed')
+        print('t_ground : {}'.format(t_ground))
+
         cluster_res = KMeans(n_clusters=2).fit_predict(t_ground.reshape(-1, 1))
         mean0 = t_ground[cluster_res == 0].mean()
         mean1 = t_ground[cluster_res == 1].mean()
@@ -722,6 +756,7 @@ class Invigorate():
         else:
             t_ground = np.expand_dims(t_ground, 0)
             clue_leaf_desc_prob = (t_ground[:, :-1] * leaf_desc_prob).sum(-1).squeeze()
+        print('clue_leaf_desc_prob : {}'.format(clue_leaf_desc_prob))
         print('Update leaf_desc_prob with clue completed')
 
         return leaf_desc_prob, clue_leaf_desc_prob

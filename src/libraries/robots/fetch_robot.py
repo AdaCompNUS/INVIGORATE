@@ -41,6 +41,8 @@ USE_REALSENSE = True
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
 IN_GRIPPER_SCORE_THRESOHOLD = 40
 VISUALIZE_GRASP = False
+DUMMY_LISTEN = True
+DUMMY_GRASP = True
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -579,13 +581,14 @@ class FetchRobot():
         return resp.success
 
     def listen(self, timeout=None):
-        # print('Dummy execution of listen')
-        # text = raw_input('Enter: ')
-        print('robot is listening')
-        msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
-        text = msg.data.lower()
-        if text.startswith("pick up"):
-            text = text[7: ] # HACK remove pick up
+        if DUMMY_LISTEN:
+            print('Dummy execution of listen')
+            text = raw_input('Enter: ')
+        else:
+            print('robot is listening')
+            msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
+            text = msg.data.lower()
+
         print('robot heard {}'.format(text))
 
         # say acknowledgement
@@ -595,6 +598,9 @@ class FetchRobot():
         return text
 
     def _top_grasp(self, grasp):
+        if DUMMY_GRASP:
+            return False
+
         print('grasp_box: {}'.format(grasp))
         grasp = grasp + np.tile([XCROP[0], YCROP[0]], 4)
         # for grasp box, x1,y1 is topleft, x2,y2 is topright, x3,y3 is btmright, x4,y4 is btmleft
@@ -617,10 +623,6 @@ class FetchRobot():
         # print('calling bbox segmentation service')
         seg_resp = self._bbox_segmentation_client(seg_req)
         # print(seg_resp.object)
-
-        # to_continue = raw_input('to_continue?')
-        # if to_continue != 'y':
-        #     return False
 
         obj_pose = seg_resp.object.primitive_pose
         obj_length = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_X]

@@ -12,6 +12,7 @@ TODO
     *. greedy algo <resolved>
 *. mattnet can't handle the case where true white box is not detected but false black box is detected.
 *. grasp sequence bug
+*. object persistency
 '''
 
 import sys
@@ -32,6 +33,7 @@ from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 import matplotlib
 matplotlib.use('Agg')
+import nltk
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
@@ -42,7 +44,7 @@ from libraries.robots.dummy_robot import DummyRobot
 # -------- Settings --------
 ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
-DISPLAY_DEBUG_IMG = False
+DISPLAY_DEBUG_IMG = True
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -67,6 +69,32 @@ def init_robot(robot):
 
     return robot
 
+def process_user_command(command, nlp_server="nltk"):
+    if nlp_server == "nltk":
+        text = nltk.word_tokenize(command)
+        pos_tags = nltk.pos_tag(text)
+    else:
+        doc = self.stanford_nlp_server(command)
+        pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+
+    # the object lies after the verb
+    verb_ind = -1
+    for i, (token, postag) in enumerate(pos_tags):
+        if postag.startswith("VB"):
+            verb_ind = i
+
+    particle_ind = -1
+    for i, (token, postag) in enumerate(pos_tags):
+        if postag in {"RP"}:
+            particle_ind = i
+
+    ind = max(verb_ind, particle_ind)
+    clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
+    clue = ' '.join(clue_tokens)
+    print("Processed clue: {:s}".format(clue if clue != '' else "None"))
+
+    return clue
+
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
     invigorate_client = Invigorate()
@@ -75,6 +103,7 @@ def main():
 
     # get user command
     expr = robot.listen()
+    expr = process_user_command(expr)
 
     all_results = []
     exec_type = EXEC_GRASP
@@ -85,6 +114,9 @@ def main():
     dummy_question_answer = None
     to_end = False
     while not to_end:
+        print("------------------------")
+        print("Start of iteration")
+
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
