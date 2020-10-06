@@ -2,17 +2,19 @@
 import warnings
 try:
     NO_ROS = False
-    from rosapi.baxter_api import *
-    from rosapi.calibrate import calibrate_kinect
-    from rosapi.kinect_subscriber import kinect_reader
+    from libraries.ros_utils.baxter_api import *
+    from libraries.ros_utils.calibrate import calibrate_kinect
+    from libraries.ros_utils.kinect_subscriber import kinect_reader
 except:
     NO_ROS = True
     warnings.warn("Baxter interface not available")
 
 import sys
+sys.path.append("..")
 import rospy
-from model.utils.data_viewer import dataViewer, gen_paper_fig # , paperFig
-from integrase import *
+from libraries.data_viewer.data_viewer import DataViewer
+from libraries.data_viewer.paper_fig_generator import gen_paper_fig
+from invigorate.invigorate import Invigorate
 
 import cv2
 from cv_bridge import CvBridge
@@ -26,6 +28,8 @@ import datetime
 
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
+from invigorate.invigorate import Invigorate
+from config.config import CLASSES
 
 YCROP = (250, 650)
 XCROP = (650, 1050)
@@ -89,12 +93,12 @@ def main(s_ing_client):
         warnings.warn("No ros packages are available, demo mode is on.")
         running_mode = "demo"
     expr = raw_input("Please tell me what you want: ")
-    related_classes = [cls for cls in classes if cls in expr or expr in cls]
+    related_classes = [cls for cls in CLASSES if cls in expr or expr in cls]
 
     # outer-loop planning: in each step, grasp the leaf-descendant node.
     while (True):
         img, depth = read_img(running_mode, kinect1)
-        a, is_end = s_ing_client.decision_making_with_planning(img, expr, related_classes)
+        a, is_end = s_ing_client.decision_making_heuristic(img, expr, related_classes)
         # execute grasping action
         execute_action(a)
         # TODO: Determine whether the grasp is successful and then assigh this "removed" flag
@@ -105,6 +109,6 @@ def main(s_ing_client):
     gen_paper_fig(expr, s_ing_client.result_container)
 
 if __name__ == '__main__':
-    s_ing_client = INTEGRASE()
+    s_ing_client = Invigorate()
     main(s_ing_client)
 

@@ -2,13 +2,16 @@
 
 '''
 TODO
-1. bug where only 1 object is detected line 290
-2. question answering for where is it?
-3. grasp random objects when background has high prob?
-5. clue is persistent??
-6. what is this? if (target_prob[:-1] > 0.02).sum() == 1:
-7. where is it mattnet client error
-8. it does not ask questions when there are two same objects
+*. question answering for where is it?
+*. grasp random objects when background has high prob?
+*. User answer confirmed object bug <To test>
+*. Fix collision checking for case 2 -> route to the center of the body
+*. accelerate grasp collision check by
+    *. running on GPU
+    *. Further segment pc <resolved>
+    *. greedy algo <resolved>
+*. mattnet can't handle the case where true white box is not detected but false black box is detected.
+*. grasp sequence bug
 '''
 
 import sys
@@ -27,17 +30,22 @@ import time
 import datetime
 from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
+import matplotlib
+matplotlib.use('Agg')
 
 from config.config import *
-from invigorate.invigorate import Invigorate
 from libraries.data_viewer.data_viewer import DataViewer
+from invigorate.invigorate import Invigorate
 from libraries.caption_generator import caption_generator
-from libraries.robots.fetch_robot import FetchRobot
 from libraries.robots.dummy_robot import DummyRobot
 
 # -------- Settings --------
 ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
+DISPLAY_DEBUG_IMG = False
+
+if ROBOT == 'Fetch':
+    from libraries.robots.fetch_robot import FetchRobot
 
 # -------- Constants --------
 EXEC_GRASP = 0
@@ -61,11 +69,11 @@ def init_robot(robot):
 
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
-
     invigorate_client = Invigorate()
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
 
+    # get user command
     expr = robot.listen()
 
     all_results = []
@@ -83,6 +91,9 @@ def main():
 
             # perception
             observations = invigorate_client.perceive_img(img, expr)
+            if observations is None:
+                print("WARNING: nothing is detected, abort!!!")
+                break
             num_box = observations['bboxes'].shape[0]
 
             # state_estimation
@@ -90,9 +101,14 @@ def main():
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
+
+            # state_estimation
             invigorate_client.estimate_state_with_user_answer(action, answer)
         elif exec_type == EXEC_DUMMY_ASK:
+            # get user answer
             answer = dummy_question_answer
+
+            # state_estimation
             invigorate_client.estimate_state_with_user_answer(action, answer)
         else:
             raise RuntimeError('Invalid exec_type')
@@ -105,7 +121,9 @@ def main():
         rel_score_mat = observations['rel_score_mat']
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
-        data_viewer.display_img(imgs['final_img'])
+        if DISPLAY_DEBUG_IMG:
+            data_viewer.display_img(imgs['final_img'])
+        cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
         action = invigorate_client.decision_making_heuristic() # action_idx.
@@ -122,20 +140,21 @@ def main():
             print("Grasping object " + str(grasp_target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
-            target_idx = action_type - 2 * num_box
+            target_idx = action - 2 * num_box
             if GENERATE_CAPTIONS:
                 # generate caption
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
                 question_str = Q1["type1"].format(caption)
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
+            exec_type = EXEC_ASK
         else: # action type is Q2
             if invigorate_client.clue is not None:
                 # special case.
                 dummy_question_answer = invigorate_client.clue
                 question_str = ''
                 exec_type = EXEC_DUMMY_ASK
-            if target_prob[-1] == 1:
+            elif target_prob[-1] == 1:
                 question_str = Q2["type2"]
                 exec_type = EXEC_ASK
             elif (target_prob[:-1] > 0.02).sum() == 1:
@@ -151,22 +170,40 @@ def main():
                 question_str = Q2["type1"]
                 exec_type = EXEC_ASK
 
+        # exec action
         if exec_type == EXEC_GRASP:
             grasps = observations['grasps']
+            print("grasps.shape {}".format(grasps.shape))
+            object_name = CLASSES[classes[grasp_target_idx][0]]
+            is_target = (action_type == 'GRASP_AND_END')
 
             # display grasp
             im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-            im_pil = Image.fromarray(im)
-            im_pil.show()
+            cv2.imwrite("outputs/grasp.png", im)
+            if DISPLAY_DEBUG_IMG:
+                im_pil = Image.fromarray(im)
+                im_pil.show()
+
+            # say
+            # TODO generate caption??
+            if not is_target:
+                robot.say("I will have to grasp the {} first".format(object_name))
+            else:
+                robot.say("now I can grasp the {}".format(object_name))
 
             # execute grasping action
             grasp = grasps[action % num_box][:8]
-            res = robot.grasp(grasp)
+            res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 print('grasp failed!!!')
-                to_end = True
-            # TODO: Determine whether the grasp is successful and then assign this "removed" flag
+                if not is_target:
+                    robot.say("sorry I can't grasp the {}, could you help me remove it?".format(object_name))
+                else:
+                    robot.say("sorry I can't grasp the {}, but it is for you".format(object_name))
+                rospy.sleep(5)
+            if res and is_target:
+                robot.say("this is for you")
         elif exec_type == EXEC_ASK:
             robot.say(question_str)
 
@@ -185,6 +222,10 @@ def main():
         # to_cont = raw_input('To_continue?')
         # if to_cont != 'y':
         #     break
+
+    print("exit!")
+    rospy.sleep(10) # wait 10 second
+    robot.move_arm_to_home()
 
 if __name__ == '__main__':
     main()

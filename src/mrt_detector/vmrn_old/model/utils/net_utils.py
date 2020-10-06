@@ -5,7 +5,6 @@ from torch.autograd import Variable
 
 import numpy as np
 from model.utils.config import cfg
-from model.roi_crop.functions.roi_crop import RoICropFunction
 
 import cv2
 import pdb
@@ -302,35 +301,6 @@ def _affine_theta(rois, input_size):
 
     return theta
 
-
-def compare_grid_sample():
-    # do gradcheck
-    N = random.randint(1, 8)
-    C = 2  # random.randint(1, 8)
-    H = 5  # random.randint(1, 8)
-    W = 4  # random.randint(1, 8)
-    input = Variable(torch.randn(N, C, H, W).cuda(), requires_grad=True)
-    input_p = input.clone().data.contiguous()
-
-    grid = Variable(torch.randn(N, H, W, 2).cuda(), requires_grad=True)
-    grid_clone = grid.clone().contiguous()
-
-    out_offcial = F.grid_sample(input, grid)
-    grad_outputs = Variable(torch.rand(out_offcial.size()).cuda())
-    grad_outputs_clone = grad_outputs.clone().contiguous()
-    grad_inputs = torch.autograd.grad(out_offcial, (input, grid), grad_outputs.contiguous())
-    grad_input_off = grad_inputs[0]
-
-    crf = RoICropFunction()
-    grid_yx = torch.stack([grid_clone.data[:, :, :, 1], grid_clone.data[:, :, :, 0]], 3).contiguous().cuda()
-    out_stn = crf.forward(input_p, grid_yx)
-    grad_inputs = crf.backward(grad_outputs_clone.data)
-    grad_input_stn = grad_inputs[0]
-    pdb.set_trace()
-
-    delta = (grad_input_off.data - grad_input_stn).sum()
-
-
 def rel_prob_to_mat(rel_cls_prob, num_obj):
     """
     :param rel_cls_prob: N x 3 relationship class score
@@ -366,7 +336,9 @@ def rel_prob_to_mat(rel_cls_prob, num_obj):
                 rel_mat[o1, o2] = 3 - rel_mat[o2, o1]
             else:
                 raise RuntimeError
-            rel_score_mat[:, o1, o2] = rel_score_mat[:, o2, o1]
+            rel_score_mat[:, o1, o2] = [rel_score_mat[:, o2, o1][1],
+                                        rel_score_mat[:, o2, o1][0],
+                                        rel_score_mat[:, o2, o1][2]]
     return rel_mat, rel_score_mat
 
 

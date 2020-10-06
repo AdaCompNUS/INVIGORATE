@@ -18,3 +18,8 @@ logs/
 
 # pickle file
 *.pkl
+.idea/
+
+#vscode
+*.env
+*.code-workspace

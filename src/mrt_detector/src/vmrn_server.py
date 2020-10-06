@@ -9,6 +9,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import os.path as osp
 
+import sys
+sys.path.append("..")
 from vmrn_msgs.srv import VmrDetection, VmrDetectionResponse
 
 import vmrn_old._init_path

@@ -14,6 +14,7 @@ import numpy as np
 import torch  # put this before scipy import
 from scipy.misc import imread, imresize
 import sys
+sys.path.append("..")
 
 from vmrn_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
 

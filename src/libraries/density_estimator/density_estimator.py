@@ -7,6 +7,7 @@ import os.path as osp
 class gaussian_kde(object):
     def __init__(self, data, bandwidth=0.05):
         self.training_data = data
+        self.data_dim = self.training_data.shape[-1]
         self.bandwidth = bandwidth
         self.kde = kde(kernel='gaussian', bandwidth=self.bandwidth).fit(self.training_data)
 
@@ -17,9 +18,19 @@ class gaussian_kde(object):
 
     def comp_prob(self, x):
         if isinstance(x, (float, np.float, np.float32, np.float64)):
+            assert self.data_dim == 1
             x = np.array([[x]])
         elif isinstance(x, (list, np.ndarray)):
-            x = np.expand_dims(np.array(x), axis=-1)
+            x = np.array(x)
+            if self.data_dim == 1:
+                if x.ndim == 1:
+                    x = np.expand_dims(x, axis = -1)
+            else:
+                if x.ndim == 1:
+                    x = np.expand_dims(x, axis = 0)
+            assert x.shape[-1] == self.data_dim and x.ndim == 2
+        else:
+            raise RuntimeError("Unsupported data type. The input should be a float, a list or a numpy array.")
         x = np.exp(self.kde.score_samples(x))
         return x.squeeze()
 
@@ -37,6 +48,22 @@ class object_belief(object):
 
     def reset(self):
         self.belief = np.array([0.5, 0.5])
+
+class relation_belief(object):
+    def __init__(self):
+        self.belief = np.array([0.333, 0.333, 0.334])
+
+    def update(self, score, kde):
+        parent_llh = kde[0].comp_prob(score)
+        child_llh = kde[1].comp_prob(score)
+        norel_llh = kde[2].comp_prob(score)
+        # posterior
+        self.belief *= [parent_llh, child_llh, norel_llh]
+        self.belief /= self.belief.sum()
+        return self.belief
+
+    def reset(self):
+        self.belief = np.array([0.333, 0.333, 0.334])
 
 if __name__=="__main__":
     this_dir = osp.dirname(osp.abspath(__file__))
