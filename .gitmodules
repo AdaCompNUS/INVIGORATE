@@ -7,3 +7,6 @@
 [submodule "src/mattnet_server/MAttNet"]
 	path = src/mattnet_server/MAttNet
 	url = https://github.com/lyf44/MAttNet.git
+[submodule "src/mrt_detector/vmrn_old"]
+	path = src/mrt_detector/vmrn_old
+	url = https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch.git
