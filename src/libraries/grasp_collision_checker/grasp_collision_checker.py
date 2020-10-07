@@ -51,9 +51,10 @@ class GraspCollisionChecker():
 
     def _trans_world_points_to_gripper_batch(self, scene_pc, grasps):
         # transfer point to respective grasp coordinates # TODO vectorize
-        # pc_in_g = np.zeros((len(grasps), len(scene_pc), 3), dtype=np.float) # num_grasps x num_points x 3 arrary
-        # for i in range(grasps.shape[0]):
-        #     pc_in_g[i] = self._trans_world_points_to_gripper(scene_pc, grasps[i]) # num_points x 3
+
+        pc_in_g = np.zeros((len(grasps), len(scene_pc), 3), dtype=np.float) # num_grasps x num_points x 3 arrary
+        for i in range(grasps.shape[0]):
+            pc_in_g[i] = self._trans_world_points_to_gripper(scene_pc, grasps[i]) # num_points x 3
 
         # n_grasp x 4 x 4
         rot_mats = self._get_rot_mats(grasps)
@@ -306,6 +307,7 @@ if __name__=="__main__":
     r1 = R.from_euler("zyx", [0, math.pi / 2, 0])
     r2 = R.from_euler("zyx", [0, math.pi / 3, math.pi / 3])
     grasps = np.array([[0, 0, 0] + r1.as_quat().tolist(), [0.1, 0, 0] + r2.as_quat().tolist()])
+    grasps = np.tile(grasps, (1000, 1))
 
     scene_pc = np.random.rand(10000, 3)
     col_ck = GraspCollisionChecker(None)
