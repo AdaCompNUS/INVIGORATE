@@ -2,8 +2,8 @@
 
 '''
 TODO
+P1:
 *. question answering for where is it?
-*. grasp random objects when background has high prob?
 *. User answer confirmed object bug <To test>
 *. Fix collision checking for case 2 -> route to the center of the body
 *. accelerate grasp collision check by
@@ -13,7 +13,11 @@ TODO
 *. grasp sequence bug <To test>
     *. (by adding name filter in process clue)
     *. still have bug
+*. calibrate realsense every time??
+*. collision checking against other objects.
+*. write logger
 
+P2
 *. The target probability does not persist to the next iteration*
 *. object persistency issue. what if it does not get detected in one iteration. <To test>
 *. name filter

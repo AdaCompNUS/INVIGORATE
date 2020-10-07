@@ -72,15 +72,15 @@ else:
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.01
 
-GRASP_POSE_X_OFFST = -0.028
-GRASP_POSE_Y_OFFST = 0.024
-GRASP_POSE_Z_OFFST = -0.017
+GRASP_POSE_X_OFFST = -0.020
+GRASP_POSE_Y_OFFST = 0.020
+GRASP_POSE_Z_OFFST = -0.01
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.1
-GRASP_BOX_TO_GRIPPER_OPENING = 0.0006
+GRASP_BOX_TO_GRIPPER_OPENING = 0.0005
 
 POSITIVE_RESPONSE_LIST = ["Got it", "Sure", "No Problem", "okay", "certainly", "of course"]
 
@@ -228,213 +228,6 @@ class FetchRobot():
         vis.run()
         vis.destroy_window()
 
-    # def _sample_grasps_xyz(self, grasp_cfg, sampler_cfg={"z_step": 0.005, "xy_step": 0.01, "w_step": 0.01}):
-    #     """
-    #     sample grasp configuration according to the rectangle representation.
-    #     grasp: {"pos":[x,y,z], "quat": [x,y,z,w]}
-    #     """
-    #     def sample_dist(item, step, n_step):
-    #         return [i * step + item for i in range(-n_step/2 + 1, n_step/2 + 1)]
-
-    #     grasps = [grasp_cfg]
-    #     x_ori, y_ori, z_ori = grasp_cfg["pos"]
-    #     width_ori = grasp_cfg["width"]
-    #     width_min = max(0.02, width_ori - 0.02)
-    #     width_max = min(0.09, width_ori + 0.02)
-    #     for x in sample_dist(x_ori, sampler_cfg["xy_step"], 4):
-    #         for y in sample_dist(y_ori, sampler_cfg["xy_step"], 4):
-    #             for z in sample_dist(z_ori, sampler_cfg["z_step"], 10):
-    #                 for w in np.arange(width_min, width_max, sampler_cfg["w_step"]):
-    #                     grasps.append({"pos": [x,y,z], "quat": grasp_cfg["quat"], "width": w})
-    #     return grasps
-
-    # def _sample_grasps_z_only(self, grasp_cfg):
-    #     grasps = [grasp_cfg]
-    #     x_ori, y_ori, z_ori = grasp_cfg["pos"]
-    #     width_ori = grasp_cfg["width"]
-    #     for z in np.arange(z_ori - 0.02, z_ori + 0.02, 0.0025):
-    #         grasps.append({"pos": [x_ori,y_ori, z], "quat": grasp_cfg["quat"], "width": width_ori})
-    #     return grasps
-
-    def _sample_grasps_xyzw(self, grasp_cfg, xy=0, z=0, w=0, xy_step=0.01, z_step=0.0025, w_step=0.01):
-        start_time = time.time()
-
-        grasps = [grasp_cfg]
-        x_ori, y_ori, z_ori = grasp_cfg["pos"]
-        width_ori = grasp_cfg["width"]
-
-        for x in np.linspace(x_ori - xy, x_ori + xy, xy * 2 / xy_step + 1):
-            for y in np.linspace(y_ori - xy, y_ori + xy, xy * 2 / xy_step + 1):
-                for z1 in np.linspace(z_ori - z, z_ori + z, z * 2 / z_step + 1):
-                    for width in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
-                        if width > 0.01:
-                            grasps.append({"pos": [x, y, z1], "quat": grasp_cfg["quat"], "width": width})
-
-        end_time = time.time()
-        print("_sample_grasps_xyzw takes {}".format(end_time - start_time))
-        return grasps
-
-    def _grasp_pose_to_rotmat(self, grasp):
-        x, y, z, w = grasp["quat"]
-
-        r = R.from_quat([x, y, z, w])
-        matrix = r.as_dcm()
-        translation = np.array([grasp["pos"][0], grasp["pos"][1], grasp["pos"][2]]).reshape((3, 1))
-        matrix = np.concatenate([matrix, translation], axis = 1)
-        matrix = np.concatenate([matrix, np.array([0, 0, 0, 1]).reshape((1, 4))], axis = 0)
-
-        return np.mat(matrix)
-
-    def _trans_world_points_to_gripper(self, scene_pc, grasp):
-        rot_mat = self._grasp_pose_to_rotmat(grasp)
-
-        inv_rot_mat = rot_mat.I
-        scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
-        scene_pc = (scene_pc * inv_rot_mat.T)[:, :3]
-
-        return scene_pc
-
-    def _check_collison_for_cube(self, points, cube, epsilon=0):
-        # input: a vertical cube representing a collision model, a point clouds to be checked
-        # epsilon is the maximum tolerable error
-        # output: whether the points collide with the cube
-        assert points.shape[-1] == 3, "point dim should be equal to 3."
-        dif_min = points - cube[0].reshape(3) + epsilon
-        dif_max = cube[1].reshape(3) - points + epsilon
-        return (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum()
-
-    def _check_grasp_collision(self, scene_pc, grasps):
-        """
-        given a 6-d pose of the gripper and the scene point cloud, return whether the grasp is collision-free
-        collision-free grasp satisfies:
-        1. some points in the point cloud are in the gripper range, i.e., the convex hull of the whole gripper
-            will collide with the scene point cloud
-        2. the gripper itself cannot collide with the point cloud.
-        """
-
-        start_time = time.time()
-        # base_grasp = grasps[0]
-        # scene_pc = self._trans_world_points_to_gripper(scene_pc, grasps[0])
-        # scene_pc_max = np.max(scene_pc, axis = 0)
-        # scene_pc_min = np.min(scene_pc, axis = 0)
-        # print("scene_pc_diff: {}".format(scene_pc_max - scene_pc_min)) # sanity check
-
-        valid_grasp_inds = []
-        collision_scores = []
-        in_gripper_scores = []
-
-        for ind, g in enumerate(grasps):
-            gripper_width = g["width"]
-            # for the left finger, the opening along the y-axis is negative
-            l_finger_min = self.gripper_model["left_finger"].min_.copy()
-            l_finger_max = self.gripper_model["left_finger"].max_.copy()
-            l_finger_min[1] -= gripper_width / 2
-            l_finger_max[1] -= gripper_width / 2
-            l_finger_min[0] -= 0.031
-            l_finger_max[0] -= 0.031
-            # for the right finger, the opening along the y-axis is positive
-            r_finger_min = self.gripper_model["right_finger"].min_.copy()
-            r_finger_max = self.gripper_model["right_finger"].max_.copy()
-            r_finger_min[1] += gripper_width / 2
-            r_finger_max[1] += gripper_width / 2
-            r_finger_min[0] -= 0.031
-            r_finger_max[0] -= 0.031
-
-            # convex hull
-            gripper_min = np.minimum(l_finger_min, r_finger_min)
-            gripper_max = np.maximum(l_finger_max, r_finger_max)
-            gripper_min[1] = min(l_finger_max[1], r_finger_max[1])
-            gripper_max[1] = max(l_finger_min[1], r_finger_min[1])
-
-            # offsets w.r.t. base_grasp
-            # xyz_offset = np.expand_dims(np.array(base_grasp["pos"]) - np.array(g["pos"]), axis=0)
-            # pc_in_g = scene_pc + xyz_offset
-            pc_in_g = self._trans_world_points_to_gripper(scene_pc, g)
-
-            p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger_min, l_finger_max), epsilon=0)
-            p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger_min, r_finger_max), epsilon=0)
-            p_num_collided_convex_hull = self._check_collison_for_cube(pc_in_g, (gripper_min, gripper_max), epsilon=-0.01)
-            collision_score = p_num_collided_l_finger + p_num_collided_r_finger
-            in_gripper_score = p_num_collided_convex_hull # - collision_score
-            if in_gripper_score > 0:
-                collision_scores.append(collision_score)
-                in_gripper_scores.append(in_gripper_score)
-                valid_grasp_inds.append(ind)
-
-        end_time = time.time()
-        print("_check_grasp_collision takes {}".format(end_time - start_time))
-        return collision_scores, in_gripper_scores, valid_grasp_inds
-
-    def _select_from_grasps(self, grasps, scene_pc):
-        collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
-        # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
-        # number of points in between the two grippers. 2 is a factor to measure how important collision is.
-        # Also, you can use some other tricks. For example, you can choose the grasp with the maximum number of points
-        # in between two grippers only from the collision free grasps (collision score = 0). However, in clutter, there
-        # may be no completely collision-free grasps. Also, the noisy can make this method invalid.
-        collision_scores = np.array(collision_scores)
-        in_gripper_scores = np.array(in_gripper_scores)
-        valid_grasp_inds = np.array(valid_grasp_inds)
-
-        if len(collision_scores) == 0:
-            print("ERROR: no collision free grasp detected!!")
-            return None
-
-        # hard threshold
-        min_collision_score = np.min(collision_scores)
-        print("min_collision_score: {}".format(min_collision_score))
-        valid_grasp_mask = (collision_scores <= ABSOLUTE_COLLISION_SCORE_THRESHOLD) * (in_gripper_scores >= IN_GRIPPER_SCORE_THRESOHOLD)
-        valid_grasp_inds = valid_grasp_inds[valid_grasp_mask]
-        collision_scores = collision_scores[valid_grasp_mask]
-        in_gripper_scores = in_gripper_scores[valid_grasp_mask]
-
-        if len(in_gripper_scores) <= 0:
-            return None
-
-        selected_ind = np.argmax(in_gripper_scores) # - collision_scores
-        selected_grasp = grasps[valid_grasp_inds[selected_ind]]
-        print("collision_score: {}, in_gripper_score: {}".format(collision_scores[selected_ind], in_gripper_scores[selected_ind]))
-
-        return selected_grasp
-
-    def _get_collision_free_grasp_cfg(self, grasp, scene_pc, vis=False):
-        if vis:
-            self._vis_grasp(scene_pc, grasp)
-
-        collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, [grasp])
-        if len(collision_scores) <= 0:
-            print("original grasp has not pc in between gripper!")
-        else:
-            print("original grasp collision: {}, in_gripper_score: {}".format(collision_scores[0], in_gripper_scores[0]))
-
-        # Step1 fine tune z first
-        print("Adjusting z!")
-
-        grasps = self._sample_grasps_xyzw(grasp, z=0.03)
-        selected_grasp = self._select_from_grasps(grasps, scene_pc)
-        if selected_grasp is None:
-            print("Adjusting z failed to produce good grasp, proceed")
-
-        # step 2 fine tune width
-        if selected_grasp is None:
-            print("Adjusting z and w!")
-            grasps = self._sample_grasps_xyzw(grasp, w=0.02, z=0.03)
-            selected_grasp = self._select_from_grasps(grasps, scene_pc)
-            if selected_grasp is None:
-                print("Adjusting zw failed to produce good grasp, proceed")
-
-        # step 3 fine tune xyzw
-        # if selected_grasp is None:
-        #     print("Adjusting xyzw!")
-        #     grasps = self._sample_grasps_xyzw(grasp, xy=0.02, z=0.02, w=0.02)
-        #     selected_grasp = self._select_from_grasps(grasps, scene_pc)
-        #     if selected_grasp is None:
-        #         print("Adjusting xyzw failed to produce good grasp, proceed")
-
-        if vis:
-            self._vis_grasp(scene_pc, selected_grasp)
-        return selected_grasp
-
     def _get_scene_pc(self):
         start_time = time.time()
         resp = self._fetch_pc_client()
@@ -450,6 +243,7 @@ class FetchRobot():
             rospy.logerr(e)
             return None
 
+        start_time = time.time()
         # build uv array for segmentation
         uvs = []
         for x in range(XCROP[0], XCROP[1]):
@@ -457,10 +251,18 @@ class FetchRobot():
                 uvs.append([x, y])
 
         points = pcl2.read_points(raw_pc, skip_nans=True, field_names=('x', 'y', 'z'), uvs=uvs)
-        points_out = []
-        for p in points:
-            points_out.append(np.dot(transform_mat44, np.array([p[0], p[1], p[2], 1.0]))[:3])
+        end_time = time.time()
+        print("read pc takes {}s".format(end_time - start_time))
 
+        start_time = time.time()
+        points_out = np.array([[p[0], p[1], p[2], 1.0] for p in points]) # num_points x 4 # NOTE: this is slow!!!
+        end_time = time.time()
+        print("pc transform to base_link takes {}s".format(end_time - start_time))
+        points_out = np.dot(points_out, transform_mat44.T)[:, :3] # num_points x 3
+        end_time = time.time()
+        print("pc transform to base_link takes {}s".format(end_time - start_time))
+
+        start_time = time.time()
         print("pc shape before downsample: {}".format(len(points_out)))
         open3d_cloud = o3d.geometry.PointCloud()
         open3d_cloud.points = o3d.utility.Vector3dVector(np.array(points_out))
@@ -468,36 +270,15 @@ class FetchRobot():
 
         scene_pc = np.array(downpcd.points)
         print("pc shape after downsample: {}".format(scene_pc.shape))
+
+        end_time = time.time()
+        print("seg and downsample pc takes {}s".format(end_time - start_time))
         return scene_pc
 
     def _get_collision_free_grasp(self, orig_grasp, orig_opening):
         print("checking grasp collision!!!")
         scene_pc = self._get_scene_pc()
         return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc) # TODO test
-
-        orig_grasp_dict = {
-            "pos": [orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z],
-            "quat": [orig_grasp.pose.orientation.x, orig_grasp.pose.orientation.y, orig_grasp.pose.orientation.z, orig_grasp.pose.orientation.w],
-            "width": orig_opening
-        }
-        print("orig_grasp: {} ".format(orig_grasp_dict))
-
-        # further reduce the amount of pc to around the orig grasp
-        x_min, x_max = orig_grasp_dict["pos"][0] - 0.1, orig_grasp_dict["pos"][0] + 0.1
-        y_min, y_max = orig_grasp_dict["pos"][1] - 0.1, orig_grasp_dict["pos"][1] + 0.1
-        valid_indices = []
-        for i in range(scene_pc.shape[0]):
-            if scene_pc[i, 0] >= x_min and scene_pc[i, 0] <= x_max and scene_pc[i, 1] >= y_min and scene_pc[i, 1] <= y_max:
-                valid_indices.append(i)
-        scene_pc_seg = scene_pc[valid_indices]
-        print("pc shape after further seg: {}".format(scene_pc_seg.shape))
-
-        start_time = time.time()
-        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc_seg, vis=VISUALIZE_GRASP)
-        end_time = time.time()
-        print("check grasp collision completed, takes {}".format(end_time - start_time))
-        print("new_grasp: {}".format(new_grasp))
-        return new_grasp
 
     def read_imgs(self):
         # resp = self._fetch_image_client()

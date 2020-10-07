@@ -38,7 +38,7 @@ except:
     warnings.warn("No NLP models are loaded.")
 
 # -------- Settings ---------
-DEBUG = True
+DEBUG = False
 
 # -------- Constants ---------
 MAX_Q2_NUM = 1 # the robot can at most ask MAX_Q2_NUM Q2s.
@@ -216,7 +216,7 @@ class Invigorate():
         clue_leaf_desc_prob = None
         # Q1
         if self.get_action_type(action, num_box) == 'Q1':
-            dbg_print("Invigorate: handling answer for Q1")
+            print("Invigorate: handling answer for Q1")
             target_idx = action - 2 * num_box
             if ans in {"yes", "yeah", "yep", "sure"}:
                 # set non-target
@@ -232,7 +232,7 @@ class Invigorate():
                 self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
         # Q2
         elif self.get_action_type(action, num_box) == 'Q2':
-            dbg_print("Invigorate: handling answer for Q2")
+            print("Invigorate: handling answer for Q2")
 
             target_idx = np.argmax(target_prob[:-1])
             if ans in {"yes", "yeah", "yep", "sure"}:
@@ -734,7 +734,7 @@ class Invigorate():
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
         t_ground = self._cal_target_prob_from_p_cand(pcand)
         t_ground = np.append(t_ground, 1. - t_ground.sum())
-        dbg_print("t_ground: {}".format(t_ground))
+        print("t_ground: {}".format(t_ground))
 
         # filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in clue or clue in cls]
