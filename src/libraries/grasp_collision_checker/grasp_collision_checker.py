@@ -16,14 +16,14 @@ class GraspCollisionChecker():
         start_time = time.time()
 
         x_ori, y_ori, z_ori, width_ori = grasp_cfg[0], grasp_cfg[1], grasp_cfg[2], grasp_cfg[7]
-        grasps = [grasp_cfg.tolist()]
+        grasps = [grasp_cfg]
 
         for x in np.linspace(x_ori - xy, x_ori + xy, xy * 2 / xy_step + 1):
             for y in np.linspace(y_ori - xy, y_ori + xy, xy * 2 / xy_step + 1):
                 for z1 in np.linspace(z_ori - z, z_ori + z, z * 2 / z_step + 1):
                     for width in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
                         if width > 0.01:
-                            grasps.append([x, y, z1, width])
+                            grasps.append(np.array([x, y, z1, grasp_cfg[3], grasp_cfg[4], grasp_cfg[5], grasp_cfg[6], width]))
 
         end_time = time.time()
         print("_sample_grasps_xyzw takes {}".format(end_time - start_time))
@@ -88,8 +88,9 @@ class GraspCollisionChecker():
         @parma cube, tuple, [[num_grasps, 3], [num_grasps, 3]]
         """
 
-        dif_min = points - cube[0].reshape(3) + epsilon # [num_grasps, num_points, 3]
-        dif_max = cube[1].reshape(3) - points + epsilon # [num_grasps, num_points, 3]
+        num_grasps = points.shape[0]
+        dif_min = points - cube[0].reshape(num_grasps, 1, 3) + epsilon # [num_grasps, num_points, 3]
+        dif_max = cube[1].reshape(num_grasps, 1, 3) - points + epsilon # [num_grasps, num_points, 3]
 
         collisions = (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum(axis=1) # [num_grasps, 1]
         return collisions
@@ -111,20 +112,29 @@ class GraspCollisionChecker():
         num_grasps = grasps.shape[0]
         num_points = scene_pc.shape[0]
 
-        l_finger_min_orig = self._gripper_model["left_finger"].min_.copy()
-        l_finger_max_orig = self._gripper_model["left_finger"].max_.copy()
-        r_finger_min_orig = self._gripper_model["right_finger"].min_.copy()
-        r_finger_max_orig = self._gripper_model["right_finger"].max_.copy()
+        l_finger_min_orig = self._gripper_model["left_finger"].min_.copy() # [3]
+        l_finger_max_orig = self._gripper_model["left_finger"].max_.copy() # [3]
+        r_finger_min_orig = self._gripper_model["right_finger"].min_.copy() # [3]
+        r_finger_max_orig = self._gripper_model["right_finger"].max_.copy() # [3]
 
-        l_finger_min = np.zeros((num_grasps, 3), dtype=np.float)
-        l_finger_min = (grasps[:, -1] / 2 + l_finger_min_orig - 0.031).reshape(num_grasps, 3) # num_grasps x 3
-        l_finger_max = (grasps[:, -1] / 2 + l_finger_max_orig - 0.031).reshape(num_grasps, 3) # num_grasps x 3
-        r_finger_min = (grasps[:, -1] / 2 + r_finger_min_orig - 0.031).reshape(num_grasps, 3) # num_grasps x 3
-        r_finger_max = (grasps[:, -1] / 2 + r_finger_max_orig - 0.031).reshape(num_grasps, 3) # num_grasps x 3
+        l_finger_min = np.tile(l_finger_min_orig, (num_grasps, 1)) # num_grasps x 3
+        l_finger_max = np.tile(l_finger_max_orig, (num_grasps, 1)) # num_grasps x 3
+        r_finger_min = np.tile(r_finger_min_orig, (num_grasps, 1)) # num_grasps x 3
+        r_finger_max = np.tile(r_finger_max_orig, (num_grasps, 1)) # num_grasps x 3
+
+        l_finger_min[:, 1] -= grasps[:, -1] / 2
+        l_finger_min[:, 0] -= 0.031
+        l_finger_max[:, 1] -= grasps[:, -1] / 2
+        l_finger_max[:, 0] -= 0.031
+        r_finger_min[:, 1] += grasps[:, -1] / 2
+        r_finger_min[:, 0] -= 0.031
+        r_finger_max[:, 1] += grasps[:, -1] / 2
+        r_finger_max[:, 0] -= 0.031
+
         gripper_min = np.minimum(l_finger_min, r_finger_min) # num_grasps x 3
         gripper_max = np.maximum(l_finger_max, r_finger_max) # num_grasps x 3
-        gripper_min[:, 1] = min(l_finger_max[:, 1], r_finger_max[:, 1])
-        gripper_max[:, 1] = max(l_finger_min[:, 1], r_finger_min[:, 1])
+        gripper_min[:, 1] = np.minimum(l_finger_max[:, 1], r_finger_max[:, 1])
+        gripper_max[:, 1] = np.maximum(l_finger_min[:, 1], r_finger_min[:, 1])
 
         # transfer point to respective grasp coordinates # TODO vectorize
         # pc_in_g = np.zeros((num_grasps, num_points, 3), dtype=np.float) # num_grasps x num_points x 3 arrary
@@ -199,6 +209,7 @@ class GraspCollisionChecker():
         return collision_scores, in_gripper_scores, valid_grasp_inds
 
     def _select_from_grasps(self, grasps, scene_pc):
+        print("_select_from_grasps: num_of_grasps: {}".format(grasps.shape[0]))
         collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
 
         # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
