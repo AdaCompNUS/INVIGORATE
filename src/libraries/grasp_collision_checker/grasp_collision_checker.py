@@ -2,6 +2,7 @@ import open3d as o3d
 import numpy as np
 import time
 from scipy.spatial.transform import Rotation as R
+import math
 
 # ------------- Settings -------------
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
@@ -47,6 +48,26 @@ class GraspCollisionChecker():
         scene_pc = (scene_pc * inv_rot_mat.T)[:, :3]
 
         return scene_pc
+
+    def _trans_world_points_to_gripper_batch(self, scene_pc, grasps):
+        # transfer point to respective grasp coordinates # TODO vectorize
+        # pc_in_g = np.zeros((len(grasps), len(scene_pc), 3), dtype=np.float) # num_grasps x num_points x 3 arrary
+        # for i in range(grasps.shape[0]):
+        #     pc_in_g[i] = self._trans_world_points_to_gripper(scene_pc, grasps[i]) # num_points x 3
+
+        # n_grasp x 4 x 4
+        rot_mats = self._get_rot_mats(grasps)
+        # N x 4
+        scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
+        # n_grasp x 4 x 4 -> 4 x 4 x n_grasp -> 4 x 4*n_grasp
+        rot_mats = np.transpose(rot_mats, (1, 2, 0)).reshape(4, -1)
+        # N x 4*n_grasp
+        scene_pc = np.dot(scene_pc, rot_mats)
+        # N x 4 x n_grasp
+        scene_pc = scene_pc.reshape(scene_pc.shape[0], 4, -1)
+        # n_grasp x N x 3
+        pc_in_g = np.transpose(scene_pc, (2, 0, 1))[:, :, :3]
+        return pc_in_g
 
     def _get_rot_mats(self, grasps):
         rot_mats = [self._grasp_pose_to_rotmat(g).I.T for g in grasps]
@@ -280,3 +301,12 @@ class GraspCollisionChecker():
             new_grasp_dict = None
         print("new_grasp: {}".format(new_grasp_dict))
         return new_grasp_dict
+
+if __name__=="__main__":
+    r1 = R.from_euler("zyx", [0, math.pi / 2, 0])
+    r2 = R.from_euler("zyx", [0, math.pi / 3, math.pi / 3])
+    grasps = np.array([[0, 0, 0] + r1.as_quat().tolist(), [0.1, 0, 0] + r2.as_quat().tolist()])
+
+    scene_pc = np.random.rand(10000, 3)
+    col_ck = GraspCollisionChecker(None)
+    col_ck._trans_world_points_to_gripper_batch(scene_pc, grasps)
