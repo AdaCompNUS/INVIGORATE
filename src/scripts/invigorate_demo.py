@@ -10,18 +10,19 @@ TODO
     *. running on GPU
     *. Further segment pc <resolved>
     *. greedy algo <resolved>
-*. MATTnet groudning score:
-    *. mattnet can't handle the case where true white box is not detected but false black box is detected.
-    *. only one object in scene. Mattnet always not sure.
 *. grasp sequence bug <To test>
     *. (by adding name filter in process clue)
     *. still have bug
-*. object persistency issue. what if it does not get detected in one iteration.
+
 *. The target probability does not persist to the next iteration*
+*. object persistency issue. what if it does not get detected in one iteration. <To test>
 *. name filter
     *. soft?
     *. can't filter out if det_score is high
     *. name filter before mattnet grounding
+*. MATTnet groudning score:
+    *. mattnet can't handle the case where true white box is not detected but false black box is detected.
+    *. only one object in scene. Mattnet always not sure.
 '''
 
 import sys

@@ -138,6 +138,7 @@ class Invigorate():
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        dbg_print("grounding_scores: {}".format(rel_score_mat))
         dbg_print("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
