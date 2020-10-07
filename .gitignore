@@ -25,3 +25,7 @@ logs/
 *.code-workspace
 
 *.zip
+
+src/.DS_Store
+
+.DS_Store

@@ -48,6 +48,10 @@ class GraspCollisionChecker():
 
         return scene_pc
 
+    def _get_rot_mats(self, grasps):
+        rot_mats = [self._grasp_pose_to_rotmat(g).I.T for g in grasps]
+        return np.array(rot_mats)
+
     def _check_collison_for_cube(self, points, cube, epsilon=0):
         # input: a vertical cube representing a collision model, a point clouds to be checked
         # epsilon is the maximum tolerable error
@@ -62,9 +66,8 @@ class GraspCollisionChecker():
         @parma cube, tuple, [[num_grasps, 3], [num_grasps, 3]]
         """
 
-        num_grasps = points.shape[0]
-        dif_min = points - cube[0].reshape(num_grasps, 1, 3) + epsilon # [num_grasps, num_points, 3]
-        dif_max = cube[1].reshape(num_grasps, 1, 3) - points + epsilon # [num_grasps, num_points, 3]
+        dif_min = points - cube[0].reshape(3) + epsilon # [num_grasps, num_points, 3]
+        dif_max = cube[1].reshape(3) - points + epsilon # [num_grasps, num_points, 3]
 
         collisions = (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum(axis=1) # [num_grasps, 1]
         return collisions
@@ -102,9 +105,22 @@ class GraspCollisionChecker():
         gripper_max[:, 1] = max(l_finger_min[:, 1], r_finger_min[:, 1])
 
         # transfer point to respective grasp coordinates # TODO vectorize
-        pc_in_g = np.zeros((num_grasps, num_points, 3), dtype=np.float) # num_grasps x num_points x 3 arrary
-        for i in range(grasps.shape[0]):
-            pc_in_g[i] = self._trans_world_points_to_gripper(scene_pc, grasps[i]) # num_points x 3
+        # pc_in_g = np.zeros((num_grasps, num_points, 3), dtype=np.float) # num_grasps x num_points x 3 arrary
+        # for i in range(grasps.shape[0]):
+        #     pc_in_g[i] = self._trans_world_points_to_gripper(scene_pc, grasps[i]) # num_points x 3
+
+        # n_grasp x 4 x 4
+        rot_mats = self._get_rot_mats(grasps)
+        # N x 4
+        scene_pc = np.concatenate([scene_pc, np.ones((scene_pc.shape[0], 1))], axis=1)
+        # n_grasp x 4 x 4 -> 4 x 4 x n_grasp -> 4 x 4*n_grasp
+        rot_mats = np.transpose(rot_mats, (1, 2, 0)).reshape(4, -1)
+        # N x 4*n_grasp
+        scene_pc = np.dot(scene_pc, rot_mats)
+        # N x 4 x n_grasp
+        scene_pc = scene_pc.reshape(scene_pc.shape[0], 4, -1)
+        # n_grasp x N x 3
+        pc_in_g = np.transpose(scene_pc, (2, 0, 1))[:, :, :3]
 
         # check collision
         p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max), epsilon=0) # [num_grasps, 1]
