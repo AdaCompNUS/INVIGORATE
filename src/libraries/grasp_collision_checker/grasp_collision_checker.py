@@ -136,11 +136,7 @@ class GraspCollisionChecker():
         gripper_min[:, 1] = np.minimum(l_finger_max[:, 1], r_finger_max[:, 1])
         gripper_max[:, 1] = np.maximum(l_finger_min[:, 1], r_finger_min[:, 1])
 
-        # transfer point to respective grasp coordinates # TODO vectorize
-        # pc_in_g = np.zeros((num_grasps, num_points, 3), dtype=np.float) # num_grasps x num_points x 3 arrary
-        # for i in range(grasps.shape[0]):
-        #     pc_in_g[i] = self._trans_world_points_to_gripper(scene_pc, grasps[i]) # num_points x 3
-
+        # transfer point to respective grasp coordinates
         # n_grasp x 4 x 4
         rot_mats = self._get_rot_mats(grasps)
         # N x 4
@@ -166,50 +162,12 @@ class GraspCollisionChecker():
         in_gripper_scores = in_gripper_scores[valid_mask]
         valid_grasp_inds = np.flatnonzero(valid_mask)
 
-        # for ind, g in enumerate(grasps):
-        #     gripper_width = g["width"]
-        #     # for the left finger, the opening along the y-axis is negative
-        #     l_finger_min = self.gripper_model["left_finger"].min_.copy()
-        #     l_finger_max = self.gripper_model["left_finger"].max_.copy()
-        #     l_finger_min[1] -= gripper_width / 2
-        #     l_finger_max[1] -= gripper_width / 2
-        #     l_finger_min[0] -= 0.031
-        #     l_finger_max[0] -= 0.031
-        #     # for the right finger, the opening along the y-axis is positive
-        #     r_finger_min = self.gripper_model["right_finger"].min_.copy()
-        #     r_finger_max = self.gripper_model["right_finger"].max_.copy()
-        #     r_finger_min[1] += gripper_width / 2
-        #     r_finger_max[1] += gripper_width / 2
-        #     r_finger_min[0] -= 0.031
-        #     r_finger_max[0] -= 0.031
-
-        #     # convex hull
-        #     gripper_min = np.minimum(l_finger_min, r_finger_min)
-        #     gripper_max = np.maximum(l_finger_max, r_finger_max)
-        #     gripper_min[1] = min(l_finger_max[1], r_finger_max[1])
-        #     gripper_max[1] = max(l_finger_min[1], r_finger_min[1])
-
-        #     # offsets w.r.t. base_grasp
-        #     # xyz_offset = np.expand_dims(np.array(base_grasp["pos"]) - np.array(g["pos"]), axis=0)
-        #     # pc_in_g = scene_pc + xyz_offset
-        #     pc_in_g = self._trans_world_points_to_gripper(scene_pc, g)
-
-        #     p_num_collided_l_finger = self._check_collison_for_cube(pc_in_g, (l_finger_min, l_finger_max), epsilon=0)
-        #     p_num_collided_r_finger = self._check_collison_for_cube(pc_in_g, (r_finger_min, r_finger_max), epsilon=0)
-        #     p_num_collided_convex_hull = self._check_collison_for_cube(pc_in_g, (gripper_min, gripper_max), epsilon=-0.01)
-        #     collision_score = p_num_collided_l_finger + p_num_collided_r_finger
-        #     in_gripper_score = p_num_collided_convex_hull # - collision_score
-        #     if in_gripper_score > 0:
-        #         collision_scores.append(collision_score)
-        #         in_gripper_scores.append(in_gripper_score)
-        #         valid_grasp_inds.append(ind)
-
         end_time = time.time()
         print("_check_grasp_collision takes {}".format(end_time - start_time))
         return collision_scores, in_gripper_scores, valid_grasp_inds
 
     def _select_from_grasps(self, grasps, scene_pc):
-        print("_select_from_grasps: num_of_grasps: {}".format(grasps.shape[0]))
+        print("_select_from_grasps: num_of_grasps: {}, num_of_points: {}".format(grasps.shape[0], scene_pc.shape[0]))
         collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
 
         # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
@@ -285,7 +243,8 @@ class GraspCollisionChecker():
         }
         print("orig_grasp: {} ".format(orig_grasp_dict))
 
-        # further reduce the amount of pc to around the orig grasp
+        start_time = time.time()
+        # further reduce the amount of pc to around the orig grasp # TODO vectorize
         x_min, x_max = orig_grasp_dict["pos"][0] - 0.1, orig_grasp_dict["pos"][0] + 0.1
         y_min, y_max = orig_grasp_dict["pos"][1] - 0.1, orig_grasp_dict["pos"][1] + 0.1
         valid_indices = []
@@ -293,6 +252,8 @@ class GraspCollisionChecker():
             if scene_pc[i, 0] >= x_min and scene_pc[i, 0] <= x_max and scene_pc[i, 1] >= y_min and scene_pc[i, 1] <= y_max:
                 valid_indices.append(i)
         scene_pc_seg = scene_pc[valid_indices]
+        end_time = time.time()
+        print("segment pc takes {}s".format(end_time - start_time))
         print("pc shape after further seg: {}".format(scene_pc_seg.shape))
 
         orig_grasp_array = np.array([orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z,
@@ -307,7 +268,7 @@ class GraspCollisionChecker():
             new_grasp_dict = {
                 "pos": [new_grasp[0], new_grasp[1], new_grasp[2]],
                 "quat": orig_grasp_dict["quat"],
-                "width": new_grasp[3]
+                "width": new_grasp[-1]
             }
         else:
             new_grasp_dict = None
