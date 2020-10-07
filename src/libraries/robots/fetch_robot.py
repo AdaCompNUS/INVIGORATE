@@ -298,8 +298,9 @@ class FetchRobot():
         # input: a vertical cube representing a collision model, a point clouds to be checked
         # epsilon is the maximum tolerable error
         # output: whether the points collide with the cube
-        dif_min = points - cube[0].reshape(1, 3) + epsilon
-        dif_max = cube[1].reshape(1, 3) - points + epsilon
+        assert points.shape[-1] == 3, "point dim should be equal to 3."
+        dif_min = points - cube[0].reshape(3) + epsilon
+        dif_max = cube[1].reshape(3) - points + epsilon
         return (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum()
 
     def _check_grasp_collision(self, scene_pc, grasps):

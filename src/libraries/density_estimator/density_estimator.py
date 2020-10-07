@@ -60,6 +60,17 @@ class relation_belief(object):
         # posterior
         self.belief *= [parent_llh, child_llh, norel_llh]
         self.belief /= self.belief.sum()
+
+        # clip the prob to make sure that the probability is reasonable
+        if self.belief.min() < 0.1:
+            _indicator = (self.belief < 0.1)
+            res_sum = (self.belief * (1 - _indicator)).sum()
+
+            for i, _ in enumerate(_indicator):
+                if self.belief[i] < 0.1:
+                    self.belief[i] = 0.1
+                else:
+                    self.belief[i] = self.belief[i] / res_sum * (1 - 0.1 * _indicator.sum())
         return self.belief
 
     def reset(self):
