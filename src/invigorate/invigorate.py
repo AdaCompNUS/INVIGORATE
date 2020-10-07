@@ -138,11 +138,12 @@ class Invigorate():
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        dbg_print("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
         print('Step 1: raw grounding completed')
         print('raw target_prob: {}'.format(target_prob))
-        print('raw leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
@@ -198,7 +199,7 @@ class Invigorate():
             self.belief['leaf_desc_prob'] = leaf_desc_prob
             leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
         print('Step 4: incorporate clue by user completed')
-        print('leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         print('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
@@ -247,7 +248,7 @@ class Invigorate():
                     leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
 
         print("estimate_state_with_user_answer completed")
-        print('leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         print('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
 
         self.belief["target_prob"] = target_prob
@@ -277,7 +278,7 @@ class Invigorate():
         clue_desc_prob = self.belief['clue_leaf_desc_prob']
 
         print("decision_making_heuristic: ")
-        print('leaf_desc_prob: {}'.format(leaf_desc_prob))
+        print('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         print('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
 
         action = choose_target(target_prob.copy())
@@ -393,6 +394,8 @@ class Invigorate():
         class_scores = np.array(obj_result[3]).reshape(num_box, -1)
         bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
 
+        class_names = [CLASSES[i[0]] for i in classes]
+        print('_object_detection classes: {}'.format(class_names))
         return bboxes, classes, class_scores
 
     def _bbox_post_process(self, bboxes, scores, rel_scores):

@@ -64,7 +64,7 @@ ORIG_IMAGE_SIZE = (480, 640)
 if USE_REALSENSE:
     # YCROP = (180, 450)
     # XCROP = (200, 500)
-    YCROP = (500, 1000)
+    YCROP = (470, 1000)
     XCROP = (700, 1460)
 else:
     YCROP = (180, 450)
