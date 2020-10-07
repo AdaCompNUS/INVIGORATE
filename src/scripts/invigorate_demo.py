@@ -84,7 +84,7 @@ def process_user_command(command, nlp_server="nltk"):
         text = nltk.word_tokenize(command)
         pos_tags = nltk.pos_tag(text)
     else:
-        doc = self.stanford_nlp_server(command)
+        doc = stanford_nlp_server(command)
         pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
 
     # the object lies after the verb

@@ -31,7 +31,7 @@ import fetch_api
 from config.config import CLASSES, ROOT_DIR
 from libraries.data_viewer.data_viewer import DataViewer
 import libraries.utils.o3d_ros_pc_converter as pc_converter
-
+from libraries.grasp_collision_checker.grasp_collision_checker import GraspCollisionChecker
 
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
@@ -42,7 +42,7 @@ ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
 IN_GRIPPER_SCORE_THRESOHOLD = 40
 VISUALIZE_GRASP = False
 DUMMY_LISTEN = True
-DUMMY_GRASP = True
+DUMMY_GRASP = False
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -165,6 +165,8 @@ class FetchRobot():
         if not resp.success:
             raise RuntimeError('fetch failed to move arm to home!!!')
         self.gripper_model = self._init_gripper_model()
+
+        self._grasp_collision_checker = GraspCollisionChecker(self.gripper_model)
 
     def _init_gripper_model(self):
         """
@@ -470,6 +472,7 @@ class FetchRobot():
     def _get_collision_free_grasp(self, orig_grasp, orig_opening):
         print("checking grasp collision!!!")
         scene_pc = self._get_scene_pc()
+        return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc) # TODO test
 
         orig_grasp_dict = {
             "pos": [orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z],
@@ -485,11 +488,11 @@ class FetchRobot():
         for i in range(scene_pc.shape[0]):
             if scene_pc[i, 0] >= x_min and scene_pc[i, 0] <= x_max and scene_pc[i, 1] >= y_min and scene_pc[i, 1] <= y_max:
                 valid_indices.append(i)
-        scnene_pc_seg = scene_pc[valid_indices]
-        print("pc shape after further seg: {}".format(scnene_pc_seg.shape))
+        scene_pc_seg = scene_pc[valid_indices]
+        print("pc shape after further seg: {}".format(scene_pc_seg.shape))
 
         start_time = time.time()
-        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc, vis=VISUALIZE_GRASP)
+        new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_dict, scene_pc_seg, vis=VISUALIZE_GRASP)
         end_time = time.time()
         print("check grasp collision completed, takes {}".format(end_time - start_time))
         print("new_grasp: {}".format(new_grasp))
