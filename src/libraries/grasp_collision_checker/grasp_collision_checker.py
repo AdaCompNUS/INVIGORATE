@@ -15,7 +15,7 @@ class GraspCollisionChecker():
         start_time = time.time()
 
         x_ori, y_ori, z_ori, width_ori = grasp_cfg[0], grasp_cfg[1], grasp_cfg[2], grasp_cfg[7]
-        grasps = [grasp_cfg]
+        grasps = [grasp_cfg.tolist()]
 
         for x in np.linspace(x_ori - xy, x_ori + xy, xy * 2 / xy_step + 1):
             for y in np.linspace(y_ori - xy, y_ori + xy, xy * 2 / xy_step + 1):
