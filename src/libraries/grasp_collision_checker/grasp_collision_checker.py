@@ -4,14 +4,12 @@ import time
 from scipy.spatial.transform import Rotation as R
 import math
 import torch
-
-
 import stl
 import os.path as osp
 import sys
-this_dir = osp.dirname(osp.abspath(__file__))
-sys.path.insert(0, osp.join(this_dir, '../../'))
+
 from config.config import CLASSES, ROOT_DIR
+from libraries.utils.log import logger
 
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
@@ -82,7 +80,7 @@ class GraspCollisionChecker():
                             grasps.append(np.array([x, y, z1, grasp_cfg[3], grasp_cfg[4], grasp_cfg[5], grasp_cfg[6], width]))
 
         end_time = time.time()
-        print("_sample_grasps_xyzw takes {}".format(end_time - start_time))
+        logger.debug("_sample_grasps_xyzw takes {}".format(end_time - start_time))
         return np.array(grasps)
 
     def _grasp_pose_to_rotmat(self, grasp):
@@ -216,9 +214,12 @@ class GraspCollisionChecker():
             valid_grasp_inds = np.flatnonzero(valid_mask)
 
             end_time = time.time()
-            print("_check_grasp_collision takes {}".format(end_time - start_time))
+            logger.debug("_check_grasp_collision takes {}".format(end_time - start_time))
             return collision_scores, in_gripper_scores, valid_grasp_inds
+
         else:
+            # use CUDA
+
             start_time = time.time()
             num_grasps = grasps.shape[0]
             num_points = scene_pc.shape[0]
@@ -279,12 +280,12 @@ class GraspCollisionChecker():
             valid_grasp_inds = torch.nonzero(valid_mask.view(-1)).view(-1)
 
             end_time = time.time()
-            print("_check_grasp_collision takes {}".format(end_time - start_time))
+            logger.debug("_check_grasp_collision takes {}".format(end_time - start_time))
             return collision_scores.cpu().numpy(), in_gripper_scores.cpu().numpy(), valid_grasp_inds.cpu().numpy()
 
 
     def _select_from_grasps(self, grasps, scene_pc):
-        print("_select_from_grasps: num_of_grasps: {}, num_of_points: {}".format(grasps.shape[0], scene_pc.shape[0]))
+        logger.info("_select_from_grasps: num_of_grasps: {}, num_of_points: {}".format(grasps.shape[0], scene_pc.shape[0]))
         collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
 
         # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
@@ -297,12 +298,12 @@ class GraspCollisionChecker():
         valid_grasp_inds = np.array(valid_grasp_inds)
 
         if len(collision_scores) == 0:
-            print("ERROR: no collision free grasp detected!!")
+            logger.error("ERROR: no collision free grasp detected!!")
             return None
 
         # hard threshold
         min_collision_score = np.min(collision_scores)
-        print("min_collision_score: {}".format(min_collision_score))
+        logger.info("min_collision_score: {}".format(min_collision_score))
         valid_grasp_mask = (collision_scores <= ABSOLUTE_COLLISION_SCORE_THRESHOLD) * (in_gripper_scores >= IN_GRIPPER_SCORE_THRESOHOLD)
         valid_grasp_inds = valid_grasp_inds[valid_grasp_mask]
         collision_scores = collision_scores[valid_grasp_mask]
@@ -313,52 +314,52 @@ class GraspCollisionChecker():
 
         selected_ind = np.argmax(in_gripper_scores) # - collision_scores
         selected_grasp = grasps[valid_grasp_inds[selected_ind]]
-        print("collision_score: {}, in_gripper_score: {}".format(collision_scores[selected_ind], in_gripper_scores[selected_ind]))
+        logger.info("collision_score: {}, in_gripper_score: {}".format(collision_scores[selected_ind], in_gripper_scores[selected_ind]))
 
         return selected_grasp
 
     def _get_collision_free_grasp_cfg(self, grasp, scene_pc):
         collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, np.expand_dims(grasp, 0))
         if len(collision_scores) <= 0:
-            print("original grasp has not pc in between gripper!")
+            logger.info("original grasp has not pc in between gripper!")
         else:
-            print("original grasp collision: {}, in_gripper_score: {}".format(collision_scores[0], in_gripper_scores[0]))
+            logger.info("original grasp collision: {}, in_gripper_score: {}".format(collision_scores[0], in_gripper_scores[0]))
 
         # Step1 fine tune z first
-        print("Adjusting z!")
+        logger.info("Adjusting z!")
 
         grasps = self._sample_grasps_xyzw(grasp, z=0.03)
         selected_grasp = self._select_from_grasps(grasps, scene_pc)
         if selected_grasp is None:
-            print("Adjusting z failed to produce good grasp, proceed")
+            logger.warn("Adjusting z failed to produce good grasp, proceed")
 
         # step 2 fine tune width
         if selected_grasp is None:
-            print("Adjusting z and w!")
+            logger.info("Adjusting z and w!")
             grasps = self._sample_grasps_xyzw(grasp, w=0.02, z=0.03)
             selected_grasp = self._select_from_grasps(grasps, scene_pc)
             if selected_grasp is None:
-                print("Adjusting zw failed to produce good grasp, proceed")
+                logger.warn("Adjusting zw failed to produce good grasp, proceed")
 
         # step 3 fine tune xyzw
         if selected_grasp is None:
-            print("Adjusting xyzw!")
+            logger.info("Adjusting xyzw!")
             grasps = self._sample_grasps_xyzw(grasp, xy=0.02, z=0.02, w=0.02)
             selected_grasp = self._select_from_grasps(grasps, scene_pc)
             if selected_grasp is None:
-                print("Adjusting xyzw failed to produce good grasp, proceed")
+                logger.warn("Adjusting xyzw failed to produce good grasp, proceed")
 
         return selected_grasp
 
     def get_collision_free_grasp(self, orig_grasp, orig_opening, scene_pc):
-        print("checking grasp collision!!!")
+        logger.info("checking grasp collision!!!")
 
         orig_grasp_dict = {
             "pos": [orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z],
             "quat": [orig_grasp.pose.orientation.x, orig_grasp.pose.orientation.y, orig_grasp.pose.orientation.z, orig_grasp.pose.orientation.w],
             "width": orig_opening
         }
-        print("orig_grasp: {} ".format(orig_grasp_dict))
+        logger.info("orig_grasp: {} ".format(orig_grasp_dict))
 
         start_time = time.time()
         # further reduce the amount of pc to around the orig grasp # TODO vectorize
@@ -370,8 +371,8 @@ class GraspCollisionChecker():
                 valid_indices.append(i)
         scene_pc_seg = scene_pc[valid_indices]
         end_time = time.time()
-        print("segment pc takes {}s".format(end_time - start_time))
-        print("pc shape after further seg: {}".format(scene_pc_seg.shape))
+        logger.debug("segment pc takes {}s".format(end_time - start_time))
+        logger.info("pc shape after further seg: {}".format(scene_pc_seg.shape))
 
         orig_grasp_array = np.array([orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z,
                                     orig_grasp.pose.orientation.x, orig_grasp.pose.orientation.y, orig_grasp.pose.orientation.z, orig_grasp.pose.orientation.w,
@@ -379,7 +380,7 @@ class GraspCollisionChecker():
         start_time = time.time()
         new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_array, scene_pc_seg)
         end_time = time.time()
-        print("check grasp collision completed, takes {}".format(end_time - start_time))
+        logger.debug("check grasp collision completed, takes {}".format(end_time - start_time))
 
         if new_grasp is not None:
             new_grasp_dict = {
@@ -389,7 +390,7 @@ class GraspCollisionChecker():
             }
         else:
             new_grasp_dict = None
-        print("new_grasp: {}".format(new_grasp_dict))
+        logger.info("new_grasp: {}".format(new_grasp_dict))
         return new_grasp_dict
 
 if __name__=="__main__":

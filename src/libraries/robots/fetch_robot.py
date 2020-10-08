@@ -320,9 +320,9 @@ class FetchRobot():
         return res
 
     def place_object(self, target_pose):
-        print('place_object')
+        logger.info('place_object')
         if target_pose is None:
-            print('ERROR: fail to find a place to place!!')
+            logger.error('ERROR: fail to find a place to place!!')
             return False
 
         pnp_req = PickPlaceRequest()
@@ -333,7 +333,7 @@ class FetchRobot():
 
         resp = self._pnp_client(pnp_req)
         if not resp.success:
-            print('ERROR: place_object failed!!')
+            logger.error('ERROR: place_object failed!!')
         return resp.success
 
     def give_obj_to_human(self):
@@ -368,14 +368,14 @@ class FetchRobot():
 
     def listen(self, timeout=None):
         if DUMMY_LISTEN:
-            print('Dummy execution of listen')
+            logger.info('Dummy execution of listen')
             text = raw_input('Enter: ')
         else:
-            print('robot is listening')
+            logger.info('robot is listening')
             msg = rospy.wait_for_message('/rls_perception_services/speech_recognition_google/', String)
             text = msg.data.lower()
 
-        print('robot heard {}'.format(text))
+        logger.info('robot heard {}'.format(text))
 
         # say acknowledgement
         resp = random.choice(POSITIVE_RESPONSE_LIST)
@@ -387,7 +387,7 @@ class FetchRobot():
         if DUMMY_GRASP:
             return False
 
-        print('grasp_box: {}'.format(grasp))
+        logger.debug('grasp_box: {}'.format(grasp))
         grasp = grasp + np.tile([XCROP[0], YCROP[0]], 4)
         # for grasp box, x1,y1 is topleft, x2,y2 is topright, x3,y3 is btmright, x4,y4 is btmleft
         x1, y1, x2, y2, x3, y3, x4, y4 = grasp.tolist()
@@ -401,7 +401,7 @@ class FetchRobot():
         seg_req.reference_frame = 'base_link'
 
         grasp_box_width = seg_req.width
-        print("grasp box width: {}".format(seg_req.width))
+        logger.debug("grasp box width: {}".format(seg_req.width))
 
         # resp = self._table_segmentor_client(1)  # get existing result
         # seg_req.min_z = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.003
@@ -448,7 +448,7 @@ class FetchRobot():
         #     return False
 
         if new_grasp is None:
-            print('ERROR: robot grasp failed!!')
+            logger.error('ERROR: robot grasp failed!!')
             return False
 
         grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
@@ -463,7 +463,7 @@ class FetchRobot():
 
         resp = self._pnp_client(pnp_req)
         if not resp.success:
-            print('ERROR: robot grasp failed!!')
+            logger.error('ERROR: robot grasp failed!!')
         return resp.success
 
     def move_arm_to_home(self):
@@ -472,7 +472,7 @@ class FetchRobot():
 
         resp = self._pnp_client(pnp_req)
         if not resp.success:
-            print('ERROR: move_arm_to_home failed!!')
+            logger.error('ERROR: move_arm_to_home failed!!')
         return resp.success
 
     def _sample_target_pose(self):
@@ -481,7 +481,7 @@ class FetchRobot():
 
         # try 10 times
         for i in range(10):
-            print("_sample_target_pose, trying {} time".format(i))
+            logger.debug("_sample_target_pose, trying {} time".format(i))
             btmright_x = random.randint(PLACE_BBOX_SIZE, XCROP[0])
             btmright_y = random.randint(YCROP[0] + PLACE_BBOX_SIZE, YCROP[1])
 
@@ -501,10 +501,10 @@ class FetchRobot():
                 target_pose = PoseStamped()
                 target_pose.header.frame_id="base_link"
                 target_pose.pose = obj_pose
-                print('_sample_target_pose: place_pose found!!!')
+                logger.error('_sample_target_pose: place_pose found!!!')
                 return target_pose
 
-        print('ERROR: _sample_target_pose: failed to find a place_pose!!!')
+        logger.error('ERROR: _sample_target_pose: failed to find a place_pose!!!')
         return None
 
     def _get_place_target_pose(self):

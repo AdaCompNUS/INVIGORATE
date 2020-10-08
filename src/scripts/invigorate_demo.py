@@ -106,7 +106,7 @@ def process_user_command(command, nlp_server="nltk"):
     ind = max(verb_ind, particle_ind)
     clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
     clue = ' '.join(clue_tokens)
-    print("Processed clue: {:s}".format(clue if clue != '' else "None"))
+    logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
 
     return clue
 
@@ -129,8 +129,8 @@ def main():
     dummy_question_answer = None
     to_end = False
     while not to_end:
-        print("------------------------")
-        print("Start of iteration")
+        logger.info("------------------------")
+        logger.info("Start of iteration")
 
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
@@ -139,7 +139,7 @@ def main():
             # perception
             observations = invigorate_client.perceive_img(img, expr)
             if observations is None:
-                print("WARNING: nothing is detected, abort!!!")
+                logger.warning("nothing is detected, abort!!!")
                 break
             num_box = observations['bboxes'].shape[0]
 
@@ -179,12 +179,12 @@ def main():
         to_grasp = False
         if action_type == 'GRASP_AND_END':
             grasp_target_idx = action
-            print("Grasping object " + str(grasp_target_idx) + " and ending the program")
+            logger.info("Grasping object " + str(grasp_target_idx) + " and ending the program")
             exec_type = EXEC_GRASP
             to_end = True
         elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
             grasp_target_idx = action - num_box
-            print("Grasping object " + str(grasp_target_idx) + " and continuing")
+            logger.info("Grasping object " + str(grasp_target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
             target_idx = action - 2 * num_box

@@ -31,6 +31,7 @@ import nltk
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from config.config import *
+from libraries.utils.log import logger
 
 try:
     import stanza
@@ -44,9 +45,6 @@ DEBUG = False
 MAX_Q2_NUM = 1 # the robot can at most ask MAX_Q2_NUM Q2s.
 
 # -------- Statics ---------
-def dbg_print(text):
-    if DEBUG:
-        print(text)
 
 # -------- Code ---------
 class Invigorate():
@@ -93,22 +91,22 @@ class Invigorate():
         # object detection
         bboxes, classes, scores = self._object_detection(img)
         if bboxes is None:
-            print("WARNING: nothing is detected")
+            logger.warning("WARNING: nothing is detected")
             return None
-        print('Perceive_img: _object_detection finished')
+        logger.info('Perceive_img: _object_detection finished')
 
         # relationship and grasp detection
         rel_mat, rel_score_mat, grasps = self._mrt_detection(img, bboxes)
-        print('Perceive_img: mrt and grasp detection finished')
+        logger.info('Perceive_img: mrt and grasp detection finished')
 
         # object and relationship detection post process
         ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat)
         num_box = bboxes.shape[0]
-        print('Perceive_img: post process of object and mrt detection finished')
+        logger.info('Perceive_img: post process of object and mrt detection finished')
 
         # grounding
         grounding_scores = self._mattnet_grounding(img, bboxes, expr)
-        print('Perceive_img: mattnet grounding finished')
+        logger.info('Perceive_img: mattnet grounding finished')
 
         observations = {}
         observations['img'] = img
@@ -138,13 +136,13 @@ class Invigorate():
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
-        dbg_print("grounding_scores: {}".format(rel_score_mat))
-        dbg_print("rel_score_mat: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
-        print('Step 1: raw grounding completed')
-        print('raw target_prob: {}'.format(target_prob))
-        print('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.info('Step 1: raw grounding completed')
+        logger.debug('raw target_prob: {}'.format(target_prob))
+        logger.debug('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
@@ -160,8 +158,8 @@ class Invigorate():
         if target_prob.sum() == 0.0:
             target_prob[-1] = 1.0
         target_prob /= target_prob.sum()
-        print('Step 2: class name filter completed')
-        print('target_prob : {}'.format(target_prob))
+        logger.info('Step 2: class name filter completed')
+        logger.debug('target_prob : {}'.format(target_prob))
 
         # 2. incorporate QA history
         target_prob_backup = target_prob.copy()
@@ -191,17 +189,17 @@ class Invigorate():
         for k, v in ind_match_dict.items():
             self.object_pool[v]["target_prob"] = target_prob[k]
 
-        print('Step 3: incorporate QA history completed')
-        print('target_prob: {}'.format(target_prob))
+        logger.info('Step 3: incorporate QA history completed')
+        logger.info('target_prob: {}'.format(target_prob))
 
         # 3. incorporate the provided clue by the user
         clue_leaf_desc_prob = None
         if self.clue is not None:
             self.belief['leaf_desc_prob'] = leaf_desc_prob
             leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
-        print('Step 4: incorporate clue by user completed')
-        print('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        print('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
+        logger.info('Step 4: incorporate clue by user completed')
+        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.info('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
@@ -216,7 +214,7 @@ class Invigorate():
         clue_leaf_desc_prob = None
         # Q1
         if self.get_action_type(action, num_box) == 'Q1':
-            print("Invigorate: handling answer for Q1")
+            logger.info("Invigorate: handling answer for Q1")
             target_idx = action - 2 * num_box
             if ans in {"yes", "yeah", "yep", "sure"}:
                 # set non-target
@@ -232,7 +230,7 @@ class Invigorate():
                 self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
         # Q2
         elif self.get_action_type(action, num_box) == 'Q2':
-            print("Invigorate: handling answer for Q2")
+            logger.info("Invigorate: handling answer for Q2")
 
             target_idx = np.argmax(target_prob[:-1])
             if ans in {"yes", "yeah", "yep", "sure"}:
@@ -248,9 +246,9 @@ class Invigorate():
                 if len(ans) > 0:
                     leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
 
-        print("estimate_state_with_user_answer completed")
-        print('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        print('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
+        logger.info("estimate_state_with_user_answer completed")
+        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.debug('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
 
         self.belief["target_prob"] = target_prob
         self.belief["leaf_desc_prob"] = leaf_desc_prob
@@ -278,9 +276,9 @@ class Invigorate():
         leaf_desc_prob = self.belief['leaf_desc_prob']
         clue_desc_prob = self.belief['clue_leaf_desc_prob']
 
-        print("decision_making_heuristic: ")
-        print('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        print('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
+        logger.info("decision_making_heuristic: ")
+        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.debug('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
 
         action = choose_target(target_prob.copy())
         if action.startswith("Q"):
@@ -390,13 +388,13 @@ class Invigorate():
             return None, None, None
 
         bboxes = np.array(obj_result[1]).reshape(num_box, -1)
-        print('_object_detection: \n{}'.format(bboxes))
+        logger.info('_object_detection: \n{}'.format(bboxes))
         classes = np.array(obj_result[2]).reshape(num_box, 1)
         class_scores = np.array(obj_result[3]).reshape(num_box, -1)
         bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
 
         class_names = [CLASSES[i[0]] for i in classes]
-        print('_object_detection classes: {}'.format(class_names))
+        logger.info('_object_detection classes: {}'.format(class_names))
         return bboxes, classes, class_scores
 
     def _bbox_post_process(self, bboxes, scores, rel_scores):
@@ -715,7 +713,7 @@ class Invigorate():
     def _estimate_state_with_user_clue(self, clue):
         # 3. incorporate the provided clue by the user
         # clue contains the tentative target contained in anwer of user for 'where is '
-        print('_estimate_state_with_user_clue')
+        logger.info('_estimate_state_with_user_clue')
         leaf_desc_prob = self.belief['leaf_desc_prob']
         img = self.observations['img']
         bboxes = self.observations['bboxes']
@@ -725,7 +723,7 @@ class Invigorate():
         det_scores = self.observations['det_scores']
 
         t_ground = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), clue)
-        print("t_ground: {}".format(t_ground))
+        logger.info("t_ground: {}".format(t_ground))
 
         self.clue = clue
         for i, score in enumerate(t_ground):
@@ -734,7 +732,7 @@ class Invigorate():
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
         t_ground = self._cal_target_prob_from_p_cand(pcand)
         t_ground = np.append(t_ground, 1. - t_ground.sum())
-        print("t_ground: {}".format(t_ground))
+        logger.info("t_ground: {}".format(t_ground))
 
         # filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in clue or clue in cls]
@@ -745,8 +743,8 @@ class Invigorate():
             if box_score < 0.02:
                 t_ground[i] = 0.001
         t_ground /= t_ground.sum()
-        print('class name filter completed')
-        print('t_ground : {}'.format(t_ground))
+        logger.info('class name filter completed')
+        logger.info('t_ground : {}'.format(t_ground))
 
         cluster_res = KMeans(n_clusters=2).fit_predict(t_ground.reshape(-1, 1))
         mean0 = t_ground[cluster_res == 0].mean()
@@ -760,8 +758,8 @@ class Invigorate():
         else:
             t_ground = np.expand_dims(t_ground, 0)
             clue_leaf_desc_prob = (t_ground[:, :-1] * leaf_desc_prob).sum(-1).squeeze()
-        print('clue_leaf_desc_prob : {}'.format(clue_leaf_desc_prob))
-        print('Update leaf_desc_prob with clue completed')
+        logger.info('clue_leaf_desc_prob : {}'.format(clue_leaf_desc_prob))
+        logger.info('Update leaf_desc_prob with clue completed')
 
         return leaf_desc_prob, clue_leaf_desc_prob
 
@@ -796,5 +794,5 @@ class Invigorate():
         ind = max(verb_ind, prep_ind)
         clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
         clue = ' '.join(clue_tokens)
-        print("Processed clue: {:s}".format(clue if clue != '' else "None"))
+        logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
         return clue
