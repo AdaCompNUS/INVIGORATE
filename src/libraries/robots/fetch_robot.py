@@ -32,6 +32,7 @@ from config.config import CLASSES, ROOT_DIR
 from libraries.data_viewer.data_viewer import DataViewer
 import libraries.utils.o3d_ros_pc_converter as pc_converter
 from libraries.grasp_collision_checker.grasp_collision_checker import GraspCollisionChecker
+from libraries.utils.log import logger
 
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
@@ -233,7 +234,7 @@ class FetchRobot():
         resp = self._fetch_pc_client()
         raw_pc = resp.pointcloud
         end_time = time.time()
-        print("getting pc takes {}".format(end_time - start_time))
+        logger.debug("getting pc takes {}".format(end_time - start_time))
 
         try:
             # raw_pc = rospy.wait_for_message("/camera/depth_registered/points", PointCloud2, timeout=20.0)
@@ -252,31 +253,31 @@ class FetchRobot():
 
         points = pcl2.read_points(raw_pc, skip_nans=True, field_names=('x', 'y', 'z'), uvs=uvs)
         end_time = time.time()
-        print("read pc takes {}s".format(end_time - start_time))
+        logger.debug("read pc takes {}s".format(end_time - start_time))
 
         start_time = time.time()
         points_out = np.array([[p[0], p[1], p[2], 1.0] for p in points]) # num_points x 4 # NOTE: this is slow!!!
         end_time = time.time()
-        print("pc transform to base_link takes {}s".format(end_time - start_time))
+        logger.debug("pc transform to base_link takes {}s".format(end_time - start_time))
         points_out = np.dot(points_out, transform_mat44.T)[:, :3] # num_points x 3
         end_time = time.time()
-        print("pc transform to base_link takes {}s".format(end_time - start_time))
+        logger.debug("pc transform to base_link takes {}s".format(end_time - start_time))
 
         start_time = time.time()
-        print("pc shape before downsample: {}".format(len(points_out)))
+        logger.info("pc shape before downsample: {}".format(len(points_out)))
         open3d_cloud = o3d.geometry.PointCloud()
         open3d_cloud.points = o3d.utility.Vector3dVector(np.array(points_out))
         downpcd = open3d_cloud.voxel_down_sample(voxel_size=0.002)
 
         scene_pc = np.array(downpcd.points)
-        print("pc shape after downsample: {}".format(scene_pc.shape))
+        logger.info("pc shape after downsample: {}".format(scene_pc.shape))
 
         end_time = time.time()
-        print("seg and downsample pc takes {}s".format(end_time - start_time))
+        logger.debug("seg and downsample pc takes {}s".format(end_time - start_time))
         return scene_pc
 
     def _get_collision_free_grasp(self, orig_grasp, orig_opening):
-        print("checking grasp collision!!!")
+        logger.info("checking grasp collision!!!")
         scene_pc = self._get_scene_pc()
         return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc) # TODO test
 
@@ -286,15 +287,15 @@ class FetchRobot():
         if USE_REALSENSE:
             img_msg = rospy.wait_for_message('/camera/color/image_raw', Image)
             img = self._br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-            print('img_size : {}'.format(img.shape))
+            logger.info('img_size : {}'.format(img.shape))
             img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
-            print('img_size : {}'.format(img.shape))
+            logger.info('img_size : {}'.format(img.shape))
         else:
             resp = self._fetch_image_client()
             img = self._br.imgmsg_to_cv2(resp.image, desired_encoding='bgr8')
-            print('img_size : {}'.format(img.shape))
+            logger.info('img_size : {}'.format(img.shape))
             img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
-            print('img_size : {}'.format(img.shape))
+            logger.info('img_size : {}'.format(img.shape))
         # depth_img_msg = rospy.wait_for_message('/head_camera/depth/image_rect', Image)
         # depth = self._br.imgmsg_to_cv2(depth_img_msg, desired_encoding='passthrough')
         depth = None

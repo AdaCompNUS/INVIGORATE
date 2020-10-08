@@ -54,6 +54,7 @@ from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import Invigorate
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
+from libraries.utils.log import logger
 
 # -------- Settings --------
 ROBOT = 'Fetch'
@@ -219,7 +220,7 @@ def main():
         # exec action
         if exec_type == EXEC_GRASP:
             grasps = observations['grasps']
-            print("grasps.shape {}".format(grasps.shape))
+            logger.debug("grasps.shape {}".format(grasps.shape))
             object_name = CLASSES[classes[grasp_target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')
 
@@ -242,7 +243,7 @@ def main():
             grasp = grasps[action % num_box][:8]
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
-                print('grasp failed!!!')
+                logger.error('grasp failed!!!')
                 if not is_target:
                     robot.say("sorry I can't grasp the {}, could you help me remove it?".format(object_name))
                 else:
