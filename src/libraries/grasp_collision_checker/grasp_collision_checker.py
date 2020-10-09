@@ -12,17 +12,6 @@ import logging
 from config.config import CLASSES, ROOT_DIR
 from libraries.utils.log import LOGGER_NAME
 
-# ------- Settings ---------
-GRASP_BOX_FOR_SEG = 1
-BBOX_FOR_SEG = 2
-GRASP_BOX_6DOF_PICK = 3
-USE_REALSENSE = True
-ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
-IN_GRIPPER_SCORE_THRESOHOLD = 40
-VISUALIZE_GRASP = False
-DUMMY_LISTEN = True
-DUMMY_GRASP = False
-
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
 GRIPPER_FILE = "gripper_link.STL"
@@ -34,35 +23,11 @@ LEFT_FINGER_POSE = {"link":[0., -0.101425, 0., 0., 0., 0.],
 RIGHT_FINGER_POSE = {"link":[0., 0.101425, 0., 0., 0., 0.],
                      "joint": [0., 0.015425, 0., 0., 0., 0.],
                      "min_max_translate":[0.0, 0.04]}
-ORIG_IMAGE_SIZE = (480, 640)
-# SCALE = 0.8
-# Y_OFFSET = int(ORIG_IMAGE_SIZE[0] * (1 - SCALE) / 2)
-# X_OFFSET = int(ORIG_IMAGE_SIZE[1] * (1 - SCALE) / 2)
-# YCROP = (Y_OFFSET, ORIG_IMAGE_SIZE[0] - Y_OFFSET)
-# XCROP = (X_OFFSET, ORIG_IMAGE_SIZE[1] - X_OFFSET)
-if USE_REALSENSE:
-    # YCROP = (180, 450)
-    # XCROP = (200, 500)
-    YCROP = (470, 1000)
-    XCROP = (700, 1460)
-else:
-    YCROP = (180, 450)
-    XCROP = (150, 490)
-FETCH_GRIPPER_LENGTH = 0.2
-GRASP_DEPTH = 0.01
-GRASP_POSE_X_OFFST = -0.028
-GRASP_POSE_Y_OFFST = 0.024
-GRASP_POSE_Z_OFFST = -0.017
-GRIPPER_OPENING_OFFSET = 0.01
-GRIPPER_OPENING_MAX = 0.09
-PLACE_BBOX_SIZE = 80
-APPROACH_DIST = 0.1
-RETREAT_DIST = 0.1
-GRASP_BOX_TO_GRIPPER_OPENING = 0.0006
 
 # ------------- Settings -------------
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
 IN_GRIPPER_SCORE_THRESOHOLD = 40
+BATCH_SIZE = 1000
 
 # ------------ Statics -----------
 logger = logging.getLogger(LOGGER_NAME)
@@ -292,16 +257,30 @@ class GraspCollisionChecker():
 
     def _select_from_grasps(self, grasps, scene_pc, use_cuda=False):
         logger.info("_select_from_grasps: num_of_grasps: {}, num_of_points: {}".format(grasps.shape[0], scene_pc.shape[0]))
-        collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps, use_cuda=use_cuda)
+        num_of_grasps = grasps.shape[0]
+        num_processed = 0
+
+        collision_scores_list = []
+        in_gripper_scores_list = []
+        valid_grasp_inds_list = []
+        while num_processed < num_of_grasps:
+            num_to_process = min(num_processed + BATCH_SIZE, num_of_grasps)
+            grasps_batch = grasps[num_processed:num_to_process]
+            collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps_batch, use_cuda=use_cuda)
+            collision_scores_list.append(collision_scores)
+            in_gripper_scores_list.append(in_gripper_scores)
+            valid_grasp_inds_list.append(valid_grasp_inds)
+            num_processed += num_to_process
+        # collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps, use_cuda=use_cuda)
 
         # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
         # number of points in between the two grippers. 2 is a factor to measure how important collision is.
         # Also, you can use some other tricks. For example, you can choose the grasp with the maximum number of points
         # in between two grippers only from the collision free grasps (collision score = 0). However, in clutter, there
         # may be no completely collision-free grasps. Also, the noisy can make this method invalid.
-        collision_scores = np.array(collision_scores)
-        in_gripper_scores = np.array(in_gripper_scores)
-        valid_grasp_inds = np.array(valid_grasp_inds)
+        collision_scores = np.concatenate(collision_scores_list, axis=-1)
+        in_gripper_scores = np.concatenate(in_gripper_scores_list, axis=-1)
+        valid_grasp_inds = np.concatenate(valid_grasp_inds_list, axis=-1)
 
         if len(collision_scores) == 0:
             logger.error("ERROR: no collision free grasp detected!!")
@@ -350,7 +329,7 @@ class GraspCollisionChecker():
         # step 3 fine tune xyzw
         if selected_grasp is None:
             logger.info("Adjusting xyzw!")
-            grasps = self._sample_grasps_xyzw(grasp, xy=0.02, z=0.02, w=0.02)
+            grasps = self._sample_grasps_xyzw(grasp, xy=0.025, z=0.03, w=0.02, z_step=0.005)
             selected_grasp = self._select_from_grasps(grasps, scene_pc, use_cuda=True)
             if selected_grasp is None:
                 logger.warn("Adjusting xyzw failed to produce good grasp, proceed")

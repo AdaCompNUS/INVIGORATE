@@ -86,6 +86,7 @@ PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.1
 GRASP_BOX_TO_GRIPPER_OPENING = 0.0005
+PC_DOWNSAMPLE_SIZE = 0.002
 
 POSITIVE_RESPONSE_LIST = ["Got it", "Sure", "No Problem", "okay", "certainly", "of course"]
 
@@ -274,7 +275,7 @@ class FetchRobot():
         logger.info("pc shape before downsample: {}".format(len(points_out)))
         open3d_cloud = o3d.geometry.PointCloud()
         open3d_cloud.points = o3d.utility.Vector3dVector(np.array(points_out))
-        downpcd = open3d_cloud.voxel_down_sample(voxel_size=0.002)
+        downpcd = open3d_cloud.voxel_down_sample(voxel_size=PC_DOWNSAMPLE_SIZE)
 
         scene_pc = np.array(downpcd.points)
         logger.info("pc shape after downsample: {}".format(scene_pc.shape))
