@@ -9,6 +9,9 @@ import os.path as osp
 import sys
 import logging
 
+this_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, osp.join(this_dir, '../../'))
+
 from config.config import CLASSES, ROOT_DIR
 from libraries.utils.log import LOGGER_NAME
 
@@ -241,7 +244,7 @@ class GraspCollisionChecker():
             p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max),
                                                                           epsilon=0)  # [num_grasps, 1]
             p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max),
-                                                                             epsilon=-0.01)  # [num_grasps, 1]
+                                                                             epsilon=-0.005)  # [num_grasps, 1]
             collision_scores = p_num_collided_l_finger + p_num_collided_r_finger  # [num_grasps, 1]
             in_gripper_scores = p_num_collided_convex_hull  # - collision_score # [num_grasps, 1]
 
@@ -260,24 +263,23 @@ class GraspCollisionChecker():
         num_of_grasps = grasps.shape[0]
         num_processed = 0
 
+        # process in batches to prevent gpu out of memory
         collision_scores_list = []
         in_gripper_scores_list = []
         valid_grasp_inds_list = []
         while num_processed < num_of_grasps:
-            num_to_process = min(num_processed + BATCH_SIZE, num_of_grasps)
-            grasps_batch = grasps[num_processed:num_to_process]
+            if num_processed + BATCH_SIZE >= num_of_grasps:
+                num_to_process = num_of_grasps - num_processed
+            else:
+                num_to_process = BATCH_SIZE
+            logger.debug("processing grasps {} to {}".format(num_processed, num_processed + num_to_process))
+            grasps_batch = grasps[num_processed:num_processed + num_to_process]
             collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps_batch, use_cuda=use_cuda)
             collision_scores_list.append(collision_scores)
             in_gripper_scores_list.append(in_gripper_scores)
             valid_grasp_inds_list.append(valid_grasp_inds)
             num_processed += num_to_process
-        # collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps, use_cuda=use_cuda)
 
-        # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
-        # number of points in between the two grippers. 2 is a factor to measure how important collision is.
-        # Also, you can use some other tricks. For example, you can choose the grasp with the maximum number of points
-        # in between two grippers only from the collision free grasps (collision score = 0). However, in clutter, there
-        # may be no completely collision-free grasps. Also, the noisy can make this method invalid.
         collision_scores = np.concatenate(collision_scores_list, axis=-1)
         in_gripper_scores = np.concatenate(in_gripper_scores_list, axis=-1)
         valid_grasp_inds = np.concatenate(valid_grasp_inds_list, axis=-1)
@@ -286,6 +288,11 @@ class GraspCollisionChecker():
             logger.error("ERROR: no collision free grasp detected!!")
             return None
 
+        # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
+        # number of points in between the two grippers. 2 is a factor to measure how important collision is.
+        # Also, you can use some other tricks. For example, you can choose the grasp with the maximum number of points
+        # in between two grippers only from the collision free grasps (collision score = 0). However, in clutter, there
+        # may be no completely collision-free grasps. Also, the noisy can make this method invalid.
         # hard threshold
         min_collision_score = np.min(collision_scores)
         logger.info("min_collision_score: {}".format(min_collision_score))

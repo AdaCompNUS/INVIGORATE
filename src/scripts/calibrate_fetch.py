@@ -5,6 +5,9 @@ sys.path.insert(0, osp.join(this_dir, '../'))
 
 import tf
 import rospy
+from geometry_msgs.msg import PoseStamped
+from tf import transformations as T
+import math
 
 from libraries.robots.fetch_robot import FetchRobot, GRASP_DEPTH
 from invigorate.invigorate import Invigorate
@@ -53,3 +56,21 @@ diff_y = trans[1] - grasp.grasp_pose.pose.position.y
 diff_z = trans[2] + BOX_HEIGHT - GRASP_DEPTH - grasp.grasp_pose.pose.position.z + 0.01 # This is necessary
 
 print("diff_x, y, z : {} {} {}".format(diff_x, diff_y, diff_z))
+
+target_pose = PoseStamped()
+target_pose.header.frame_id="base_link"
+target_pose.pose.position.x = trans[0]
+target_pose.pose.position.y = trans[1]
+target_pose.pose.position.z = trans[2] + 0.01
+quat = T.quaternion_from_euler(0, math.pi / 2, 0, 'rzyx') # rotate by y to make it facing downwards
+                                                          # rotate by z to align with bbox orientation
+target_pose.pose.orientation.x = quat[0]
+target_pose.pose.orientation.y = quat[1]
+target_pose.pose.orientation.z = quat[2]
+target_pose.pose.orientation.w = quat[3]
+
+robot._move_arm_to_pose(target_pose)
+
+raw_input("check if arm is on top of apriltag, press anything to continue")
+
+robot.move_arm_to_home(target_pose)

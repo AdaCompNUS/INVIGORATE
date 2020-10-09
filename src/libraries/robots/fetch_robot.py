@@ -160,6 +160,7 @@ class FetchRobot():
         self._fetch_pc_client = rospy.ServiceProxy('/rls_control_service/fetch/retrieve_pc_service', RetrievePointCloud)
         self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
         self._tl = tf.TransformListener()
+        self._arm = fetch_api.ArmV2()
 
         # call pnp service to get ready
         pnp_req = PickPlaceRequest()
@@ -360,14 +361,10 @@ class FetchRobot():
         target_pose.pose.orientation.z = quat[2]
         target_pose.pose.orientation.w = quat[3]
 
-        arm = fetch_api.ArmV2()
-        arm.move_to_pose(target_pose)
+        self._move_arm_to_pose(target_pose)
 
-        # fetch_joint_values = [0.7376393009216309, 0.13208013016967773, -1.694223683164978,
-        #                       1.561460798010254, 1.3066806024353028, 0.24575690464839936, 0.12663476919866562]
-
-        # arm = fetch_api.ArmV2()
-        # arm.move_to_(fetch_joint_values)
+    def _move_arm_to_pose(self, target_pose):
+        self._arm.move_to_pose(target_pose)
 
     def say(self, text):
         # print('Dummy execution of say: {}'.format(text))
@@ -488,52 +485,6 @@ class FetchRobot():
         if not resp.success:
             logger.error('ERROR: move_arm_to_home failed!!')
         return resp.success
-
-    def _sample_target_pose(self):
-        resp = self._table_segmentor_client(1)  # get existing result
-        table_height = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.03
-
-        # try 10 times
-        for i in range(10):
-            logger.debug("_sample_target_pose, trying {} time".format(i))
-            btmright_x = random.randint(PLACE_BBOX_SIZE, XCROP[0])
-            btmright_y = random.randint(YCROP[0] + PLACE_BBOX_SIZE, YCROP[1])
-
-            seg_req = BBoxSegmentationRequest()
-            seg_req.x = btmright_x - PLACE_BBOX_SIZE
-            seg_req.y = btmright_y - PLACE_BBOX_SIZE
-            seg_req.width = PLACE_BBOX_SIZE
-            seg_req.height = PLACE_BBOX_SIZE
-            seg_req.transform_to_reference_frame = True
-            seg_req.reference_frame = 'base_link'
-
-            seg_resp = self._bbox_segmentation_client(seg_req)
-            obj_pose = seg_resp.object.primitive_pose
-            obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
-            obj_pose.position.z += obj_height / 2
-            if obj_pose.position.z < table_height:
-                target_pose = PoseStamped()
-                target_pose.header.frame_id="base_link"
-                target_pose.pose = obj_pose
-                logger.error('_sample_target_pose: place_pose found!!!')
-                return target_pose
-
-        logger.error('ERROR: _sample_target_pose: failed to find a place_pose!!!')
-        return None
-
-    def _get_place_target_pose(self):
-        # this is hard coded for demo
-        target_pose = PoseStamped()
-        target_pose.header.frame_id="base_link"
-        target_pose.pose.position.x = 0.519
-        target_pose.pose.position.y = 0.519
-        target_pose.pose.position.z = 0.98
-        target_pose.pose.orientation.x = -0.515
-        target_pose.pose.orientation.y = -0.482
-        target_pose.pose.orientation.z = 0.517
-        target_pose.pose.orientation.w = -0.485
-
-        return target_pose
 
 if __name__=="__main__":
     r = R.from_euler("zyx", [0, math.pi / 2, 0])
