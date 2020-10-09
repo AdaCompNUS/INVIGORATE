@@ -7,9 +7,10 @@ import torch
 import stl
 import os.path as osp
 import sys
+import logging
 
 from config.config import CLASSES, ROOT_DIR
-from libraries.utils.log import logger
+from libraries.utils.log import LOGGER_NAME
 
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
@@ -58,10 +59,15 @@ PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.1
 GRASP_BOX_TO_GRIPPER_OPENING = 0.0006
+
 # ------------- Settings -------------
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
 IN_GRIPPER_SCORE_THRESOHOLD = 40
 
+# ------------ Statics -----------
+logger = logging.getLogger(LOGGER_NAME)
+
+# ------------ Code -------------
 class GraspCollisionChecker():
     def __init__(self, gripper_model):
         self._gripper_model = gripper_model
@@ -284,9 +290,9 @@ class GraspCollisionChecker():
             return collision_scores.cpu().numpy(), in_gripper_scores.cpu().numpy(), valid_grasp_inds.cpu().numpy()
 
 
-    def _select_from_grasps(self, grasps, scene_pc):
+    def _select_from_grasps(self, grasps, scene_pc, use_cuda=False):
         logger.info("_select_from_grasps: num_of_grasps: {}, num_of_points: {}".format(grasps.shape[0], scene_pc.shape[0]))
-        collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps)
+        collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps, use_cuda=use_cuda)
 
         # here is a trick: to balance the collision and grasping part, we minus the collided point number from the
         # number of points in between the two grippers. 2 is a factor to measure how important collision is.
@@ -345,7 +351,7 @@ class GraspCollisionChecker():
         if selected_grasp is None:
             logger.info("Adjusting xyzw!")
             grasps = self._sample_grasps_xyzw(grasp, xy=0.02, z=0.02, w=0.02)
-            selected_grasp = self._select_from_grasps(grasps, scene_pc)
+            selected_grasp = self._select_from_grasps(grasps, scene_pc, use_cuda=True)
             if selected_grasp is None:
                 logger.warn("Adjusting xyzw failed to produce good grasp, proceed")
 

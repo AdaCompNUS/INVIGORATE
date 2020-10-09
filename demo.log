@@ -1,0 +1,570 @@
+2020-10-09 15:56:41,104 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 15:56:44,714 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 15:56:45,069 - invigorate_logger - WARNING - WARNING: nothing is detected
+2020-10-09 15:59:41,637 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 15:59:41,642 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 15:59:43,490 - invigorate_logger - INFO - _object_detection: 
+[[307.81246948 311.93148804 419.23672485 451.6711731    0.58147979]]
+2020-10-09 15:59:43,540 - invigorate_logger - INFO - _object_detection classes: ['towel']
+2020-10-09 15:59:43,544 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 15:59:46,940 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 15:59:46,949 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 15:59:48,372 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 15:59:48,613 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 15:59:48,614 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 15:59:48,615 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 15:59:48,615 - invigorate_logger - INFO - target_prob: [0.24271999 0.75728001]
+2020-10-09 15:59:48,616 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 15:59:48,616 - invigorate_logger - INFO - leaf_desc_prob: 
+[[1.]]
+2020-10-09 15:59:48,616 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 15:59:48,617 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 16:03:38,727 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 16:03:38,729 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 16:03:38,969 - invigorate_logger - INFO - _object_detection: 
+[[296.39111328 316.93356323 426.17156982 457.46008301   0.71349967]]
+2020-10-09 16:03:38,994 - invigorate_logger - INFO - _object_detection classes: ['box']
+2020-10-09 16:03:38,996 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 16:03:39,235 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 16:03:39,237 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 16:03:39,681 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 16:03:39,975 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 16:03:39,976 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 16:03:39,977 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 16:03:39,978 - invigorate_logger - INFO - target_prob: [0.33138001 0.66861999]
+2020-10-09 16:03:39,978 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 16:03:39,979 - invigorate_logger - INFO - leaf_desc_prob: 
+[[1.]]
+2020-10-09 16:03:39,979 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 16:03:39,979 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 16:07:23,414 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 16:07:23,416 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 16:07:23,660 - invigorate_logger - WARNING - WARNING: nothing is detected
+2020-10-09 16:08:01,233 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 16:08:01,237 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 16:08:01,476 - invigorate_logger - INFO - _object_detection: 
+[[299.50836182 312.81451416 422.33590698 460.45083618   0.72470522]]
+2020-10-09 16:08:01,499 - invigorate_logger - INFO - _object_detection classes: ['box']
+2020-10-09 16:08:01,507 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 16:08:01,799 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 16:08:01,801 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 16:08:02,238 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 16:08:02,492 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 16:08:02,494 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 16:08:02,494 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 16:08:02,495 - invigorate_logger - INFO - target_prob: [0.33223999 0.66776001]
+2020-10-09 16:08:02,496 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 16:08:02,496 - invigorate_logger - INFO - leaf_desc_prob: 
+[[1.]]
+2020-10-09 16:08:02,497 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 16:08:02,497 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 16:08:55,401 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 16:08:55,404 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 16:08:55,648 - invigorate_logger - INFO - _object_detection: 
+[[297.83242798 315.72872925 423.92538452 459.03768921   0.60293484]]
+2020-10-09 16:08:55,670 - invigorate_logger - INFO - _object_detection classes: ['box']
+2020-10-09 16:08:55,672 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 16:08:55,867 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 16:08:55,869 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 16:08:56,309 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 16:08:56,567 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 16:08:56,568 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 16:08:56,569 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 16:08:56,570 - invigorate_logger - INFO - target_prob: [0.36585999 0.63414001]
+2020-10-09 16:08:56,570 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 16:08:56,572 - invigorate_logger - INFO - leaf_desc_prob: 
+[[1.]]
+2020-10-09 16:08:56,573 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 16:08:56,574 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 16:09:39,058 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 16:09:39,060 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 16:09:39,305 - invigorate_logger - INFO - _object_detection: 
+[[298.21603394 316.82351685 420.20474243 459.02453613   0.6421839 ]]
+2020-10-09 16:09:39,337 - invigorate_logger - INFO - _object_detection classes: ['box']
+2020-10-09 16:09:39,339 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 16:09:39,476 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 16:09:39,479 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 16:09:39,901 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 16:09:40,138 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 16:09:40,140 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 16:09:40,140 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 16:09:40,141 - invigorate_logger - INFO - target_prob: [0.23109999 0.76890001]
+2020-10-09 16:09:40,142 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 16:09:40,142 - invigorate_logger - INFO - leaf_desc_prob: 
+[[1.]]
+2020-10-09 16:09:40,144 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 16:09:40,144 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 16:59:49,829 - invigorate_logger - INFO - Dummy execution of listen
+2020-10-09 16:59:55,620 - invigorate_logger - INFO - robot heard red apple
+2020-10-09 16:59:57,510 - invigorate_logger - INFO - Processed clue: red apple
+2020-10-09 16:59:57,511 - invigorate_logger - INFO - ------------------------
+2020-10-09 16:59:57,511 - invigorate_logger - INFO - Start of iteration
+2020-10-09 16:59:58,252 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 16:59:58,256 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 16:59:58,612 - invigorate_logger - INFO - _object_detection: 
+[[9.40317917e+01 1.84595047e+02 3.47877411e+02 4.67736450e+02
+  9.63458776e-01]
+ [5.06745071e+01 3.96579987e+02 2.17790298e+02 5.29116699e+02
+  8.59921277e-01]
+ [4.50053751e-01 1.89986588e+02 1.03230057e+02 4.59524323e+02
+  6.14993930e-01]
+ [2.67131592e+02 9.02998626e-01 4.09820679e+02 2.53478287e+02
+  9.97003734e-01]
+ [2.12197256e+00 1.91738190e+02 1.04869797e+02 4.56678345e+02
+  6.38065338e-01]
+ [6.46198120e+01 1.15356133e+02 2.04337967e+02 2.79061707e+02
+  9.09240842e-01]
+ [3.88741180e+02 2.86393463e+02 5.57652466e+02 4.95617310e+02
+  8.65010858e-01]
+ [5.97748833e+01 8.05908127e+01 3.31095062e+02 3.37026459e+02
+  9.89342690e-01]]
+2020-10-09 16:59:58,639 - invigorate_logger - INFO - _object_detection classes: ['bottle', 'toothbrush', 'box', 'cup', 'cup', 'apple', 'remote controller']
+2020-10-09 16:59:58,643 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 16:59:59,136 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 16:59:59,140 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 16:59:59,618 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:00:00,373 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:00:00,376 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:00:00,378 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:00:00,379 - invigorate_logger - INFO - target_prob: [0. 0. 0. 0. 0. 1. 0. 0.]
+2020-10-09 17:00:00,380 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:00:00,383 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.60781476 0.07814761 0.170767   0.12879884 0.10274964 0.0984081
+  0.18523878]
+ [0.24167873 0.69175109 0.67583213 0.63096961 0.36468886 0.34442836
+  0.56295224]
+ [0.00723589 0.01157742 0.02170767 0.01736614 0.01013025 0.00868307
+  0.01736614]
+ [0.0463097  0.08827786 0.14761216 0.15340087 0.06657019 0.0593343
+  0.12301013]
+ [0.08248915 0.07670043 0.16642547 0.12301013 0.45586107 0.10709117
+  0.15629522]
+ [0.07814761 0.06946454 0.15484805 0.10998553 0.0853835  0.46888567
+  0.16642547]
+ [0.02170767 0.01591896 0.0723589  0.03907381 0.02749638 0.03183792
+  0.14905933]]
+2020-10-09 17:00:00,384 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:00:00,777 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:00:00,803 - invigorate_logger - INFO - Grasping object 5 and ending the program
+2020-10-09 17:00:03,725 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:00:17,257 - invigorate_logger - INFO - pc shape before downsample: 387500
+2020-10-09 17:00:17,357 - invigorate_logger - INFO - pc shape after downsample: (55125, 3)
+2020-10-09 17:00:17,390 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:00:17,392 - invigorate_logger - INFO - orig_grasp: {'quat': [0.6889915308613311, 0.15903040715963554, -0.688991530861331, 0.15903040715963557], 'pos': [0.4254982808336036, 0.1072791853844304, 0.8481942479842456], 'width': 0.13042760013635138} 
+2020-10-09 17:00:17,463 - invigorate_logger - INFO - pc shape after further seg: (11654, 3)
+2020-10-09 17:00:17,488 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:00:17,488 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:00:17,490 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 11654
+2020-10-09 17:00:17,652 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:00:17,653 - invigorate_logger - INFO - collision_score: 0, in_gripper_score: 196
+2020-10-09 17:00:17,653 - invigorate_logger - INFO - new_grasp: {'quat': [0.6889915308613311, 0.15903040715963554, -0.688991530861331, 0.15903040715963557], 'pos': [0.4254982808336036, 0.1072791853844304, 0.8181942479842456], 'width': 0.13042760013635138}
+2020-10-09 17:02:16,170 - invigorate_logger - INFO - Dummy execution of listen
+2020-10-09 17:02:19,203 - invigorate_logger - INFO - robot heard apple
+2020-10-09 17:02:20,507 - invigorate_logger - INFO - Processed clue: apple
+2020-10-09 17:02:20,508 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:02:20,508 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:02:21,290 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:02:21,291 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:02:21,634 - invigorate_logger - INFO - _object_detection: 
+[[170.61486816 165.77194214 451.97076416 529.11669922   0.94088078]
+ [352.99917603   0.         503.26116943 255.67448425   0.99763429]
+ [ 13.3421669  298.27731323 140.75392151 529.11669922   0.99587256]
+ [481.31536865 314.05993652 662.76867676 517.18695068   0.83951855]
+ [150.38580322 126.23615265 422.63006592 394.15145874   0.96231139]]
+2020-10-09 17:02:21,658 - invigorate_logger - INFO - _object_detection classes: ['bottle', 'remote controller', 'toothbrush', 'box', 'cup']
+2020-10-09 17:02:21,663 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:02:22,009 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:02:22,012 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:02:22,468 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:02:23,079 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:02:23,081 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:02:23,082 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:02:23,083 - invigorate_logger - INFO - target_prob: [0. 0. 0. 0. 0. 1.]
+2020-10-09 17:02:23,085 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:02:23,088 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.65388601 0.1119171  0.0984456  0.16062176 0.10569948]
+ [0.09222798 0.6507772  0.07979275 0.14715026 0.08393782]
+ [0.16373057 0.15958549 0.67979275 0.60310881 0.15854922]
+ [0.03419689 0.02901554 0.06321244 0.1357513  0.02901554]
+ [0.10259067 0.09326425 0.10880829 0.16165803 0.66839378]]
+2020-10-09 17:02:23,088 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:02:23,421 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:02:28,342 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:02:28,343 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:02:28,343 - invigorate_logger - INFO - Dummy execution of listen
+2020-10-09 17:02:38,549 - invigorate_logger - INFO - robot heard it is under the toothbrush
+2020-10-09 17:02:39,862 - invigorate_logger - INFO - Invigorate: handling answer for Q2
+2020-10-09 17:02:39,871 - invigorate_logger - INFO - Processed clue: the toothbrush
+2020-10-09 17:02:39,873 - invigorate_logger - INFO - _estimate_state_with_user_clue
+2020-10-09 17:02:40,320 - invigorate_logger - INFO - t_ground: (0.4596434235572815, 0.34568074345588684, 0.39205610752105713, 0.5770828723907471, 0.4641900956630707)
+2020-10-09 17:02:40,362 - invigorate_logger - INFO - t_ground: [2.10030317e-01 1.63664058e-01 1.75096288e-01 2.39123464e-01
+ 2.12057814e-01 2.80737877e-05]
+2020-10-09 17:02:40,363 - invigorate_logger - INFO - class name filter completed
+2020-10-09 17:02:40,364 - invigorate_logger - INFO - t_ground : [5.58271353e-03 5.58271353e-03 9.77512418e-01 5.58271353e-03
+ 5.58271353e-03 1.56727914e-04]
+2020-10-09 17:02:40,382 - invigorate_logger - INFO - clue_leaf_desc_prob : [0.10199385 0.08343648 0.67056295 0.06306368 0.1120888 ]
+2020-10-09 17:02:40,382 - invigorate_logger - INFO - Update leaf_desc_prob with clue completed
+2020-10-09 17:02:40,383 - invigorate_logger - INFO - estimate_state_with_user_answer completed
+2020-10-09 17:02:40,602 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:02:40,627 - invigorate_logger - INFO - Grasping object 2 and continuing
+2020-10-09 17:02:44,161 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:02:57,744 - invigorate_logger - INFO - pc shape before downsample: 387488
+2020-10-09 17:02:57,813 - invigorate_logger - INFO - pc shape after downsample: (55250, 3)
+2020-10-09 17:02:57,855 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:02:57,859 - invigorate_logger - INFO - orig_grasp: {'quat': [0.6075986918183304, 0.3616957695365728, -0.6075986918183304, 0.36169576953657284], 'pos': [0.530190677537754, 0.03882363349100273, 0.896597106621144], 'width': 0.05594674337139043} 
+2020-10-09 17:02:57,934 - invigorate_logger - INFO - pc shape after further seg: (21237, 3)
+2020-10-09 17:02:57,954 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:02:57,956 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:02:57,962 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 21237
+2020-10-09 17:02:58,214 - invigorate_logger - INFO - min_collision_score: 42
+2020-10-09 17:02:58,215 - invigorate_logger - WARNING - Adjusting z failed to produce good grasp, proceed
+2020-10-09 17:02:58,216 - invigorate_logger - INFO - Adjusting z and w!
+2020-10-09 17:02:58,218 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 126, num_of_points: 21237
+2020-10-09 17:02:58,931 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:02:58,932 - invigorate_logger - INFO - collision_score: 19, in_gripper_score: 50
+2020-10-09 17:02:58,932 - invigorate_logger - INFO - new_grasp: {'quat': [0.6075986918183304, 0.3616957695365728, -0.6075986918183304, 0.36169576953657284], 'pos': [0.530190677537754, 0.03882363349100273, 0.876597106621144], 'width': 0.07594674337139043}
+2020-10-09 17:03:08,505 - invigorate_logger - INFO - place_object
+2020-10-09 17:03:18,215 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:03:18,215 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:03:18,955 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:03:18,960 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:03:19,320 - invigorate_logger - INFO - _object_detection: 
+[[1.47274780e+02 2.08030899e+02 4.44521210e+02 5.25041138e+02
+  9.80125368e-01]
+ [2.48720963e+02 2.61505402e+02 4.19889923e+02 4.47152252e+02
+  6.29652083e-01]
+ [3.49315704e+02 6.01185858e-01 5.02187744e+02 2.55399521e+02
+  9.97637749e-01]
+ [1.34947853e+01 2.98738190e+02 1.40192444e+02 5.29116699e+02
+  9.94862735e-01]
+ [1.40209717e+02 1.38725769e+02 2.66028259e+02 3.13727783e+02
+  9.97741222e-01]
+ [4.82064087e+02 3.14388672e+02 6.61556396e+02 5.16996643e+02
+  9.29411113e-01]]
+2020-10-09 17:03:19,323 - invigorate_logger - INFO - _object_detection classes: ['cup', 'bottle', 'remote controller', 'box', 'cup', 'apple']
+2020-10-09 17:03:19,329 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:03:19,593 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:03:19,604 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:03:19,926 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:03:20,622 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:03:20,624 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:03:20,624 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:03:20,625 - invigorate_logger - INFO - target_prob: [0. 0. 0. 0. 0. 1. 0.]
+2020-10-09 17:03:20,625 - invigorate_logger - INFO - _estimate_state_with_user_clue
+2020-10-09 17:03:21,032 - invigorate_logger - INFO - t_ground: (0.31163668632507324, 0.4879096746444702, 0.3080390393733978, 0.4235672056674957, 0.4519439935684204, 0.3201143741607666)
+2020-10-09 17:03:21,079 - invigorate_logger - INFO - t_ground: [1.26692146e-01 1.94222540e-01 1.62576288e-01 1.94170147e-01
+ 1.93273827e-01 1.29064977e-01 5.96046448e-08]
+2020-10-09 17:03:21,079 - invigorate_logger - INFO - class name filter completed
+2020-10-09 17:03:21,080 - invigorate_logger - INFO - t_ground : [1.66665011e-01 1.66665011e-01 1.66665011e-01 1.66665011e-01
+ 1.66665011e-01 1.66665011e-01 9.93400878e-06]
+2020-10-09 17:03:21,099 - invigorate_logger - INFO - clue_leaf_desc_prob : [0.29074601 0.18924188 0.19493198 0.02257687 0.20319181 0.28560656]
+2020-10-09 17:03:21,100 - invigorate_logger - INFO - Update leaf_desc_prob with clue completed
+2020-10-09 17:03:21,100 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:03:21,102 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.64096916 0.13876652 0.1530837  0.51762115 0.14757709 0.14647577]
+ [0.08480176 0.60242291 0.09471366 0.16299559 0.09801762 0.09251101]
+ [0.10352423 0.10903084 0.58920705 0.18061674 0.08810573 0.09911894]
+ [0.01762115 0.00991189 0.01101322 0.05396476 0.00881057 0.03414097]
+ [0.09911894 0.10022026 0.11453744 0.18942731 0.60792952 0.10792952]
+ [0.12004405 0.13876652 0.15859031 0.54625551 0.15088106 0.59911894]]
+2020-10-09 17:03:21,103 - invigorate_logger - INFO - clue_leaf_desc_prob: [0.29074601 0.18924188 0.19493198 0.02257687 0.20319181 0.28560656]
+2020-10-09 17:03:21,323 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:03:21,350 - invigorate_logger - INFO - Grasping object 5 and ending the program
+2020-10-09 17:03:24,022 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:03:37,570 - invigorate_logger - INFO - pc shape before downsample: 387724
+2020-10-09 17:03:37,673 - invigorate_logger - INFO - pc shape after downsample: (55565, 3)
+2020-10-09 17:03:37,718 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:03:37,720 - invigorate_logger - INFO - orig_grasp: {'quat': [0.5720768365687483, 0.41560569421206645, -0.5720768365687482, 0.41560569421206656], 'pos': [0.4838537966491935, 0.015661341217673673, 0.8857803193873913], 'width': 0.150173771741318} 
+2020-10-09 17:03:37,857 - invigorate_logger - INFO - pc shape after further seg: (20401, 3)
+2020-10-09 17:03:37,877 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:03:37,877 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:03:37,880 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 20401
+2020-10-09 17:03:38,105 - invigorate_logger - INFO - min_collision_score: 177
+2020-10-09 17:03:38,105 - invigorate_logger - WARNING - Adjusting z failed to produce good grasp, proceed
+2020-10-09 17:03:38,106 - invigorate_logger - INFO - Adjusting z and w!
+2020-10-09 17:03:38,111 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 126, num_of_points: 20401
+2020-10-09 17:03:38,920 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:03:38,920 - invigorate_logger - INFO - collision_score: 0, in_gripper_score: 171
+2020-10-09 17:03:38,921 - invigorate_logger - INFO - new_grasp: {'quat': [0.5720768365687483, 0.41560569421206645, -0.5720768365687482, 0.41560569421206656], 'pos': [0.4838537966491935, 0.015661341217673673, 0.8557803193873913], 'width': 0.130173771741318}
+2020-10-09 17:05:27,009 - invigorate_logger - INFO - Dummy execution of listen
+2020-10-09 17:05:30,080 - invigorate_logger - INFO - robot heard the banana
+2020-10-09 17:05:31,683 - invigorate_logger - INFO - Processed clue: the banana
+2020-10-09 17:05:31,684 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:05:31,684 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:05:32,613 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:05:32,614 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:05:32,971 - invigorate_logger - INFO - _object_detection: 
+[[1.16247528e+02 1.75904419e+02 4.19934174e+02 4.81722321e+02
+  9.60300744e-01]
+ [4.71763855e+02 1.54738419e+02 6.38375916e+02 3.36021240e+02
+  5.08195221e-01]
+ [3.17458374e+02 1.76398773e+02 6.57191711e+02 3.54602478e+02
+  9.24144030e-01]
+ [2.37200241e+02 3.27821960e+02 4.50545746e+02 5.11519073e+02
+  9.96456563e-01]
+ [1.85446625e+01 2.43794617e+02 3.27166443e+02 5.19896240e+02
+  9.97666240e-01]
+ [1.39683609e+02 1.09773735e+02 2.87721649e+02 2.72047852e+02
+  9.97272193e-01]
+ [4.81571899e+02 3.11417877e+02 6.67499756e+02 5.22627930e+02
+  8.23184192e-01]]
+2020-10-09 17:05:33,000 - invigorate_logger - INFO - _object_detection classes: ['remote controller', 'cup', 'mouse', 'box', 'banana', 'cup', 'box']
+2020-10-09 17:05:33,004 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:05:33,360 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:05:33,365 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:05:33,730 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:05:34,405 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:05:34,408 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:05:34,409 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:05:34,410 - invigorate_logger - INFO - target_prob: [0.         0.         0.         0.         0.99144007 0.
+ 0.         0.00855993]
+2020-10-09 17:05:34,410 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:05:34,411 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.71805274 0.23123732 0.41176471 0.71196755 0.69776876 0.50507099
+  0.35294118]
+ [0.0851927  0.61460446 0.15415822 0.5841785  0.34888438 0.25557809
+  0.11561866]
+ [0.07302231 0.08924949 0.30223124 0.29411765 0.28194726 0.17647059
+  0.08924949]
+ [0.         0.         0.         0.         0.         0.
+  0.        ]
+ [0.0040568  0.0020284  0.00608519 0.00811359 0.00811359 0.00811359
+  0.0040568 ]
+ [0.02434077 0.03042596 0.04868154 0.09533469 0.09533469 0.12981744
+  0.04868154]
+ [0.12981744 0.15010142 0.30223124 0.47667343 0.45638945 0.43002028
+  0.47870183]]
+2020-10-09 17:05:34,412 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:05:34,847 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:05:34,877 - invigorate_logger - INFO - Grasping object 0 and continuing
+2020-10-09 17:05:38,764 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:05:52,370 - invigorate_logger - INFO - pc shape before downsample: 393969
+2020-10-09 17:05:52,473 - invigorate_logger - INFO - pc shape after downsample: (59411, 3)
+2020-10-09 17:05:52,503 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:05:52,505 - invigorate_logger - INFO - orig_grasp: {'quat': [-0.6305664513294245, 0.31997804683730496, 0.6305664513294243, 0.319978046837305], 'pos': [0.43862757187074425, 0.1366098418100861, 0.8059583557328595], 'width': 0.10505498950029646} 
+2020-10-09 17:05:52,579 - invigorate_logger - INFO - pc shape after further seg: (10074, 3)
+2020-10-09 17:05:52,588 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:05:52,588 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:05:52,591 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 10074
+2020-10-09 17:05:52,729 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:05:52,730 - invigorate_logger - INFO - collision_score: 0, in_gripper_score: 157
+2020-10-09 17:05:52,730 - invigorate_logger - INFO - new_grasp: {'quat': [-0.6305664513294245, 0.31997804683730496, 0.6305664513294243, 0.319978046837305], 'pos': [0.43862757187074425, 0.1366098418100861, 0.7809583557328594], 'width': 0.10505498950029646}
+2020-10-09 17:06:05,831 - invigorate_logger - INFO - place_object
+2020-10-09 17:06:24,608 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:06:24,608 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:06:25,305 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:06:25,306 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:06:25,669 - invigorate_logger - INFO - _object_detection: 
+[[1.17489700e+02 1.82677673e+02 4.29921478e+02 4.49286316e+02
+  9.92324114e-01]
+ [3.13771667e+02 2.12174469e+02 5.54571838e+02 3.62160583e+02
+  9.67343092e-01]
+ [4.75319244e+02 1.60114639e+02 6.41140686e+02 3.41339233e+02
+  6.43802643e-01]
+ [4.85558075e+02 2.91174164e+02 6.66829346e+02 5.19099731e+02
+  5.65422356e-01]
+ [2.65063995e+02 3.25521698e+02 4.48032745e+02 5.12849792e+02
+  9.99610245e-01]
+ [1.41940002e+02 1.07797729e+02 2.89257874e+02 2.78627655e+02
+  9.98768389e-01]
+ [4.82732910e+02 3.15605011e+02 6.67387329e+02 5.23182312e+02
+  7.55954444e-01]]
+2020-10-09 17:06:25,676 - invigorate_logger - INFO - _object_detection classes: ['mouse', 'cup', 'box', 'banana', 'cup', 'bottle']
+2020-10-09 17:06:25,678 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:06:26,112 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:06:26,116 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:06:26,471 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:06:27,207 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:06:27,209 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:06:27,210 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:06:27,211 - invigorate_logger - INFO - target_prob: [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  6.36985928e-01
+  0.00000000e+00  3.63014239e-01 -1.67230659e-07]
+2020-10-09 17:06:27,211 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:06:27,212 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.75084746 0.24067797 0.7440678  0.72881356 0.57457627 0.65932203]
+ [0.10847458 0.67118644 0.63389831 0.26949153 0.19491525 0.14745763]
+ [0.00508475 0.00169492 0.00508475 0.00508475 0.00508475 0.00508475]
+ [0.01525424 0.00677966 0.01525424 0.01525424 0.01016949 0.01525424]
+ [0.02372881 0.03389831 0.12711864 0.13220339 0.14915254 0.09322034]
+ [0.13050847 0.07118644 0.21355932 0.22033898 0.20169492 0.22033898]]
+2020-10-09 17:06:27,213 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:06:27,490 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:06:47,931 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:06:47,932 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:06:47,932 - invigorate_logger - INFO - Dummy execution of listen
+2020-10-09 17:08:04,409 - invigorate_logger - INFO - robot heard yes
+2020-10-09 17:08:05,325 - invigorate_logger - INFO - Invigorate: handling answer for Q1
+2020-10-09 17:08:05,329 - invigorate_logger - INFO - estimate_state_with_user_answer completed
+2020-10-09 17:08:05,637 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:08:05,666 - invigorate_logger - INFO - Grasping object 0 and continuing
+2020-10-09 17:08:08,811 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:08:22,511 - invigorate_logger - INFO - pc shape before downsample: 393142
+2020-10-09 17:08:22,624 - invigorate_logger - INFO - pc shape after downsample: (57629, 3)
+2020-10-09 17:08:22,654 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:08:22,658 - invigorate_logger - INFO - orig_grasp: {'quat': [-0.6330368958867842, 0.3150623564407922, 0.6330368958867841, 0.3150623564407923], 'pos': [0.45562203399444384, 0.004099892101014762, 0.8469690401677394], 'width': 0.10847124680347298} 
+2020-10-09 17:08:22,742 - invigorate_logger - INFO - pc shape after further seg: (17373, 3)
+2020-10-09 17:08:22,757 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:08:22,757 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:08:22,761 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 17373
+2020-10-09 17:08:22,952 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:08:22,952 - invigorate_logger - INFO - collision_score: 0, in_gripper_score: 159
+2020-10-09 17:08:22,952 - invigorate_logger - INFO - new_grasp: {'quat': [-0.6330368958867842, 0.3150623564407922, 0.6330368958867841, 0.3150623564407923], 'pos': [0.45562203399444384, 0.004099892101014762, 0.8169690401677394], 'width': 0.10847124680347298}
+2020-10-09 17:08:34,539 - invigorate_logger - INFO - place_object
+2020-10-09 17:08:48,913 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:08:48,914 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:08:49,646 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:08:49,647 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:08:50,060 - invigorate_logger - INFO - _object_detection: 
+[[1.15867836e+02 1.89688324e+02 4.48689941e+02 5.05941376e+02
+  9.99791205e-01]
+ [3.19182831e+02 1.81769730e+02 6.44345032e+02 3.60123932e+02
+  9.66051877e-01]
+ [4.70966553e+02 1.54584442e+02 6.36579468e+02 3.40759338e+02
+  6.12029433e-01]
+ [1.45516022e+02 1.06188354e+02 2.89299988e+02 2.79314697e+02
+  9.99474704e-01]
+ [4.81835449e+02 3.11390717e+02 6.67342102e+02 5.21903137e+02
+  7.96778142e-01]]
+2020-10-09 17:08:50,062 - invigorate_logger - INFO - _object_detection classes: ['box', 'cup', 'banana', 'cup', 'bottle']
+2020-10-09 17:08:50,063 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:08:50,851 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:08:50,854 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:08:51,247 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:08:51,915 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:08:51,917 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:08:51,918 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:08:51,919 - invigorate_logger - INFO - target_prob: [0. 0. 1. 0. 0. 0.]
+2020-10-09 17:08:51,920 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:08:51,921 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.00922266 0.00658762 0.00790514 0.00658762 0.00658762]
+ [0.67720685 0.73254282 0.3201581  0.18445323 0.1198946 ]
+ [0.03820817 0.00922266 0.04084321 0.02635046 0.02898551]
+ [0.13833992 0.04216074 0.15546772 0.17259552 0.09617918]
+ [0.75757576 0.21343874 0.76416337 0.71146245 0.77470356]]
+2020-10-09 17:08:51,921 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:08:52,217 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:08:52,240 - invigorate_logger - INFO - Grasping object 4 and continuing
+2020-10-09 17:08:55,520 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:09:09,195 - invigorate_logger - INFO - pc shape before downsample: 388747
+2020-10-09 17:09:09,292 - invigorate_logger - INFO - pc shape after downsample: (56496, 3)
+2020-10-09 17:09:09,321 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:09:09,325 - invigorate_logger - INFO - orig_grasp: {'quat': [0.6701941110325067, 0.2254769467980001, -0.6701941110325066, 0.22547694679800012], 'pos': [0.581229334820592, -0.07912171648967338, 0.8803786961064001], 'width': 0.12216214238545095} 
+2020-10-09 17:09:09,399 - invigorate_logger - INFO - pc shape after further seg: (15377, 3)
+2020-10-09 17:09:09,405 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:09:09,406 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:09:09,408 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 15377
+2020-10-09 17:09:09,567 - invigorate_logger - ERROR - ERROR: no collision free grasp detected!!
+2020-10-09 17:09:09,568 - invigorate_logger - WARNING - Adjusting z failed to produce good grasp, proceed
+2020-10-09 17:09:09,568 - invigorate_logger - INFO - Adjusting z and w!
+2020-10-09 17:09:09,572 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 126, num_of_points: 15377
+2020-10-09 17:09:10,125 - invigorate_logger - ERROR - ERROR: no collision free grasp detected!!
+2020-10-09 17:09:10,125 - invigorate_logger - WARNING - Adjusting zw failed to produce good grasp, proceed
+2020-10-09 17:09:10,126 - invigorate_logger - INFO - Adjusting xyzw!
+2020-10-09 17:09:10,162 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 2126, num_of_points: 15377
+2020-10-09 17:09:18,190 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:09:18,190 - invigorate_logger - INFO - collision_score: 4, in_gripper_score: 113
+2020-10-09 17:09:18,191 - invigorate_logger - INFO - new_grasp: {'quat': [0.6701941110325067, 0.2254769467980001, -0.6701941110325066, 0.22547694679800012], 'pos': [0.561229334820592, -0.09912171648967338, 0.8603786961064], 'width': 0.13216214238545093}
+2020-10-09 17:09:28,436 - invigorate_logger - INFO - place_object
+2020-10-09 17:09:37,669 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:09:37,671 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:09:38,327 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:09:38,329 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:09:38,691 - invigorate_logger - INFO - _object_detection: 
+[[118.84784698 198.60671997 455.80654907 507.24664307   0.9998405 ]
+ [310.98703003 218.78404236 654.30560303 360.29412842   0.99578333]
+ [433.3157959  125.46544647 591.41522217 287.3236084    0.93100733]
+ [145.41088867 105.94696808 289.41131592 278.81954956   0.99939775]
+ [497.9375     333.52215576 685.18023682 527.1829834    0.80291384]]
+2020-10-09 17:09:38,703 - invigorate_logger - INFO - _object_detection classes: ['box', 'cup', 'banana', 'apple', 'cup']
+2020-10-09 17:09:38,706 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:09:38,960 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:09:38,966 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:09:39,314 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:09:40,001 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:09:40,003 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:09:40,005 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:09:40,006 - invigorate_logger - INFO - target_prob: [0. 0. 1. 0. 0. 0.]
+2020-10-09 17:09:40,007 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:09:40,008 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.08978676 0.0325477  0.0359147  0.03142536 0.02244669]
+ [0.62738496 0.70931538 0.2379349  0.2020202  0.15824916]
+ [0.24242424 0.09427609 0.38383838 0.32996633 0.08978676]
+ [0.20314254 0.08080808 0.31874299 0.39057239 0.08529742]
+ [0.20650954 0.11335578 0.16386083 0.14365881 0.69360269]]
+2020-10-09 17:09:40,008 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:09:40,239 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:09:40,267 - invigorate_logger - INFO - Grasping object 2 and ending the program
+2020-10-09 17:09:43,088 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:09:56,991 - invigorate_logger - INFO - pc shape before downsample: 396598
+2020-10-09 17:09:57,103 - invigorate_logger - INFO - pc shape after downsample: (57261, 3)
+2020-10-09 17:09:57,137 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:09:57,140 - invigorate_logger - INFO - orig_grasp: {'quat': [0.5517767156179674, 0.44220182733888463, -0.5517767156179673, 0.44220182733888475], 'pos': [0.524112643867901, -0.03951458498485254, 0.8350416245731596], 'width': 0.0912111716302592} 
+2020-10-09 17:09:57,225 - invigorate_logger - INFO - pc shape after further seg: (19969, 3)
+2020-10-09 17:09:57,244 - invigorate_logger - INFO - original grasp has not pc in between gripper!
+2020-10-09 17:09:57,245 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:09:57,249 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 19969
+2020-10-09 17:09:57,440 - invigorate_logger - INFO - min_collision_score: 162
+2020-10-09 17:09:57,440 - invigorate_logger - WARNING - Adjusting z failed to produce good grasp, proceed
+2020-10-09 17:09:57,441 - invigorate_logger - INFO - Adjusting z and w!
+2020-10-09 17:09:57,444 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 126, num_of_points: 19969
+2020-10-09 17:09:58,110 - invigorate_logger - INFO - min_collision_score: 110
+2020-10-09 17:09:58,111 - invigorate_logger - WARNING - Adjusting zw failed to produce good grasp, proceed
+2020-10-09 17:09:58,111 - invigorate_logger - INFO - Adjusting xyzw!
+2020-10-09 17:09:58,150 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 2126, num_of_points: 19969
+2020-10-09 17:10:08,435 - invigorate_logger - INFO - min_collision_score: 15
+2020-10-09 17:10:08,435 - invigorate_logger - WARNING - Adjusting xyzw failed to produce good grasp, proceed
+2020-10-09 17:10:08,436 - invigorate_logger - INFO - new_grasp: None
+2020-10-09 17:10:08,436 - invigorate_logger - ERROR - ERROR: robot grasp failed!!
+2020-10-09 17:10:08,437 - invigorate_logger - ERROR - grasp failed!!!
+2020-10-09 17:10:34,621 - invigorate_logger - INFO - Dummy execution of listen
+2020-10-09 17:10:37,820 - invigorate_logger - INFO - robot heard banana
+2020-10-09 17:10:39,343 - invigorate_logger - INFO - Processed clue: banana
+2020-10-09 17:10:39,343 - invigorate_logger - INFO - ------------------------
+2020-10-09 17:10:39,343 - invigorate_logger - INFO - Start of iteration
+2020-10-09 17:10:40,132 - invigorate_logger - INFO - img_size : (1080, 1920, 3)
+2020-10-09 17:10:40,133 - invigorate_logger - INFO - img_size : (530, 760, 3)
+2020-10-09 17:10:40,486 - invigorate_logger - INFO - _object_detection: 
+[[ 77.56950378 176.65068054 373.19918823 525.53710938   0.99915338]
+ [310.45001221 215.83105469 661.50848389 360.22143555   0.99611038]
+ [407.12817383  95.18267059 564.41790771 251.72294617   0.81726217]
+ [ 87.74565887 120.86195374 234.50370789 294.1491394    0.99954563]
+ [490.02368164 359.89678955 676.34838867 529.11669922   0.68680704]]
+2020-10-09 17:10:40,512 - invigorate_logger - INFO - _object_detection classes: ['cup', 'box', 'banana', 'apple', 'cup']
+2020-10-09 17:10:40,518 - invigorate_logger - INFO - Perceive_img: _object_detection finished
+2020-10-09 17:10:40,769 - invigorate_logger - INFO - Perceive_img: mrt and grasp detection finished
+2020-10-09 17:10:40,771 - invigorate_logger - INFO - Perceive_img: post process of object and mrt detection finished
+2020-10-09 17:10:41,107 - invigorate_logger - INFO - Perceive_img: mattnet grounding finished
+2020-10-09 17:10:41,723 - invigorate_logger - INFO - Step 1: raw grounding completed
+2020-10-09 17:10:41,726 - invigorate_logger - INFO - Step 2: class name filter completed
+2020-10-09 17:10:41,727 - invigorate_logger - INFO - Step 3: incorporate QA history completed
+2020-10-09 17:10:41,728 - invigorate_logger - INFO - target_prob: [0.         0.         0.99794252 0.         0.         0.00205748]
+2020-10-09 17:10:41,728 - invigorate_logger - INFO - Step 4: incorporate clue by user completed
+2020-10-09 17:10:41,729 - invigorate_logger - INFO - leaf_desc_prob: 
+[[0.68580376 0.62212944 0.18162839 0.15866388 0.1743215 ]
+ [0.07620042 0.15344468 0.02713987 0.02609603 0.02818372]
+ [0.08663883 0.12212944 0.65970772 0.07724426 0.08455115]
+ [0.08663883 0.14509395 0.09394572 0.69832985 0.08663883]
+ [0.11064718 0.14509395 0.0960334  0.08141962 0.67327766]]
+2020-10-09 17:10:41,730 - invigorate_logger - INFO - clue_leaf_desc_prob: None
+2020-10-09 17:10:42,063 - invigorate_logger - INFO - decision_making_heuristic: 
+2020-10-09 17:10:42,086 - invigorate_logger - INFO - Grasping object 2 and ending the program
+2020-10-09 17:10:44,827 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:10:58,826 - invigorate_logger - INFO - pc shape before downsample: 390234
+2020-10-09 17:10:58,908 - invigorate_logger - INFO - pc shape after downsample: (56447, 3)
+2020-10-09 17:10:58,941 - invigorate_logger - INFO - checking grasp collision!!!
+2020-10-09 17:10:58,944 - invigorate_logger - INFO - orig_grasp: {'quat': [0.5542462789614857, 0.4391025646216917, -0.5542462789614857, 0.4391025646216918], 'pos': [0.5302305126642447, -0.04116619284430494, 0.822200029282086], 'width': 0.0971888054163128} 
+2020-10-09 17:10:59,026 - invigorate_logger - INFO - pc shape after further seg: (17948, 3)
+2020-10-09 17:10:59,046 - invigorate_logger - INFO - original grasp collision: 165, in_gripper_score: 24
+2020-10-09 17:10:59,047 - invigorate_logger - INFO - Adjusting z!
+2020-10-09 17:10:59,067 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 26, num_of_points: 17948
+2020-10-09 17:10:59,287 - invigorate_logger - INFO - min_collision_score: 165
+2020-10-09 17:10:59,287 - invigorate_logger - WARNING - Adjusting z failed to produce good grasp, proceed
+2020-10-09 17:10:59,288 - invigorate_logger - INFO - Adjusting z and w!
+2020-10-09 17:10:59,290 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 126, num_of_points: 17948
+2020-10-09 17:10:59,907 - invigorate_logger - INFO - min_collision_score: 153
+2020-10-09 17:10:59,908 - invigorate_logger - WARNING - Adjusting zw failed to produce good grasp, proceed
+2020-10-09 17:10:59,908 - invigorate_logger - INFO - Adjusting xyzw!
+2020-10-09 17:10:59,950 - invigorate_logger - INFO - _select_from_grasps: num_of_grasps: 2126, num_of_points: 17948
+2020-10-09 17:11:08,997 - invigorate_logger - INFO - min_collision_score: 0
+2020-10-09 17:11:08,998 - invigorate_logger - INFO - collision_score: 19, in_gripper_score: 58
+2020-10-09 17:11:08,999 - invigorate_logger - INFO - new_grasp: {'quat': [0.5542462789614857, 0.4391025646216917, -0.5542462789614857, 0.4391025646216918], 'pos': [0.5102305126642447, -0.021166192844304942, 0.8047000292820861], 'width': 0.0871888054163128}

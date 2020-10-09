@@ -48,13 +48,14 @@ from PIL import Image
 import matplotlib
 matplotlib.use('Agg')
 import nltk
+import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import Invigorate
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
-from libraries.utils.log import logger
+from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
 ROBOT = 'Fetch'
@@ -70,7 +71,7 @@ EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 
 # ------- Statics -----------
-
+logger = logging.getLogger(LOGGER_NAME)
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
 

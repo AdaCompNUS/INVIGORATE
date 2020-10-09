@@ -27,11 +27,12 @@ import copy
 from sklearn.cluster import KMeans
 from scipy import optimize
 import nltk
+import logging
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from config.config import *
-from libraries.utils.log import logger
+from libraries.utils.log import LOGGER_NAME
 
 try:
     import stanza
@@ -45,6 +46,7 @@ DEBUG = False
 MAX_Q2_NUM = 1 # the robot can at most ask MAX_Q2_NUM Q2s.
 
 # -------- Statics ---------
+logger = logging.getLogger(LOGGER_NAME)
 
 # -------- Code ---------
 class Invigorate():

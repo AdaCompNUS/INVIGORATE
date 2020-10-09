@@ -19,6 +19,7 @@ from sensor_msgs.msg import PointCloud2
 import sensor_msgs.point_cloud2 as pcl2
 import time
 import random
+import logging
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
@@ -32,7 +33,7 @@ from config.config import CLASSES, ROOT_DIR
 from libraries.data_viewer.data_viewer import DataViewer
 import libraries.utils.o3d_ros_pc_converter as pc_converter
 from libraries.grasp_collision_checker.grasp_collision_checker import GraspCollisionChecker
-from libraries.utils.log import logger
+from libraries.utils.log import LOGGER_NAME
 
 # ------- Settings ---------
 GRASP_BOX_FOR_SEG = 1
@@ -73,8 +74,11 @@ else:
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.01
 
-GRASP_POSE_X_OFFST = -0.020
-GRASP_POSE_Y_OFFST = 0.020
+# GRASP_POSE_X_OFFST = -0.020
+# GRASP_POSE_Y_OFFST = 0.020
+# GRASP_POSE_Z_OFFST = -0.01
+GRASP_POSE_X_OFFST = -0.018
+GRASP_POSE_Y_OFFST = 0.003
 GRASP_POSE_Z_OFFST = -0.01
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
@@ -84,6 +88,9 @@ RETREAT_DIST = 0.1
 GRASP_BOX_TO_GRIPPER_OPENING = 0.0005
 
 POSITIVE_RESPONSE_LIST = ["Got it", "Sure", "No Problem", "okay", "certainly", "of course"]
+
+# ---------- Statics ------------
+logger = logging.getLogger(LOGGER_NAME)
 
 # def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
 #     # Create a new plot
@@ -383,14 +390,11 @@ class FetchRobot():
 
         return text
 
-    def _top_grasp(self, grasp):
-        if DUMMY_GRASP:
-            return False
-
-        logger.debug('grasp_box: {}'.format(grasp))
-        grasp = grasp + np.tile([XCROP[0], YCROP[0]], 4)
+    def _cal_initial_grasp(self, grasp_box):
+        logger.debug('grasp_box: {}'.format(grasp_box))
+        grasp_box = grasp_box + np.tile([XCROP[0], YCROP[0]], 4)
         # for grasp box, x1,y1 is topleft, x2,y2 is topright, x3,y3 is btmright, x4,y4 is btmleft
-        x1, y1, x2, y2, x3, y3, x4, y4 = grasp.tolist()
+        x1, y1, x2, y2, x3, y3, x4, y4 = grasp_box.tolist()
         seg_req = BBoxSegmentationRequest()
         seg_req.x = x1
         seg_req.y = y1
@@ -401,7 +405,7 @@ class FetchRobot():
         seg_req.reference_frame = 'base_link'
 
         grasp_box_width = seg_req.width
-        logger.debug("grasp box width: {}".format(seg_req.width))
+        logger.debug("grasp box width: {}".format(grasp_box_width))
 
         # resp = self._table_segmentor_client(1)  # get existing result
         # seg_req.min_z = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.003
@@ -415,9 +419,6 @@ class FetchRobot():
         obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
         obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
         # print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
-
-        pnp_req = PickPlaceRequest()
-        pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
 
         grasp = Grasp()
         grasp.grasp_pose.header = seg_resp.object.header
@@ -438,8 +439,20 @@ class FetchRobot():
         grasp.post_grasp_retreat.direction.vector.z = 1 # top pick
         grasp.post_grasp_retreat.desired_distance = RETREAT_DIST
 
+        gripper_opening = grasp_box_width * GRASP_BOX_TO_GRIPPER_OPENING
+
+        return grasp, gripper_opening
+
+    def _top_grasp(self, grasp_box):
+        if DUMMY_GRASP:
+            return False
+
+        grasp, gripper_opening = self._cal_initial_grasp(grasp_box)
+
+        pnp_req = PickPlaceRequest()
+        pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
         pnp_req.grasp = grasp
-        pnp_req.gripper_opening = grasp_box_width * GRASP_BOX_TO_GRIPPER_OPENING
+        pnp_req.gripper_opening = gripper_opening
 
         grasp_pose_tmp = grasp.grasp_pose
         new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
