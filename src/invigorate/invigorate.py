@@ -820,11 +820,9 @@ class Baseline(Invigorate):
         dbg_print("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = np.zeros(rel_score_mat.shape)
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
-        assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
-        with torch.no_grad():
-            triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
-            triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-            leaf_desc_prob = self._leaf_and_descendant_stats(torch.from_numpy(rel_prob_mat) * triu_mask, 1).numpy()
+        # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
+        target_prob = np.array(grounding_scores)
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
@@ -834,14 +832,16 @@ class Baseline(Invigorate):
             for class_str in cls_filter:
                 box_score += det_scores[i][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
-                grounding_scores[i] = -10.
+                target_prob[i] = -10.
 
-        target_prob = np.zeros(len(grounding_scores) + 1)
-        target_prob[np.argmax(grounding_scores)] = 1
+        max_ind = np.argmax(target_prob)
+        target_prob = np.zeros(len(target_prob) + 1)
+        target_prob[max_ind] = 1
         print('target_prob : {}'.format(target_prob))
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
+        self.belief["clue_leaf_desc_prob"] = None
 
 class No_Uncertainty(Invigorate):
 
@@ -891,12 +891,13 @@ class No_Uncertainty(Invigorate):
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
+        self.belief["clue_leaf_desc_prob"] = None
 
 class No_Multistep(Invigorate):
 
     def _cal_target_prob_from_ground_score(self, ground_scores):
         bg_score = 0.25
-        ground_scores.append(bg_score)
+        ground_scores = np.append(ground_scores, bg_score)
         return f.softmax(torch.FloatTensor(ground_scores), dim=0).numpy()
 
     def estimate_state_with_observation(self, observations):
@@ -914,7 +915,7 @@ class No_Multistep(Invigorate):
         dbg_print("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = rel_score_mat
         leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
-        target_prob = self._cal_target_prob_from_ground_score(grounding_scores)
+        target_prob = self._cal_target_prob_from_ground_score(np.array(grounding_scores))
         print('Step 1: raw grounding completed')
         print('raw target_prob: {}'.format(target_prob))
         print('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
