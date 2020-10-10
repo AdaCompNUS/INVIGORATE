@@ -2,7 +2,7 @@ import os.path as osp
 
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
-
+EXP_SETTING = "invigorate"
 Q2={
     "type1": "I have not found the target. Where is it?", # COMMON FORMAT
     "type2": "I have not found the target. Where is it?",         # WHEN ALL THINGS WITH PROB 0
