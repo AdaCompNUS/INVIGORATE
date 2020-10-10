@@ -317,6 +317,8 @@ class GraspCollisionChecker():
         else:
             logger.info("original grasp collision: {}, in_gripper_score: {}".format(collision_scores[0], in_gripper_scores[0]))
 
+        selected_grasp = None
+
         # Step1 fine tune z first
         logger.info("Adjusting z!")
 

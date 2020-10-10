@@ -71,21 +71,22 @@ if USE_REALSENSE:
 else:
     YCROP = (180, 450)
     XCROP = (150, 490)
+
 FETCH_GRIPPER_LENGTH = 0.2
 GRASP_DEPTH = 0.01
-
 # GRASP_POSE_X_OFFST = -0.020
 # GRASP_POSE_Y_OFFST = 0.020
 # GRASP_POSE_Z_OFFST = -0.01
 GRASP_POSE_X_OFFST = -0.018
-GRASP_POSE_Y_OFFST = 0.003
-GRASP_POSE_Z_OFFST = -0.01
+GRASP_POSE_Y_OFFST = -0.003
+GRASP_POSE_Z_OFFST = -0.025
+GRASP_WIDTH_OFFSET = 0.0
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
 RETREAT_DIST = 0.1
-GRASP_BOX_TO_GRIPPER_OPENING = 0.0005
+GRASP_BOX_TO_GRIPPER_OPENING = 0.00045
 PC_DOWNSAMPLE_SIZE = 0.002
 
 POSITIVE_RESPONSE_LIST = ["Got it", "Sure", "No Problem", "okay", "certainly", "of course"]
@@ -470,7 +471,7 @@ class FetchRobot():
         grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH + GRASP_POSE_Z_OFFST #HACK!!!
 
         pnp_req.grasp = grasp
-        pnp_req.gripper_opening = new_grasp["width"]
+        pnp_req.gripper_opening = new_grasp["width"] + GRASP_WIDTH_OFFSET # HACK!!!
 
         resp = self._pnp_client(pnp_req)
         if not resp.success:
@@ -485,6 +486,20 @@ class FetchRobot():
         if not resp.success:
             logger.error('ERROR: move_arm_to_home failed!!')
         return resp.success
+
+    def _get_place_target_pose(self):
+        # this is hard coded for demo
+        target_pose = PoseStamped()
+        target_pose.header.frame_id="base_link"
+        target_pose.pose.position.x = 0.519
+        target_pose.pose.position.y = 0.519
+        target_pose.pose.position.z = 0.98
+        target_pose.pose.orientation.x = -0.515
+        target_pose.pose.orientation.y = -0.482
+        target_pose.pose.orientation.z = 0.517
+        target_pose.pose.orientation.w = -0.485
+
+        return target_pose
 
 if __name__=="__main__":
     r = R.from_euler("zyx", [0, math.pi / 2, 0])
