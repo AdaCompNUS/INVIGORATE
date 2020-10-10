@@ -138,7 +138,7 @@ class Invigorate():
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
@@ -279,6 +279,7 @@ class Invigorate():
         clue_desc_prob = self.belief['clue_leaf_desc_prob']
 
         logger.info("decision_making_heuristic: ")
+        logger.debug('target_prob:{}'.format(target_prob))
         logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         logger.debug('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
 

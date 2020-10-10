@@ -16,6 +16,7 @@ P1:
 *. calibrate realsense every time??
 *. collision checking against other objects.
 *. write logger
+*. Only genenrate captions against relavant context object
 
 P2
 *. The target probability does not persist to the next iteration*
@@ -189,6 +190,7 @@ def main():
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
             target_idx = action - 2 * num_box
+            logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
@@ -197,6 +199,7 @@ def main():
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
             exec_type = EXEC_ASK
         else: # action type is Q2
+            logger.info("Askig Q2 and continuing")
             if invigorate_client.clue is not None:
                 # special case.
                 dummy_question_answer = invigorate_client.clue

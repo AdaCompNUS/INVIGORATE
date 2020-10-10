@@ -50,7 +50,7 @@ class GraspCollisionChecker():
             for y in np.linspace(y_ori - xy, y_ori + xy, xy * 2 / xy_step + 1):
                 for z1 in np.linspace(z_ori - z, z_ori + z, z * 2 / z_step + 1):
                     for width in np.linspace(width_ori - w, width_ori + w, w * 2 / w_step + 1):
-                        if width > 0.01:
+                        if width >= 0.01 and width <= 0.1:
                             grasps.append(np.array([x, y, z1, grasp_cfg[3], grasp_cfg[4], grasp_cfg[5], grasp_cfg[6], width]))
 
         end_time = time.time()
@@ -330,7 +330,7 @@ class GraspCollisionChecker():
         # step 2 fine tune width
         if selected_grasp is None:
             logger.info("Adjusting z and w!")
-            grasps = self._sample_grasps_xyzw(grasp, w=0.02, z=0.03)
+            grasps = self._sample_grasps_xyzw(grasp, w=0.03, z=0.03)
             selected_grasp = self._select_from_grasps(grasps, scene_pc)
             if selected_grasp is None:
                 logger.warn("Adjusting zw failed to produce good grasp, proceed")

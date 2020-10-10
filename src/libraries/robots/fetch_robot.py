@@ -40,8 +40,6 @@ GRASP_BOX_FOR_SEG = 1
 BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
-ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
-IN_GRIPPER_SCORE_THRESOHOLD = 40
 VISUALIZE_GRASP = False
 DUMMY_LISTEN = True
 DUMMY_GRASP = False
@@ -73,19 +71,20 @@ else:
     XCROP = (150, 490)
 
 FETCH_GRIPPER_LENGTH = 0.2
+FETCH_MAX_GRIPPER_OPENING = 0.1
 GRASP_DEPTH = 0.01
 # GRASP_POSE_X_OFFST = -0.020
 # GRASP_POSE_Y_OFFST = 0.020
 # GRASP_POSE_Z_OFFST = -0.01
 GRASP_POSE_X_OFFST = -0.018
-GRASP_POSE_Y_OFFST = -0.003
-GRASP_POSE_Z_OFFST = -0.025
+GRASP_POSE_Y_OFFST = 0.02
+GRASP_POSE_Z_OFFST = -0.015
 GRASP_WIDTH_OFFSET = 0.0
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
-RETREAT_DIST = 0.1
+RETREAT_DIST = 0.15
 GRASP_BOX_TO_GRIPPER_OPENING = 0.00045
 PC_DOWNSAMPLE_SIZE = 0.002
 
@@ -239,6 +238,113 @@ class FetchRobot():
         vis.run()
         vis.destroy_window()
 
+    def _cal_initial_grasp(self, grasp_box):
+        logger.debug('grasp_box: {}'.format(grasp_box))
+        grasp_box = grasp_box + np.tile([XCROP[0], YCROP[0]], 4)
+        # for grasp box, x1,y1 is topleft, x2,y2 is topright, x3,y3 is btmright, x4,y4 is btmleft
+        x1, y1, x2, y2, x3, y3, x4, y4 = grasp_box.tolist()
+        seg_req = BBoxSegmentationRequest()
+        seg_req.x = x1
+        seg_req.y = y1
+        seg_req.width = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        seg_req.height = math.sqrt((x4 - x1)**2 + (y4 - y1)**2)
+        seg_req.angle = math.atan2(y2 - y1, x2 - x1)
+        seg_req.transform_to_reference_frame = True
+        seg_req.reference_frame = 'base_link'
+
+        grasp_box_width = seg_req.width
+        logger.debug("grasp box width: {}".format(grasp_box_width))
+
+        # resp = self._table_segmentor_client(1)  # get existing result
+        # seg_req.min_z = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.003
+
+        # print('calling bbox segmentation service')
+        seg_resp = self._bbox_segmentation_client(seg_req)
+        # print(seg_resp.object)
+
+        obj_pose = seg_resp.object.primitive_pose
+        obj_length = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_X]
+        obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
+        obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
+        # print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
+
+        grasp = Grasp()
+        grasp.grasp_pose.header = seg_resp.object.header
+        grasp.grasp_pose.pose = seg_resp.object.primitive_pose
+        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH
+        quat = T.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
+                                                                              # rotate by z to align with bbox orientation
+        grasp.grasp_pose.pose.orientation.x = quat[0]
+        grasp.grasp_pose.pose.orientation.y = quat[1]
+        grasp.grasp_pose.pose.orientation.z = quat[2]
+        grasp.grasp_pose.pose.orientation.w = quat[3]
+
+        grasp.pre_grasp_approach.direction.header = seg_resp.object.header
+        grasp.pre_grasp_approach.direction.vector.z = -1 # top pick
+        grasp.pre_grasp_approach.desired_distance = APPROACH_DIST
+
+        grasp.post_grasp_retreat.direction.header = seg_resp.object.header
+        grasp.post_grasp_retreat.direction.vector.z = 1 # top pick
+        grasp.post_grasp_retreat.desired_distance = RETREAT_DIST
+
+        gripper_opening = grasp_box_width * GRASP_BOX_TO_GRIPPER_OPENING
+        gripper_opening = min(gripper_opening, FETCH_MAX_GRIPPER_OPENING) # clamp
+
+        return grasp, gripper_opening
+
+    def _top_grasp(self, grasp_box):
+        if DUMMY_GRASP:
+            return False
+
+        grasp, gripper_opening = self._cal_initial_grasp(grasp_box)
+
+        pnp_req = PickPlaceRequest()
+        pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
+        pnp_req.grasp = grasp
+        pnp_req.gripper_opening = gripper_opening
+
+        grasp_pose_tmp = grasp.grasp_pose
+        new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
+        # to_cont = raw_input("to_continue?")
+        # if to_cont != "y":
+        #     return False
+
+        if new_grasp is None:
+            logger.error('ERROR: robot grasp failed!!')
+            return False
+
+        grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
+        grasp.grasp_pose.pose.position.y = new_grasp["pos"][1]
+        grasp.grasp_pose.pose.position.z = new_grasp["pos"][2]
+        grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
+        grasp.grasp_pose.pose.position.y += GRASP_POSE_Y_OFFST # HACK!!!
+        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH + GRASP_POSE_Z_OFFST #HACK!!!
+
+        pnp_req.grasp = grasp
+        pnp_req.gripper_opening = new_grasp["width"] + GRASP_WIDTH_OFFSET # HACK!!!
+
+        resp = self._pnp_client(pnp_req)
+        if not resp.success:
+            logger.error('ERROR: robot grasp failed!!')
+        return resp.success
+
+    def _move_arm_to_pose(self, target_pose):
+        self._arm.move_to_pose(target_pose)
+
+    def _get_place_target_pose(self):
+        # this is hard coded for demo
+        target_pose = PoseStamped()
+        target_pose.header.frame_id="base_link"
+        target_pose.pose.position.x = 0.519
+        target_pose.pose.position.y = 0.519
+        target_pose.pose.position.z = 0.98
+        target_pose.pose.orientation.x = -0.515
+        target_pose.pose.orientation.y = -0.482
+        target_pose.pose.orientation.z = 0.517
+        target_pose.pose.orientation.w = -0.485
+
+        return target_pose
+
     def _get_scene_pc(self):
         start_time = time.time()
         resp = self._fetch_pc_client()
@@ -289,8 +395,9 @@ class FetchRobot():
     def _get_collision_free_grasp(self, orig_grasp, orig_opening):
         logger.info("checking grasp collision!!!")
         scene_pc = self._get_scene_pc()
-        return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc) # TODO test
+        return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc)
 
+    # --------- Public ------- #
     def read_imgs(self):
         # resp = self._fetch_image_client()
         # img = self._br.imgmsg_to_cv2(resp.image, desired_encoding='bgr8')
@@ -350,22 +457,30 @@ class FetchRobot():
         # print('Dummy execution of give_obj_to_human')
 
         # Hard code for demo
-        target_pose = PoseStamped()
-        target_pose.header.frame_id="base_link"
-        target_pose.pose.position.x = 0.8
-        target_pose.pose.position.y = 0
-        target_pose.pose.position.z = 1.1
-        quat = T.quaternion_from_euler(0, math.pi / 2, 0, 'rzyx') # rotate by y to make it facing downwards
-                                                                  # rotate by z to align with bbox orientation
-        target_pose.pose.orientation.x = quat[0]
-        target_pose.pose.orientation.y = quat[1]
-        target_pose.pose.orientation.z = quat[2]
-        target_pose.pose.orientation.w = quat[3]
+        # target_pose = PoseStamped()
+        # target_pose.header.frame_id="base_link"
+        # target_pose.pose.position.x = 0.8
+        # target_pose.pose.position.y = 0
+        # target_pose.pose.position.z = 1.1
+        # quat = T.quaternion_from_euler(0, math.pi / 2, 0, 'rzyx') # rotate by y to make it facing downwards
+        #                                                           # rotate by z to align with bbox orientation
+        # target_pose.pose.orientation.x = quat[0]
+        # target_pose.pose.orientation.y = quat[1]
+        # target_pose.pose.orientation.z = quat[2]
+        # target_pose.pose.orientation.w = quat[3]
 
-        self._move_arm_to_pose(target_pose)
+        # self._move_arm_to_pose(target_pose)
 
-    def _move_arm_to_pose(self, target_pose):
-        self._arm.move_to_pose(target_pose)
+        target_x = 0.6
+        target_y = -0.25
+        try:
+            (trans, rot) = self._tl.lookupTransform('/base_link', '/wrist_roll_link', rospy.Time())
+        except Exception as e:
+            print(e)
+            return False
+        dx = target_x - trans[0]
+        dy = target_y - trans[1]
+        self._arm.move_in_cartesian(dx=dx, dy=dy)
 
     def say(self, text):
         # print('Dummy execution of say: {}'.format(text))
@@ -389,95 +504,6 @@ class FetchRobot():
 
         return text
 
-    def _cal_initial_grasp(self, grasp_box):
-        logger.debug('grasp_box: {}'.format(grasp_box))
-        grasp_box = grasp_box + np.tile([XCROP[0], YCROP[0]], 4)
-        # for grasp box, x1,y1 is topleft, x2,y2 is topright, x3,y3 is btmright, x4,y4 is btmleft
-        x1, y1, x2, y2, x3, y3, x4, y4 = grasp_box.tolist()
-        seg_req = BBoxSegmentationRequest()
-        seg_req.x = x1
-        seg_req.y = y1
-        seg_req.width = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-        seg_req.height = math.sqrt((x4 - x1)**2 + (y4 - y1)**2)
-        seg_req.angle = math.atan2(y2 - y1, x2 - x1)
-        seg_req.transform_to_reference_frame = True
-        seg_req.reference_frame = 'base_link'
-
-        grasp_box_width = seg_req.width
-        logger.debug("grasp box width: {}".format(grasp_box_width))
-
-        # resp = self._table_segmentor_client(1)  # get existing result
-        # seg_req.min_z = resp.marker.pose.position.z + resp.marker.scale.z / 2 + 0.003
-
-        # print('calling bbox segmentation service')
-        seg_resp = self._bbox_segmentation_client(seg_req)
-        # print(seg_resp.object)
-
-        obj_pose = seg_resp.object.primitive_pose
-        obj_length = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_X]
-        obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
-        obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
-        # print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
-
-        grasp = Grasp()
-        grasp.grasp_pose.header = seg_resp.object.header
-        grasp.grasp_pose.pose = seg_resp.object.primitive_pose
-        grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH
-        quat = T.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
-                                                                              # rotate by z to align with bbox orientation
-        grasp.grasp_pose.pose.orientation.x = quat[0]
-        grasp.grasp_pose.pose.orientation.y = quat[1]
-        grasp.grasp_pose.pose.orientation.z = quat[2]
-        grasp.grasp_pose.pose.orientation.w = quat[3]
-
-        grasp.pre_grasp_approach.direction.header = seg_resp.object.header
-        grasp.pre_grasp_approach.direction.vector.z = -1 # top pick
-        grasp.pre_grasp_approach.desired_distance = APPROACH_DIST
-
-        grasp.post_grasp_retreat.direction.header = seg_resp.object.header
-        grasp.post_grasp_retreat.direction.vector.z = 1 # top pick
-        grasp.post_grasp_retreat.desired_distance = RETREAT_DIST
-
-        gripper_opening = grasp_box_width * GRASP_BOX_TO_GRIPPER_OPENING
-
-        return grasp, gripper_opening
-
-    def _top_grasp(self, grasp_box):
-        if DUMMY_GRASP:
-            return False
-
-        grasp, gripper_opening = self._cal_initial_grasp(grasp_box)
-
-        pnp_req = PickPlaceRequest()
-        pnp_req.action = PickPlaceRequest.EXECUTE_GRASP
-        pnp_req.grasp = grasp
-        pnp_req.gripper_opening = gripper_opening
-
-        grasp_pose_tmp = grasp.grasp_pose
-        new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
-        # to_cont = raw_input("to_continue?")
-        # if to_cont != "y":
-        #     return False
-
-        if new_grasp is None:
-            logger.error('ERROR: robot grasp failed!!')
-            return False
-
-        grasp.grasp_pose.pose.position.x = new_grasp["pos"][0]
-        grasp.grasp_pose.pose.position.y = new_grasp["pos"][1]
-        grasp.grasp_pose.pose.position.z = new_grasp["pos"][2]
-        grasp.grasp_pose.pose.position.x += GRASP_POSE_X_OFFST # HACK!!!
-        grasp.grasp_pose.pose.position.y += GRASP_POSE_Y_OFFST # HACK!!!
-        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH + GRASP_POSE_Z_OFFST #HACK!!!
-
-        pnp_req.grasp = grasp
-        pnp_req.gripper_opening = new_grasp["width"] + GRASP_WIDTH_OFFSET # HACK!!!
-
-        resp = self._pnp_client(pnp_req)
-        if not resp.success:
-            logger.error('ERROR: robot grasp failed!!')
-        return resp.success
-
     def move_arm_to_home(self):
         pnp_req = PickPlaceRequest()
         pnp_req.action = PickPlaceRequest.MOVE_ARM_TO_HOME
@@ -486,20 +512,6 @@ class FetchRobot():
         if not resp.success:
             logger.error('ERROR: move_arm_to_home failed!!')
         return resp.success
-
-    def _get_place_target_pose(self):
-        # this is hard coded for demo
-        target_pose = PoseStamped()
-        target_pose.header.frame_id="base_link"
-        target_pose.pose.position.x = 0.519
-        target_pose.pose.position.y = 0.519
-        target_pose.pose.position.z = 0.98
-        target_pose.pose.orientation.x = -0.515
-        target_pose.pose.orientation.y = -0.482
-        target_pose.pose.orientation.z = 0.517
-        target_pose.pose.orientation.w = -0.485
-
-        return target_pose
 
 if __name__=="__main__":
     r = R.from_euler("zyx", [0, math.pi / 2, 0])
