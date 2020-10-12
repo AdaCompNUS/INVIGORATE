@@ -1,8 +1,12 @@
 import os.path as osp
 
+# --------------- Settings ------------------
+EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+
+# --------------- Constants ----------------
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
-EXP_SETTING = "no_multistep" # choose from: baseline, no_uncert, no_multistep, invigorate
+
 Q2={
     "type1": "I have not found the target. Where is it?", # COMMON FORMAT
     "type2": "I have not found the target. Where is it?",         # WHEN ALL THINGS WITH PROB 0

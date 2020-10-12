@@ -73,12 +73,9 @@ else:
 FETCH_GRIPPER_LENGTH = 0.2
 FETCH_MAX_GRIPPER_OPENING = 0.1
 GRASP_DEPTH = 0.01
-# GRASP_POSE_X_OFFST = -0.020
-# GRASP_POSE_Y_OFFST = 0.020
-# GRASP_POSE_Z_OFFST = -0.01
-GRASP_POSE_X_OFFST = -0.018
-GRASP_POSE_Y_OFFST = 0.02
-GRASP_POSE_Z_OFFST = -0.015
+GRASP_POSE_X_OFFST = -0.01 # -0.018
+GRASP_POSE_Y_OFFST = 0.0045 # 0.02
+GRASP_POSE_Z_OFFST = -0.01 # -0.015
 GRASP_WIDTH_OFFSET = 0.0
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
@@ -92,61 +89,6 @@ POSITIVE_RESPONSE_LIST = ["Got it", "Sure", "No Problem", "okay", "certainly", "
 
 # ---------- Statics ------------
 logger = logging.getLogger(LOGGER_NAME)
-
-# def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
-#     # Create a new plot
-#     # rotation: 0 means no rotation,
-#     #           1 means rotate w.r.t. x axis for 90 degrees
-#     #           2 means rotate w.r.t. y axis for 90 degrees
-#     #           3 means rotate w.r.t. z axis for 90 degrees
-#     figure = pyplot.figure()
-#     axes = mplot3d.Axes3D(figure)
-
-#     rot_mat_x = np.array(
-#         [[1, 0, 0],
-#          [0, 0, -1],
-#          [0, 1, 0]]
-#     )
-#     rot_mat_y = np.array(
-#         [[1, 0, 0],
-#          [0, 0, -1],
-#          [0, 1, 0]]
-#     )
-#     rot_mat_z = np.array(
-#         [[1, 0, 0],
-#          [0, 0, -1],
-#          [0, 1, 0]]
-#     )
-#     for pc in pc_list:
-#         if rotation == 1:
-#             pc = np.dot(pc, rot_mat_x.T)
-#         elif rotation == 2:
-#             pc = np.dot(pc, rot_mat_y.T)
-#         elif rotation == 3:
-#             pc = np.dot(pc, rot_mat_z.T)
-#         x = pc[:, 0]
-#         y = pc[:, 1]
-#         z = pc[:, 2]
-#         axes.scatter(x, y, z)
-
-#     for i, mesh in enumerate(mesh_list):
-#         if isinstance(mesh_color, (list, tuple)):
-#             c = mesh_color[i]
-#         else:
-#             c = mesh_color
-#         if rotation == 1:
-#             mesh.rotate([0.5, 0.0, 0.0], math.radians(90))
-#         elif rotation == 2:
-#             mesh.rotate([0.0, 0.5, 0.0], math.radians(90))
-#         elif rotation == 3:
-#             mesh.rotate([0.0, 0.0, 0.5], math.radians(90))
-#         axes.add_collection3d(mplot3d.art3d.Poly3DCollection(mesh.vectors, facecolors=c))
-
-#     # Auto scale to the mesh size
-#     scale = np.concatenate([mesh.points.flatten(-1) for mesh in mesh_list])
-#     axes.auto_scale_xyz(scale, scale, scale)
-#     # Show the plot to the screen
-#     pyplot.show()
 
 class FetchRobot():
     def __init__(self):
@@ -395,7 +337,7 @@ class FetchRobot():
     def _get_collision_free_grasp(self, orig_grasp, orig_opening):
         logger.info("checking grasp collision!!!")
         scene_pc = self._get_scene_pc()
-        return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc)
+        return self._grasp_collision_checker.get_collision_free_grasp(orig_grasp, orig_opening, scene_pc, vis_grasp=True)
 
     # --------- Public ------- #
     def read_imgs(self):
@@ -427,6 +369,7 @@ class FetchRobot():
 
         res = self._top_grasp(grasp)
         if not res:
+            self.move_arm_to_home()
             return False
 
         if not is_target:
@@ -665,4 +608,59 @@ Legacy
         if not resp.success:
             print('ERROR: robot grasp failed!!')
         return resp.success
+
+# def vis_mesh(mesh_list, pc_list, mesh_color="r", rotation = 1):
+#     # Create a new plot
+#     # rotation: 0 means no rotation,
+#     #           1 means rotate w.r.t. x axis for 90 degrees
+#     #           2 means rotate w.r.t. y axis for 90 degrees
+#     #           3 means rotate w.r.t. z axis for 90 degrees
+#     figure = pyplot.figure()
+#     axes = mplot3d.Axes3D(figure)
+
+#     rot_mat_x = np.array(
+#         [[1, 0, 0],
+#          [0, 0, -1],
+#          [0, 1, 0]]
+#     )
+#     rot_mat_y = np.array(
+#         [[1, 0, 0],
+#          [0, 0, -1],
+#          [0, 1, 0]]
+#     )
+#     rot_mat_z = np.array(
+#         [[1, 0, 0],
+#          [0, 0, -1],
+#          [0, 1, 0]]
+#     )
+#     for pc in pc_list:
+#         if rotation == 1:
+#             pc = np.dot(pc, rot_mat_x.T)
+#         elif rotation == 2:
+#             pc = np.dot(pc, rot_mat_y.T)
+#         elif rotation == 3:
+#             pc = np.dot(pc, rot_mat_z.T)
+#         x = pc[:, 0]
+#         y = pc[:, 1]
+#         z = pc[:, 2]
+#         axes.scatter(x, y, z)
+
+#     for i, mesh in enumerate(mesh_list):
+#         if isinstance(mesh_color, (list, tuple)):
+#             c = mesh_color[i]
+#         else:
+#             c = mesh_color
+#         if rotation == 1:
+#             mesh.rotate([0.5, 0.0, 0.0], math.radians(90))
+#         elif rotation == 2:
+#             mesh.rotate([0.0, 0.5, 0.0], math.radians(90))
+#         elif rotation == 3:
+#             mesh.rotate([0.0, 0.0, 0.5], math.radians(90))
+#         axes.add_collection3d(mplot3d.art3d.Poly3DCollection(mesh.vectors, facecolors=c))
+
+#     # Auto scale to the mesh size
+#     scale = np.concatenate([mesh.points.flatten(-1) for mesh in mesh_list])
+#     axes.auto_scale_xyz(scale, scale, scale)
+#     # Show the plot to the screen
+#     pyplot.show()
 """
