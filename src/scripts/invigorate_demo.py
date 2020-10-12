@@ -53,7 +53,7 @@ import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
-from invigorate.invigorate import Invigorate
+from invigorate.invigorate import *
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
@@ -114,7 +114,16 @@ def process_user_command(command, nlp_server="nltk"):
 
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
-    invigorate_client = Invigorate()
+
+    if EXP_SETTING == "invigorate":
+        invigorate_client = Invigorate()
+    elif EXP_SETTING == "baseline":
+        invigorate_client = Baseline()
+    elif EXP_SETTING == "no_uncert":
+        invigorate_client = No_Uncertainty()
+    elif EXP_SETTING == "no_multistep":
+        invigorate_client = No_Multistep()
+
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
 

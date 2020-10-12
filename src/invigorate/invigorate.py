@@ -2,12 +2,11 @@
 
 '''
 *. Removed flag not used??
-
 '''
 
 '''
 Leaf and desc prob is stored as a NxN matrix.
-M[]
+M[a. b] represents the probability of a being the leaf and descendant of b
 '''
 
 import warnings
@@ -16,6 +15,7 @@ import rospy
 import cv2
 from cv_bridge import CvBridge
 import torch
+import torch.nn.functional as f
 import numpy as np
 from scipy import optimize
 import os
@@ -140,7 +140,8 @@ class Invigorate():
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        rel_prob_mat, leaf_desc_prob = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
         logger.info('Step 1: raw grounding completed')
         logger.debug('raw target_prob: {}'.format(target_prob))
@@ -279,7 +280,6 @@ class Invigorate():
         clue_desc_prob = self.belief['clue_leaf_desc_prob']
 
         logger.info("decision_making_heuristic: ")
-        logger.debug('target_prob:{}'.format(target_prob))
         logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         logger.debug('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
 
@@ -449,10 +449,10 @@ class Invigorate():
 
     def _mrt_detection(self, img, bboxes):
         num_box = bboxes.shape[0]
-        # print(num_box)
+        # logger.info(num_box)
         rel_result = self._vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
-        # print(rel_result[1])
+        # logger.info(rel_result[1])
         if num_box == 1: # TODO hack!!
             rel_score_mat = (0.0, 0.0, 0.0)
         else:
@@ -500,12 +500,14 @@ class Invigorate():
                     rel_prob_mat[:, box_ind_i, box_ind_j] = [rel_prob_mat[:, box_ind_j, box_ind_i][1],
                                                              rel_prob_mat[:, box_ind_j, box_ind_i][0],
                                                              rel_prob_mat[:, box_ind_j, box_ind_i][2]]
+        return rel_prob_mat
 
+    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000):
         with torch.no_grad():
             triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
             triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-            leaf_desc_prob = self._leaf_and_descendant_stats(torch.from_numpy(rel_prob_mat) * triu_mask).numpy()
-        return rel_prob_mat, leaf_desc_prob
+            leaf_desc_prob = self._leaf_and_descendant_stats(torch.from_numpy(rel_prob_mat) * triu_mask, sample_num).numpy()
+        return leaf_desc_prob
 
     def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
         pcand = torch.Tensor(pcand).reshape(1, -1)
@@ -799,3 +801,315 @@ class Invigorate():
         clue = ' '.join(clue_tokens)
         logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
         return clue
+
+class Baseline(Invigorate):
+
+    def estimate_state_with_observation(self, observations):
+        img = observations['img']
+        bboxes = observations['bboxes']
+        det_scores = observations['det_scores']
+        grounding_scores = observations['grounding_scores']
+        rel_score_mat = observations['rel_score_mat']
+        expr = observations['expr']
+        ind_match_dict = observations['ind_match_dict']
+        num_box = observations['num_box']
+
+        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        rel_prob_mat = np.zeros(rel_score_mat.shape)
+        rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
+        # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
+        target_prob = np.array(grounding_scores)
+
+        # grounding result postprocess.
+        # 1. filter scores belonging to unrelated objects
+        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        for i in range(bboxes.shape[0]):
+            box_score = 0
+            for class_str in cls_filter:
+                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+            if box_score < 0.02:
+                target_prob[i] = -10.
+
+        max_ind = np.argmax(target_prob)
+        target_prob = np.zeros(len(target_prob) + 1)
+        target_prob[max_ind] = 1
+        logger.info('target_prob : {}'.format(target_prob))
+
+        self.belief['leaf_desc_prob'] = leaf_desc_prob
+        self.belief['target_prob'] = target_prob
+        self.belief["clue_leaf_desc_prob"] = None
+
+class No_Uncertainty(Invigorate):
+
+    def estimate_state_with_observation(self, observations):
+        img = observations['img']
+        bboxes = observations['bboxes']
+        det_scores = observations['det_scores']
+        grounding_scores = observations['grounding_scores']
+        rel_score_mat = observations['rel_score_mat']
+        expr = observations['expr']
+        ind_match_dict = observations['ind_match_dict']
+        num_box = observations['num_box']
+
+        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) == 0] = 1
+        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) < 0] = 0
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
+
+        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
+        logger.info('Step 1: raw grounding completed')
+        logger.info('raw target_prob: {}'.format(target_prob))
+        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+
+        # grounding result postprocess.
+        # 1. filter scores belonging to unrelated objects
+        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        for i in range(bboxes.shape[0]):
+            box_score = 0
+            for class_str in cls_filter:
+                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+            if box_score < 0.02:
+                target_prob[i] = 0.
+        # TODO. This means candidate belief estimation has problem
+        # if after name filter, all prob sum to zero, the object is in background
+        if target_prob.sum() == 0.0:
+            target_prob[-1] = 1.0
+        target_prob /= target_prob.sum()
+        logger.info('Step 2: class name filter completed')
+        logger.info('target_prob : {}'.format(target_prob))
+
+        max_ind = np.argmax(target_prob[:-1])
+        target_prob[:] = 0
+        target_prob[max_ind] = 1
+
+        self.belief['leaf_desc_prob'] = leaf_desc_prob
+        self.belief['target_prob'] = target_prob
+        self.belief["clue_leaf_desc_prob"] = None
+
+class No_Multistep(Invigorate):
+
+    def _cal_target_prob_from_ground_score(self, ground_scores):
+        bg_score = 0.25
+        ground_scores = np.append(ground_scores, bg_score)
+        return f.softmax(torch.FloatTensor(ground_scores), dim=0).numpy()
+
+    def estimate_state_with_observation(self, observations):
+        img = observations['img']
+        bboxes = observations['bboxes']
+        det_scores = observations['det_scores']
+        grounding_scores = observations['grounding_scores']
+        rel_score_mat = observations['rel_score_mat']
+        expr = observations['expr']
+        ind_match_dict = observations['ind_match_dict']
+        num_box = observations['num_box']
+
+        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        rel_prob_mat = rel_score_mat
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
+        target_prob = self._cal_target_prob_from_ground_score(np.array(grounding_scores))
+        logger.info('Step 1: raw grounding completed')
+        logger.info('raw target_prob: {}'.format(target_prob))
+        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+
+        # grounding result postprocess.
+        # 1. filter scores belonging to unrelated objects
+        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        for i in range(bboxes.shape[0]):
+            box_score = 0
+            for class_str in cls_filter:
+                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+            if box_score < 0.02:
+                target_prob[i] = 0.
+        # TODO. This means candidate belief estimation has problem
+        # if after name filter, all prob sum to zero, the object is in background
+        if target_prob.sum() == 0.0:
+            target_prob[-1] = 1.0
+        target_prob /= target_prob.sum()
+        logger.info('Step 2: class name filter completed')
+        logger.info('target_prob : {}'.format(target_prob))
+
+        # 2. incorporate QA history
+        target_prob_backup = target_prob.copy()
+        for k, v in ind_match_dict.items():
+            # if self.object_pool[v]["confirmed"] == True:
+            #     if self.object_pool[v]["ground_belief"] == 1.:
+            #         target_prob[:] = 0.
+            #         target_prob[k] = 1.
+            #     elif self.object_pool[v]["ground_belief"] == 0.:
+            #         target_prob[k] = 0.
+            if self.object_pool[v]["is_target"] == 1:
+                target_prob[:] = 0.
+                target_prob[k] = 1.
+            elif self.object_pool[v]["is_target"] == 0:
+                target_prob[k] = 0.
+        # sanity check
+        if target_prob.sum() > 0:
+            target_prob /= target_prob.sum()
+        else:
+            # something wrong with the matching process. roll back
+            for i in observations['not_matched']:
+                target_prob[i] = target_prob_backup[i]
+            target_prob[-1] = target_prob_backup[-1]
+            target_prob /= target_prob.sum()
+
+        # update target_prob
+        for k, v in ind_match_dict.items():
+            self.object_pool[v]["target_prob"] = target_prob[k]
+
+        logger.info('Step 3: incorporate QA history completed')
+        logger.info('target_prob: {}'.format(target_prob))
+
+        # 3. incorporate the provided clue by the user
+        clue_leaf_desc_prob = None
+        if self.clue is not None:
+            self.belief['leaf_desc_prob'] = leaf_desc_prob
+            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
+        logger.info('Step 4: incorporate clue by user completed')
+        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.info('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
+
+        self.belief['leaf_desc_prob'] = leaf_desc_prob
+        self.belief['target_prob'] = target_prob
+        self.belief['clue_leaf_desc_prob'] = clue_leaf_desc_prob
+
+class No_Rel_Uncertainty(Invigorate):
+
+    def estimate_state_with_observation(self, observations):
+        img = observations['img']
+        bboxes = observations['bboxes']
+        det_scores = observations['det_scores']
+        grounding_scores = observations['grounding_scores']
+        rel_score_mat = observations['rel_score_mat']
+        expr = observations['expr']
+        ind_match_dict = observations['ind_match_dict']
+        num_box = observations['num_box']
+
+        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) == 0] = 1
+        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) < 0] = 0
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
+
+        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
+        logger.info('Step 1: raw grounding completed')
+        logger.info('raw target_prob: {}'.format(target_prob))
+        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+
+        # grounding result postprocess.
+        # 1. filter scores belonging to unrelated objects
+        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        for i in range(bboxes.shape[0]):
+            box_score = 0
+            for class_str in cls_filter:
+                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+            if box_score < 0.02:
+                target_prob[i] = 0.
+        # TODO. This means candidate belief estimation has problem
+        # if after name filter, all prob sum to zero, the object is in background
+        if target_prob.sum() == 0.0:
+            target_prob[-1] = 1.0
+        target_prob /= target_prob.sum()
+        logger.info('Step 2: class name filter completed')
+        logger.info('target_prob : {}'.format(target_prob))
+
+        # 2. incorporate QA history
+        target_prob_backup = target_prob.copy()
+        for k, v in ind_match_dict.items():
+            # if self.object_pool[v]["confirmed"] == True:
+            #     if self.object_pool[v]["ground_belief"] == 1.:
+            #         target_prob[:] = 0.
+            #         target_prob[k] = 1.
+            #     elif self.object_pool[v]["ground_belief"] == 0.:
+            #         target_prob[k] = 0.
+            if self.object_pool[v]["is_target"] == 1:
+                target_prob[:] = 0.
+                target_prob[k] = 1.
+            elif self.object_pool[v]["is_target"] == 0:
+                target_prob[k] = 0.
+        # sanity check
+        if target_prob.sum() > 0:
+            target_prob /= target_prob.sum()
+        else:
+            # something wrong with the matching process. roll back
+            for i in observations['not_matched']:
+                target_prob[i] = target_prob_backup[i]
+            target_prob[-1] = target_prob_backup[-1]
+            target_prob /= target_prob.sum()
+
+        # update target_prob
+        for k, v in ind_match_dict.items():
+            self.object_pool[v]["target_prob"] = target_prob[k]
+
+        logger.info('Step 3: incorporate QA history completed')
+        logger.info('target_prob: {}'.format(target_prob))
+
+        # 3. incorporate the provided clue by the user
+        clue_leaf_desc_prob = None
+        if self.clue is not None:
+            self.belief['leaf_desc_prob'] = leaf_desc_prob
+            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
+        logger.info('Step 4: incorporate clue by user completed')
+        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.info('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
+
+        self.belief['leaf_desc_prob'] = leaf_desc_prob
+        self.belief['target_prob'] = target_prob
+        self.belief["clue_leaf_desc_prob"] = None
+
+class No_Tgt_Uncertainty(Invigorate):
+
+    def estimate_state_with_observation(self, observations):
+        img = observations['img']
+        bboxes = observations['bboxes']
+        det_scores = observations['det_scores']
+        grounding_scores = observations['grounding_scores']
+        rel_score_mat = observations['rel_score_mat']
+        expr = observations['expr']
+        ind_match_dict = observations['ind_match_dict']
+        num_box = observations['num_box']
+
+        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
+
+        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
+        logger.info('Step 1: raw grounding completed')
+        logger.info('raw target_prob: {}'.format(target_prob))
+        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+
+        # grounding result postprocess.
+        # 1. filter scores belonging to unrelated objects
+        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        for i in range(bboxes.shape[0]):
+            box_score = 0
+            for class_str in cls_filter:
+                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+            if box_score < 0.02:
+                target_prob[i] = 0.
+        # TODO. This means candidate belief estimation has problem
+        # if after name filter, all prob sum to zero, the object is in background
+        if target_prob.sum() == 0.0:
+            target_prob[-1] = 1.0
+        target_prob /= target_prob.sum()
+        logger.info('Step 2: class name filter completed')
+        logger.info('target_prob : {}'.format(target_prob))
+
+        max_ind = np.argmax(target_prob[:-1])
+        target_prob[:] = 0
+        target_prob[max_ind] = 1
+
+        self.belief['leaf_desc_prob'] = leaf_desc_prob
+        self.belief['target_prob'] = target_prob
+        self.belief["clue_leaf_desc_prob"] = None
