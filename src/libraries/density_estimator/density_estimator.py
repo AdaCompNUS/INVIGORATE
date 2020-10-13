@@ -54,12 +54,25 @@ class relation_belief(object):
         self.belief = np.array([0.333, 0.333, 0.334])
 
     def update(self, score, kde):
+        MIN_PROB = 0.05
+
         parent_llh = kde[0].comp_prob(score)
         child_llh = kde[1].comp_prob(score)
         norel_llh = kde[2].comp_prob(score)
         # posterior
         self.belief *= [parent_llh, child_llh, norel_llh]
         self.belief /= self.belief.sum()
+
+        # clip the prob to make sure that the probability is reasonable
+        if self.belief.min() < MIN_PROB:
+            _indicator = (self.belief < MIN_PROB)
+            res_sum = (self.belief * (1 - _indicator)).sum()
+
+            for i, _ in enumerate(_indicator):
+                if self.belief[i] < MIN_PROB:
+                    self.belief[i] = MIN_PROB
+                else:
+                    self.belief[i] = self.belief[i] / res_sum * (1 - MIN_PROB * _indicator.sum())
         return self.belief
 
     def reset(self):

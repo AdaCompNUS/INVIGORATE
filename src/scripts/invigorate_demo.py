@@ -2,16 +2,24 @@
 
 '''
 TODO
-*. question answering for where is it?
-*. grasp random objects when background has high prob?
-*. User answer confirmed object bug <To test>
+P1:
+* Ingress no caption generated?
+* Collision check no pc in gripper but still have in_gripper_score????
+
+P2
+*. question answering for where is it? do not constrain clue to "it is under sth"
 *. Fix collision checking for case 2 -> route to the center of the body
-*. accelerate grasp collision check by
-    *. running on GPU
-    *. Further segment pc <resolved>
-    *. greedy algo <resolved>
-*. mattnet can't handle the case where true white box is not detected but false black box is detected.
-*. grasp sequence bug
+*. collision checking against other objects.
+*. Only genenrate captions against relavant context object
+*. The target probability does not persist to the next iteration*
+*. object persistency issue. what if it does not get detected in one iteration. <To test>
+*. name filter
+    *. soft?
+    *. can't filter out if det_score is high
+    *. name filter before mattnet grounding
+*. MATTnet groudning score:
+    *. mattnet can't handle the case where true white box is not detected but false black box is detected.
+    *. only one object in scene. Mattnet always not sure.
 '''
 
 import sys
@@ -32,17 +40,20 @@ from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 import matplotlib
 matplotlib.use('Agg')
+import nltk
+import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
-from invigorate.invigorate import Invigorate
+from invigorate.invigorate import *
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
+from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
 ROBOT = 'Fetch'
 GENERATE_CAPTIONS = True
-DISPLAY_DEBUG_IMG = False
+DISPLAY_DEBUG_IMG = True
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -53,7 +64,7 @@ EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 
 # ------- Statics -----------
-
+logger = logging.getLogger(LOGGER_NAME)
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
 
@@ -67,14 +78,50 @@ def init_robot(robot):
 
     return robot
 
+def process_user_command(command, nlp_server="nltk"):
+    if nlp_server == "nltk":
+        text = nltk.word_tokenize(command)
+        pos_tags = nltk.pos_tag(text)
+    else:
+        doc = stanford_nlp_server(command)
+        pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+
+    # the object lies after the verb
+    verb_ind = -1
+    for i, (token, postag) in enumerate(pos_tags):
+        if postag.startswith("VB"):
+            verb_ind = i
+
+    particle_ind = -1
+    for i, (token, postag) in enumerate(pos_tags):
+        if postag in {"RP"}:
+            particle_ind = i
+
+    ind = max(verb_ind, particle_ind)
+    clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
+    clue = ' '.join(clue_tokens)
+    logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
+
+    return clue
+
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
-    invigorate_client = Invigorate()
+
+    if EXP_SETTING == "invigorate":
+        invigorate_client = Invigorate()
+    elif EXP_SETTING == "baseline":
+        invigorate_client = Baseline()
+    elif EXP_SETTING == "no_uncert":
+        invigorate_client = No_Uncertainty()
+    elif EXP_SETTING == "no_multistep":
+        invigorate_client = No_Multistep()
+
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
 
     # get user command
     expr = robot.listen()
+    expr = process_user_command(expr)
 
     all_results = []
     exec_type = EXEC_GRASP
@@ -85,6 +132,9 @@ def main():
     dummy_question_answer = None
     to_end = False
     while not to_end:
+        logger.info("------------------------")
+        logger.info("Start of iteration")
+
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
@@ -92,7 +142,7 @@ def main():
             # perception
             observations = invigorate_client.perceive_img(img, expr)
             if observations is None:
-                print("WARNING: nothing is detected, abort!!!")
+                logger.warning("nothing is detected, abort!!!")
                 break
             num_box = observations['bboxes'].shape[0]
 
@@ -126,21 +176,22 @@ def main():
         cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
-        action = invigorate_client.decision_making_heuristic() # action_idx.
+        action = invigorate_client.plan_action() # action_idx.
         action_type = invigorate_client.get_action_type(action)
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':
             grasp_target_idx = action
-            print("Grasping object " + str(grasp_target_idx) + " and ending the program")
+            logger.info("Grasping object " + str(grasp_target_idx) + " and ending the program")
             exec_type = EXEC_GRASP
             to_end = True
         elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
             grasp_target_idx = action - num_box
-            print("Grasping object " + str(grasp_target_idx) + " and continuing")
+            logger.info("Grasping object " + str(grasp_target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
             target_idx = action - 2 * num_box
+            logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
@@ -149,6 +200,7 @@ def main():
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
             exec_type = EXEC_ASK
         else: # action type is Q2
+            logger.info("Askig Q2 and continuing")
             if invigorate_client.clue is not None:
                 # special case.
                 dummy_question_answer = invigorate_client.clue
@@ -173,7 +225,7 @@ def main():
         # exec action
         if exec_type == EXEC_GRASP:
             grasps = observations['grasps']
-            print("grasps.shape {}".format(grasps.shape))
+            logger.debug("grasps.shape {}".format(grasps.shape))
             object_name = CLASSES[classes[grasp_target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')
 
@@ -196,7 +248,7 @@ def main():
             grasp = grasps[action % num_box][:8]
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
-                print('grasp failed!!!')
+                logger.error('grasp failed!!!')
                 if not is_target:
                     robot.say("sorry I can't grasp the {}, could you help me remove it?".format(object_name))
                 else:

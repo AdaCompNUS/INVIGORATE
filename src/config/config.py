@@ -1,5 +1,9 @@
 import os.path as osp
 
+# --------------- Settings ------------------
+EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+
+# --------------- Constants ----------------
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
 

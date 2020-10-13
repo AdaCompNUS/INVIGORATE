@@ -2,6 +2,8 @@ src/images
 build/
 devel/
 logs/
+src/experiment
+
 .catkin_tools/
 .vscode/
 
@@ -23,3 +25,9 @@ logs/
 #vscode
 *.env
 *.code-workspace
+
+*.zip
+
+src/.DS_Store
+
+.DS_Store

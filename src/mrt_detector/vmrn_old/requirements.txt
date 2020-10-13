@@ -1,8 +1,0 @@
-cython
-cffi
-scipy
-easydict
-matplotlib
-pyyaml
-networkx
-torchvision==0.2.0
