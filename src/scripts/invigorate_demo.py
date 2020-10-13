@@ -3,22 +3,14 @@
 '''
 TODO
 P1:
-*. question answering for where is it?
-*. User answer confirmed object bug <To test>
-*. Fix collision checking for case 2 -> route to the center of the body
-*. accelerate grasp collision check by
-    *. running on GPU
-    *. Further segment pc <resolved>
-    *. greedy algo <resolved>
-*. grasp sequence bug <To test>
-    *. (by adding name filter in process clue)
-    *. still have bug
-*. calibrate realsense every time??
-*. collision checking against other objects.
-*. write logger
-*. Only genenrate captions against relavant context object
+* Ingress no caption generated?
+* Collision check no pc in gripper but still have in_gripper_score????
 
 P2
+*. question answering for where is it? do not constrain clue to "it is under sth"
+*. Fix collision checking for case 2 -> route to the center of the body
+*. collision checking against other objects.
+*. Only genenrate captions against relavant context object
 *. The target probability does not persist to the next iteration*
 *. object persistency issue. what if it does not get detected in one iteration. <To test>
 *. name filter
@@ -184,7 +176,7 @@ def main():
         cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
-        action = invigorate_client.decision_making_heuristic() # action_idx.
+        action = invigorate_client.plan_action() # action_idx.
         action_type = invigorate_client.get_action_type(action)
 
         to_grasp = False

@@ -257,6 +257,9 @@ class Invigorate():
         self.belief["leaf_desc_prob"] = leaf_desc_prob
         self.belief["clue_leaf_desc_prob"] = clue_leaf_desc_prob
 
+    def plan_action(self):
+        return self.decision_making_heuristic()
+
     def decision_making_heuristic(self):
         def choose_target(target_prob):
             if len(target_prob.shape) == 1:

@@ -2,6 +2,8 @@ src/images
 build/
 devel/
 logs/
+src/experiment
+
 .catkin_tools/
 .vscode/
 

@@ -73,9 +73,9 @@ else:
 FETCH_GRIPPER_LENGTH = 0.2
 FETCH_MAX_GRIPPER_OPENING = 0.1
 GRASP_DEPTH = 0.01
-GRASP_POSE_X_OFFST = -0.01 # -0.018
-GRASP_POSE_Y_OFFST = 0.0045 # 0.02
-GRASP_POSE_Z_OFFST = -0.01 # -0.015
+GRASP_POSE_X_OFFST = -0.020 # -0.018
+GRASP_POSE_Y_OFFST = 0.005 # 0.02
+GRASP_POSE_Z_OFFST = -0.015 # -0.015
 GRASP_WIDTH_OFFSET = 0.0
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
@@ -344,7 +344,7 @@ class FetchRobot():
         # resp = self._fetch_image_client()
         # img = self._br.imgmsg_to_cv2(resp.image, desired_encoding='bgr8')
         if USE_REALSENSE:
-            img_msg = rospy.wait_for_message('/camera/color/image_raw', Image)
+            img_msg = rospy.wait_for_message('/camera/color/image_raw', Image, timeout=10)
             img = self._br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
             logger.info('img_size : {}'.format(img.shape))
             img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
