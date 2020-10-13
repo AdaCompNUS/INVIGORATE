@@ -115,6 +115,10 @@ def main():
         invigorate_client = No_Uncertainty()
     elif EXP_SETTING == "no_multistep":
         invigorate_client = No_Multistep()
+    elif EXP_SETTING == "no_rel_uncert":
+        invigorate_client = No_Rel_Uncertainty()
+    elif EXP_SETTING == "no_tgt_uncert":
+        invigorate_client = No_Tgt_Uncertainty()
 
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)

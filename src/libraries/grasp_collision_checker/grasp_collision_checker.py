@@ -143,7 +143,7 @@ class GraspCollisionChecker():
         dif_max = cube[1].reshape(1, 3) - points + epsilon
         return (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum()
 
-    def _check_collison_for_cube_batch(self, points, cube, epsilon=0):
+    def _check_collison_for_cube_batch(self, points, cube, epsilon=0, cuda=False):
         """
         @param points, np array, [num_grasps, num_points, 3]
         @parma cube, tuple, [[num_grasps, 3], [num_grasps, 3]]
@@ -151,7 +151,10 @@ class GraspCollisionChecker():
         num_grasps = points.shape[0]
         dif_min = points - cube[0].reshape(num_grasps, 1, 3) + epsilon # [num_grasps, num_points, 3]
         dif_max = cube[1].reshape(num_grasps, 1, 3) - points + epsilon # [num_grasps, num_points, 3]
-        collisions = (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum(axis=1) # [num_grasps, 1]
+        if cuda:
+            collisions = (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum(dim=1) # [num_grasps, 1]
+        else:
+            collisions = (((dif_min > 0).sum(-1) == 3) & ((dif_max > 0).sum(-1) == 3)).sum(axis=1) # [num_grasps, 1]
         return collisions
 
     def _check_grasp_collision(self, scene_pc, grasps, use_cuda=False):
@@ -272,13 +275,10 @@ class GraspCollisionChecker():
             pc_in_g = scene_pc.permute(2, 0, 1)[:, :, :3]
 
             # check collision
-            p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max),
-                                                                          epsilon=0.005)  # [num_grasps, 1]
-            p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max),
-                                                                          epsilon=0.005)  # [num_grasps, 1]
-            p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max),
-                                                                             epsilon=-0.005)  # [num_grasps, 1]
-            collision_scores = p_num_collided_l_finger + p_num_collided_r_finger  # [num_grasps, 1]
+            p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max), epsilon=0.005, cuda=True)  # [num_grasps, 1]
+            p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max), epsilon=0.005, cuda=True)  # [num_grasps, 1]
+            p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max), epsilon=-0.005, cuda=True)  # [num_grasps, 1]
+            collision_scores = p_num_collided_l_finger + p_num_collided_r_finger # [num_grasps, 1]
             in_gripper_scores = p_num_collided_convex_hull  # - collision_score # [num_grasps, 1]
 
             valid_mask = in_gripper_scores > 0
@@ -310,7 +310,7 @@ class GraspCollisionChecker():
             collision_scores, in_gripper_scores, valid_grasp_inds = self._check_grasp_collision(scene_pc, grasps_batch, use_cuda=use_cuda)
             collision_scores_list.append(collision_scores)
             in_gripper_scores_list.append(in_gripper_scores)
-            valid_grasp_inds_list.append(valid_grasp_inds)
+            valid_grasp_inds_list.append(valid_grasp_inds + num_processed)
             num_processed += num_to_process
 
         collision_scores = np.concatenate(collision_scores_list, axis=-1)
