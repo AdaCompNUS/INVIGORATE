@@ -922,9 +922,9 @@ class No_Multistep(Invigorate):
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
         logger.debug("grounding_scores: {}".format(rel_score_mat))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        # NOTE: here no multi-step for both rel_prob_mat and target_prob
         rel_prob_mat = rel_score_mat
         leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
-        # NOTE: here no multi-step
         target_prob = self._cal_target_prob_from_ground_score(np.array(grounding_scores))
         logger.info('Step 1: raw grounding completed')
         logger.info('raw target_prob: {}'.format(target_prob))
