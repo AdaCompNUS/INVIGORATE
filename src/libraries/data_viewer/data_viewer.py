@@ -366,9 +366,6 @@ class DataViewer(object):
                     action_str = Q2["type1"]
                     question_type = "Q2_TYPE1"
             print(action_str)
-            # append answer
-            if answer is not None:
-                action_str += '\n' + answer
 
             action_img_shape = list(img_show.shape)
             action_img = self.vis_action(split_long_string(action_str), action_img_shape)
@@ -417,6 +414,7 @@ class DataViewer(object):
                 "mrt_img": rel_det_img,
                 "ground_img": ground_img,
                 "action_str": split_long_string(action_str),
+                "answer" : answer,
                 "q_type": question_type}
 
     def gen_final_paper_fig(self, img, bboxes, classes, rel_mat, rel_score_mat,

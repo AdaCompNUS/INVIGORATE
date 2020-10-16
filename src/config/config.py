@@ -1,6 +1,9 @@
 import os.path as osp
 
 # --------------- Settings ------------------
+# EXP_SETTING = "baseline" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "no_uncert" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "no_multistep" # choose from: baseline, no_uncert, no_multistep, invigorate
 EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # --------------- Constants ----------------

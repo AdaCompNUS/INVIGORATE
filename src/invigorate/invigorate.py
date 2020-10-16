@@ -819,7 +819,7 @@ class Baseline(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob greedily
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = np.zeros(rel_score_mat.shape)
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
@@ -841,6 +841,7 @@ class Baseline(Invigorate):
         target_prob = np.zeros(len(target_prob) + 1)
         target_prob[max_ind] = 1
         logger.info('target_prob : {}'.format(target_prob))
+        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
@@ -861,9 +862,10 @@ class No_Uncertainty(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        logger.debug("rel_prob_mat after multi_step: {}".format(rel_prob_mat))
         # NOTE: here no rel uncertainty
         rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) == 0] = 1
         rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) < 0] = 0
@@ -920,7 +922,7 @@ class No_Multistep(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         # NOTE: here no multi-step for both rel_prob_mat and target_prob
         rel_prob_mat = rel_score_mat
@@ -1006,7 +1008,7 @@ class No_Rel_Uncertainty(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         # NOTE: here no rel prob!!!
@@ -1095,7 +1097,7 @@ class No_Tgt_Uncertainty(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
