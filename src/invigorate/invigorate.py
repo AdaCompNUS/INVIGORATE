@@ -423,7 +423,9 @@ class Invigorate():
                 if j in pool_to_det.keys():
                     # det_to_pool[i] > all possible j.
                     new_rel = self._init_relation(rel_scores[:, pool_to_det[j], i])
-                    self.rel_pool[(j, det_to_pool[i])] = new_rel
+                else:
+                    new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
+                self.rel_pool[(j, det_to_pool[i])] = new_rel
         return det_to_pool, not_matched
 
     def _init_object(self, bbox, score):
