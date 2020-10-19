@@ -879,7 +879,7 @@ class No_Uncertainty(Invigorate):
         logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
+        # filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
         for i in range(bboxes.shape[0]):
             box_score = 0
@@ -994,6 +994,13 @@ class No_Multistep(Invigorate):
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
         self.belief['clue_leaf_desc_prob'] = clue_leaf_desc_prob
+
+class No_Multistep_2(No_Multistep):
+    def _cal_target_prob_from_ground_score(self, ground_scores):
+        bg_score = 0.25
+        ground_scores = np.append(ground_scores, bg_score)
+        ground_scores *= 10 # NOTE!!! the difference is here
+        return f.softmax(torch.FloatTensor(ground_scores), dim=0).numpy()
 
 class No_Rel_Uncertainty(Invigorate):
 

@@ -5,6 +5,7 @@ import os.path as osp
 # EXP_SETTING = "no_uncert" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_multistep" # choose from: baseline, no_uncert, no_multistep, invigorate
 EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "no_multistep_2" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # --------------- Constants ----------------
 this_dir = osp.dirname(osp.abspath(__file__))
