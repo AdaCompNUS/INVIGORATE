@@ -838,6 +838,8 @@ class Baseline(Invigorate):
                 box_score += det_scores[i][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
                 target_prob[i] = -10.
+        logger.info('Step 2: class name filter completed')
+        logger.info('target_prob : {}'.format(target_prob))
 
         max_ind = np.argmax(target_prob)
         target_prob = np.zeros(len(target_prob) + 1)
