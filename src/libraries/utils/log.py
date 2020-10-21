@@ -6,13 +6,16 @@ import sys
 # this_dir = osp.dirname(osp.abspath(__file__))
 # sys.path.insert(0, osp.join(this_dir, '../../'))
 
-from config.config import ROOT_DIR
+from config.config import *
 
 LOGGER_NAME = 'invigorate_logger'
 
 now = datetime.now()
 date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
-LOG_FILE = osp.join(ROOT_DIR, "logs/demo_{}.log".format(date_time))
+if MODE == EXPERIMENT:
+    LOG_FILE = osp.join(EXP_RES_DIR, "demo_{}.log".format(date_time))
+else:
+    LOG_FILE = osp.join(ROOT_DIR, "logs/demo_{}.log".format(date_time))
 LOG_LEVEL = logging.DEBUG
 
 logger = logging.getLogger(LOGGER_NAME)

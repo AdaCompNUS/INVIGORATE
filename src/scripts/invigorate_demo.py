@@ -3,8 +3,6 @@
 '''
 TODO
 P1:
-* Ingress no caption generated?
-* Collision check no pc in gripper but still have in_gripper_score????
 
 P2
 *. question answering for where is it? do not constrain clue to "it is under sth"
@@ -20,6 +18,8 @@ P2
 *. MATTnet groudning score:
     *. mattnet can't handle the case where true white box is not detected but false black box is detected.
     *. only one object in scene. Mattnet always not sure.
+* Handling of user answer "no"??
+* Can't handle "it is under the apple on the right"
 '''
 
 import sys
@@ -115,6 +115,9 @@ def main():
         invigorate_client = No_Uncertainty()
     elif EXP_SETTING == "no_multistep":
         invigorate_client = No_Multistep()
+    elif EXP_SETTING == "no_multistep_2":
+        invigorate_client = No_Multistep_2()
+    logger.info("SETTING: {}".format(EXP_SETTING))
 
     data_viewer = DataViewer(CLASSES)
     robot = init_robot(ROBOT)
@@ -276,7 +279,7 @@ def main():
         #     break
 
     print("exit!")
-    rospy.sleep(10) # wait 10 second
+    # rospy.sleep(10) # wait 10 second
     robot.move_arm_to_home()
 
 if __name__ == '__main__':

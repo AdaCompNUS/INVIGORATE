@@ -1,3 +1,4 @@
+from config.config import EXPERIMENT, EXP_RES_DIR
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import time
@@ -102,6 +103,7 @@ def gen_paper_fig(expr, results):
          "title": ""}
         for r in results]
     action_data = [r["action_str"] for r in results]
+    answer_data = [r["answer"] for r in results]
     mrt_data = [
         {"data": r["mrt_img"][:,:,::-1].astype(np.float32) / 256.,
          "type": "image",
@@ -148,13 +150,17 @@ def gen_paper_fig(expr, results):
         [
             (2 * loc[0] + loc[2]) / 2., loc[1],        # head position
             (2 * loc[0] + loc[2]) / 2., loc[1] - 0.03  # tail position
-        ] 
+        ]
         for loc in locs
     ]
 
+    # draw strings
     for i, action_str in enumerate(action_data):
         text_loc = ((2 * od_locs[i][0] + od_locs[i][2]) / 2., 0.05)
         paper_fig.draw_single_text(text_loc, action_str)
+    for i, answer_str in enumerate(answer_data):
+        text_loc = ((2 * od_locs[i][0] + od_locs[i][2]) / 2., 0.92)
+        paper_fig.draw_single_text(text_loc, "User's answer:" + str(answer_str))
     text_loc = ((0.5, 0.95))
     paper_fig.draw_single_text(text_loc, "User's Command: " + expr)
 
@@ -176,7 +182,11 @@ def gen_paper_fig(expr, results):
     current_date = datetime.datetime.now()
     image_id = "{}-{}-{}-{}".format(current_date.year, current_date.month, current_date.day,
                                     time.strftime("%H:%M:%S"))
-    plt.savefig(ROOT_DIR +  "images/output/paper_fig/" + image_id + ".png")
+
+    if MODE == EXPERIMENT:
+        plt.savefig(EXP_RES_DIR + "/" + image_id + ".png")
+    else:
+        plt.savefig(ROOT_DIR +  "images/output/paper_fig/" + image_id + ".png")
 
 if __name__=="__main__":
     img = cv2.imread("../../images/1.png")

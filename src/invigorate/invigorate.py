@@ -423,7 +423,9 @@ class Invigorate():
                 if j in pool_to_det.keys():
                     # det_to_pool[i] > all possible j.
                     new_rel = self._init_relation(rel_scores[:, pool_to_det[j], i])
-                    self.rel_pool[(j, det_to_pool[i])] = new_rel
+                else:
+                    new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
+                self.rel_pool[(j, det_to_pool[i])] = new_rel
         return det_to_pool, not_matched
 
     def _init_object(self, bbox, score):
@@ -819,7 +821,7 @@ class Baseline(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob greedily
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = np.zeros(rel_score_mat.shape)
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
@@ -836,11 +838,14 @@ class Baseline(Invigorate):
                 box_score += det_scores[i][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
                 target_prob[i] = -10.
+        logger.info('Step 2: class name filter completed')
+        logger.info('target_prob : {}'.format(target_prob))
 
         max_ind = np.argmax(target_prob)
         target_prob = np.zeros(len(target_prob) + 1)
         target_prob[max_ind] = 1
         logger.info('target_prob : {}'.format(target_prob))
+        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
@@ -861,9 +866,10 @@ class No_Uncertainty(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
+        logger.debug("rel_prob_mat after multi_step: {}".format(rel_prob_mat))
         # NOTE: here no rel uncertainty
         rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) == 0] = 1
         rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) < 0] = 0
@@ -875,7 +881,7 @@ class No_Uncertainty(Invigorate):
         logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
+        # filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
         for i in range(bboxes.shape[0]):
             box_score = 0
@@ -920,11 +926,11 @@ class No_Multistep(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        # NOTE: here no multi-step for both rel_prob_mat and target_prob
         rel_prob_mat = rel_score_mat
         leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
-        # NOTE: here no multi-step
         target_prob = self._cal_target_prob_from_ground_score(np.array(grounding_scores))
         logger.info('Step 1: raw grounding completed')
         logger.info('raw target_prob: {}'.format(target_prob))
@@ -991,6 +997,13 @@ class No_Multistep(Invigorate):
         self.belief['target_prob'] = target_prob
         self.belief['clue_leaf_desc_prob'] = clue_leaf_desc_prob
 
+class No_Multistep_2(No_Multistep):
+    def _cal_target_prob_from_ground_score(self, ground_scores):
+        bg_score = 0.25
+        ground_scores = np.append(ground_scores, bg_score)
+        ground_scores *= 10 # NOTE!!! the difference is here
+        return f.softmax(torch.FloatTensor(ground_scores), dim=0).numpy()
+
 class No_Rel_Uncertainty(Invigorate):
 
     def estimate_state_with_observation(self, observations):
@@ -1006,7 +1019,7 @@ class No_Rel_Uncertainty(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         # NOTE: here no rel prob!!!
@@ -1095,7 +1108,7 @@ class No_Tgt_Uncertainty(Invigorate):
         num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(rel_score_mat))
+        logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
