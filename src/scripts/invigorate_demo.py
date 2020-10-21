@@ -3,8 +3,6 @@
 '''
 TODO
 P1:
-* Ingress no caption generated?
-* Collision check no pc in gripper but still have in_gripper_score????
 
 P2
 *. question answering for where is it? do not constrain clue to "it is under sth"

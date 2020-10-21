@@ -1,3 +1,4 @@
+from config.config import EXPERIMENT, EXP_RES_DIR
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import time
@@ -181,7 +182,11 @@ def gen_paper_fig(expr, results):
     current_date = datetime.datetime.now()
     image_id = "{}-{}-{}-{}".format(current_date.year, current_date.month, current_date.day,
                                     time.strftime("%H:%M:%S"))
-    plt.savefig(ROOT_DIR +  "images/output/paper_fig/" + image_id + ".png")
+
+    if MODE == EXPERIMENT:
+        plt.savefig(EXP_RES_DIR + "/" + image_id + ".png")
+    else:
+        plt.savefig(ROOT_DIR +  "images/output/paper_fig/" + image_id + ".png")
 
 if __name__=="__main__":
     img = cv2.imread("../../images/1.png")
