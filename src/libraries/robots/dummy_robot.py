@@ -26,3 +26,7 @@ class DummyRobot():
         print('Dummy execution of listen')
         text = raw_input("Enter: ")
         return text
+
+    def move_arm_to_home(self):
+        print('Dummy execution of move_arm_to_home')
+        return
