@@ -106,7 +106,7 @@ def generate_gt_rel_mat(edges, num_box):
 def cal_tgt_loss(gt_tgt_prob, pred_tgt_prob):
     loss = 0.0
     for i in range(len(gt_tgt_prob)):
-        loss -= gt_tgt_prob[i] * math.log(pred_tgt_prob[i]) + (1 - gt_tgt_prob[i]) * math.log(1 - pred_tgt_prob[i])
+        loss -= gt_tgt_prob[i] * math.log(pred_tgt_prob[i] + 1e-10) + (1 - gt_tgt_prob[i]) * math.log(1 - pred_tgt_prob[i] + 1e-10)
     return loss
 
 def cal_rel_loss(gt_rel_prob, pred_rel_prob):
@@ -114,7 +114,7 @@ def cal_rel_loss(gt_rel_prob, pred_rel_prob):
     gt_rel_prob = gt_rel_prob.reshape(-1)
     pred_rel_prob = pred_rel_prob.reshape(-1)
     for i in range(len(gt_rel_prob)):
-        loss -= gt_rel_prob[i] * math.log(pred_rel_prob[i] + 1e-5) + (1 - gt_rel_prob[i]) * math.log(1 - pred_rel_prob[i])
+        loss -= gt_rel_prob[i] * math.log(pred_rel_prob[i] + 1e-10) + (1 - gt_rel_prob[i]) * math.log(1 - pred_rel_prob[i] + 1e-10)
     return loss
 
 def main():
@@ -137,9 +137,10 @@ def main():
     answer = None
     dummy_question_answer = None
     to_end = False
+    iter_num = 1
     while not to_end:
         logger.info("------------------------")
-        logger.info("Start of iteration")
+        logger.info("Start of iteration {}".format(iter_num))
 
         # perceive new images
         img, _ = robot.read_imgs()
@@ -169,9 +170,12 @@ def main():
         ms_tgt_prob, ms_rel_mat = invigorate_client.estimate_state_with_observation_multistep(observations)
         gt_target = raw_input("Enter idx for gt tgt:")
         gt_rel_str = raw_input("Enter edges for gt tgt:")
-        gt_rel_list = gt_rel_str.split()
-        gt_rel_list = [int(x) for x in gt_rel_list]
-        gt_rel = np.array(gt_rel_list).reshape(-1, 2).tolist()
+        if gt_rel_str != '':
+            gt_rel_list = gt_rel_str.split()
+            gt_rel_list = [int(x) for x in gt_rel_list]
+            gt_rel = np.array(gt_rel_list).reshape(-1, 2).tolist()
+        else:
+            gt_rel = []
         gt_tgt_prob = generate_gt_tgt_prob(int(gt_target), num_box)
         gt_rel_mat = generate_gt_rel_mat(gt_rel, num_box)
 
@@ -203,9 +207,11 @@ def main():
         target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
-        to_cont = raw_input('To_continue?')
+        to_cont = raw_input('Remove one object, To_continue?')
         if to_cont != 'y':
             break
+
+        iter_num += 1
 
     print("exit!")
     # rospy.sleep(10) # wait 10 second

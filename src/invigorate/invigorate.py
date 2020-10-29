@@ -278,6 +278,7 @@ class Invigorate():
                     return "Q2"
                 else:
                     return "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1)))
+            # return "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1)))
 
         num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
@@ -480,7 +481,7 @@ class Invigorate():
             self.object_pool[obj_ind]["ground_scores_history"].append(score)
         pcand = [self.object_pool[ind_match_dict[i]]["cand_belief"].belief[1] for i in range(num_box)]
         ground_result = self._cal_target_prob_from_p_cand(pcand)
-        ground_result = np.append(ground_result, 1. - ground_result.sum())
+        ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
         return ground_result
 
     def _multi_step_mrt_estimation(self, rel_score_mat, ind_match_dict):
@@ -1195,6 +1196,7 @@ class InvigorateMultiSingleStepComparison(Invigorate):
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
+        target_prob /= target_prob.sum()
         logger.info('Step 1: raw grounding completed')
         logger.debug('raw target_prob: {}'.format(target_prob))
         logger.debug('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
