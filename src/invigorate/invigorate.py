@@ -79,7 +79,7 @@ class Invigorate():
 
     def perceive_img(self, img, expr):
         '''
-        @return bboxes,         [Nx5]
+        @return bboxes,         [Nx5], xyxy
                 scores,         [Nx1]
                 rel_mat,        [NxN]
                 rel_score_mat,  [3xNxN]
