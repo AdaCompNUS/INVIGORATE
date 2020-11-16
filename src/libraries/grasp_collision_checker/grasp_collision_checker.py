@@ -31,6 +31,7 @@ RIGHT_FINGER_POSE = {"link":[0., 0.101425, 0., 0., 0., 0.],
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
 IN_GRIPPER_SCORE_THRESOHOLD = 40
 BATCH_SIZE = 1000
+VISUALIZE_GRASP = True
 
 # ------------ Statics -----------
 logger = logging.getLogger(LOGGER_NAME)
@@ -41,6 +42,9 @@ class GraspCollisionChecker():
         self._gripper_model = gripper_model
 
     def _vis_grasp(self, scene_pc, selected_grasp):
+        if not VISUALIZE_GRASP:
+            return
+
         if selected_grasp is None:
             return
 

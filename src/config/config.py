@@ -35,7 +35,7 @@ EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, inv
 # EXP_SETTING = "no_multistep_2" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # ------------- EXP Settings --------------
-PARTICIPANT_NUM = 7
+PARTICIPANT_NUM = 10
 SCENE_NUM = 10
 VER_NUM = 0
 if EXP_SETTING == "baseline":

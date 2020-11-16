@@ -20,6 +20,9 @@ P2
     *. only one object in scene. Mattnet always not sure.
 * Handling of user answer "no"??
 * Can't handle "it is under the apple on the right"
+* Can't handle "yellow cup under the mouse"
+*. Mattnet can't really differentiate between context object and target object
+*. handle "remote controller under the blue box"
 '''
 
 import sys
