@@ -3,6 +3,9 @@
 '''
 TODO
 P1:
+*. compare kinect
+*. Try higher resolution realsense [Done, it does not work]
+*. Manually adjust position and check it reports so many collision, knife, toothbrush
 
 P2
 *. question answering for where is it? do not constrain clue to "it is under sth"

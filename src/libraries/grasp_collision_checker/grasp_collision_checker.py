@@ -29,9 +29,10 @@ RIGHT_FINGER_POSE = {"link":[0., 0.101425, 0., 0., 0., 0.],
 
 # ------------- Settings -------------
 ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
-IN_GRIPPER_SCORE_THRESOHOLD = 40
+IN_GRIPPER_SCORE_THRESOHOLD = 20
 BATCH_SIZE = 1000
 VISUALIZE_GRASP = True
+COLLISION_CHECK_EPSILON = 0.002
 
 # ------------ Statics -----------
 logger = logging.getLogger(LOGGER_NAME)
@@ -57,8 +58,8 @@ class GraspCollisionChecker():
         gripper_width = selected_grasp[-1]
         l_finger_points=np.asarray(l_finger.points)
         r_finger_points=np.asarray(r_finger.points)
-        l_finger_points[:, 1] -= gripper_width / 2 + (0.0115 /2) # need to offset grippr width
-        r_finger_points[:, 1] += gripper_width / 2 + (0.0115 /2) # need to offset grippr width
+        l_finger_points[:, 1] -= 0.101425 + (gripper_width / 2) + (0.0115 / 2) # need to offset gripper width
+        r_finger_points[:, 1] += 0.101425 + (gripper_width / 2) + (0.0115 / 2) # need to offset gripper width
         l_finger_points[:, 0] -= 0.03
         r_finger_points[:, 0] -= 0.03
         open3d_cloud = o3d.geometry.PointCloud()
@@ -216,9 +217,9 @@ class GraspCollisionChecker():
             pc_in_g = np.transpose(scene_pc, (2, 0, 1))[:, :, :3]
 
             # check collision
-            p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max), epsilon=0.005) # [num_grasps, 1]
-            p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max), epsilon=0.005) # [num_grasps, 1]
-            p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max), epsilon=-0.005) # [num_grasps, 1]
+            p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max), epsilon=COLLISION_CHECK_EPSILON) # [num_grasps, 1]
+            p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max), epsilon=COLLISION_CHECK_EPSILON) # [num_grasps, 1]
+            p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max), epsilon=-COLLISION_CHECK_EPSILON) # [num_grasps, 1]
             collision_scores = p_num_collided_l_finger + p_num_collided_r_finger # [num_grasps, 1]
             in_gripper_scores = p_num_collided_convex_hull # - collision_score # [num_grasps, 1]
 
@@ -279,9 +280,9 @@ class GraspCollisionChecker():
             pc_in_g = scene_pc.permute(2, 0, 1)[:, :, :3]
 
             # check collision
-            p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max), epsilon=0.005, cuda=True)  # [num_grasps, 1]
-            p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max), epsilon=0.005, cuda=True)  # [num_grasps, 1]
-            p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max), epsilon=-0.005, cuda=True)  # [num_grasps, 1]
+            p_num_collided_l_finger = self._check_collison_for_cube_batch(pc_in_g, (l_finger_min, l_finger_max), epsilon=COLLISION_CHECK_EPSILON, cuda=True)  # [num_grasps, 1]
+            p_num_collided_r_finger = self._check_collison_for_cube_batch(pc_in_g, (r_finger_min, r_finger_max), epsilon=COLLISION_CHECK_EPSILON, cuda=True)  # [num_grasps, 1]
+            p_num_collided_convex_hull = self._check_collison_for_cube_batch(pc_in_g, (gripper_min, gripper_max), epsilon=-COLLISION_CHECK_EPSILON, cuda=True)  # [num_grasps, 1]
             collision_scores = p_num_collided_l_finger + p_num_collided_r_finger # [num_grasps, 1]
             in_gripper_scores = p_num_collided_convex_hull  # - collision_score # [num_grasps, 1]
 
@@ -358,7 +359,6 @@ class GraspCollisionChecker():
 
         # Step1 fine tune z first
         logger.info("Adjusting z!")
-
         grasps = self._sample_grasps_xyzw(grasp, z=0.03)
         selected_grasp = self._select_from_grasps(grasps, scene_pc)
         if selected_grasp is None:
@@ -408,6 +408,10 @@ class GraspCollisionChecker():
         orig_grasp_array = np.array([orig_grasp.pose.position.x, orig_grasp.pose.position.y, orig_grasp.pose.position.z,
                                     orig_grasp.pose.orientation.x, orig_grasp.pose.orientation.y, orig_grasp.pose.orientation.z, orig_grasp.pose.orientation.w,
                                     orig_opening])
+
+        # visualize initial grasp
+        # self._vis_grasp(scene_pc_seg, orig_grasp_array)
+
         start_time = time.time()
         new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_array, scene_pc_seg)
         end_time = time.time()
