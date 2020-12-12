@@ -32,6 +32,7 @@ import sys
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
 sys.path.insert(0, osp.join(this_dir, '../'))
+sys.path.append(osp.join(this_dir,'../faster_rcnn_detector'))
 
 import warnings
 import rospy
@@ -52,13 +53,13 @@ import logging
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import *
-from libraries.caption_generator import caption_generator
+# from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-GENERATE_CAPTIONS = True
+ROBOT = 'Dummy'
+GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
 if ROBOT == 'Fetch':

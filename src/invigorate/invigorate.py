@@ -139,15 +139,14 @@ class Invigorate():
         ind_match_dict = observations['ind_match_dict']
         num_box = observations['num_box']
 
-        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
+        # Estimate rel_prob_mat and target_prob according to multi-step observations
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
+
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
         logger.info('Step 1: raw grounding completed')
         logger.debug('raw target_prob: {}'.format(target_prob))
-        logger.debug('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
 
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
@@ -169,12 +168,6 @@ class Invigorate():
         # 2. incorporate QA history
         target_prob_backup = target_prob.copy()
         for k, v in ind_match_dict.items():
-            # if self.object_pool[v]["confirmed"] == True:
-            #     if self.object_pool[v]["ground_belief"] == 1.:
-            #         target_prob[:] = 0.
-            #         target_prob[k] = 1.
-            #     elif self.object_pool[v]["ground_belief"] == 0.:
-            #         target_prob[k] = 0.
             if self.object_pool[v]["is_target"] == 1:
                 target_prob[:] = 0.
                 target_prob[k] = 1.
@@ -198,25 +191,22 @@ class Invigorate():
         logger.info('target_prob: {}'.format(target_prob))
 
         # 3. incorporate the provided clue by the user
-        clue_leaf_desc_prob = None
+        clue_prob = None
         if self.clue is not None:
-            self.belief['leaf_desc_prob'] = leaf_desc_prob
-            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
+            clue_prob = self._estimate_state_with_user_clue(self.clue)
         logger.info('Step 4: incorporate clue by user completed')
-        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        logger.info('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
+        logger.info('clue_probs: \n{}'.format(clue_prob))
 
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
         self.belief['target_prob'] = target_prob
-        self.belief['clue_leaf_desc_prob'] = clue_leaf_desc_prob
+        self.belief['rel_prob'] = rel_prob_mat
+        self.belief['clue_prob'] = clue_prob
 
     def estimate_state_with_user_answer(self, action, answer):
         target_prob = self.belief["target_prob"]
-        leaf_desc_prob = self.belief["leaf_desc_prob"]
         num_box = self.observations['num_box']
         ind_match_dict = self.observations['ind_match_dict']
         ans = answer.lower()
-        clue_leaf_desc_prob = None
+
         # Q1
         if self.get_action_type(action, num_box) == 'Q1':
             logger.info("Invigorate: handling answer for Q1")
@@ -233,6 +223,7 @@ class Invigorate():
                 target_prob[target_idx] = 0
                 target_prob /= np.sum(target_prob)
                 self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
+
         # Q2
         elif self.get_action_type(action, num_box) == 'Q2':
             logger.info("Invigorate: handling answer for Q2")
@@ -248,22 +239,38 @@ class Invigorate():
                 self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
             else:
                 ans = self._process_q2_ans(ans)
-                if len(ans) > 0:
-                    leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(ans)
+                clue_prob = self._estimate_state_with_user_clue(ans)
+                logger.debug('clue_probs: \n{}'.format(clue_prob))
+                self.belief["clue_prob"] = clue_prob
 
         logger.info("estimate_state_with_user_answer completed")
-        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        logger.debug('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
-
         self.belief["target_prob"] = target_prob
-        self.belief["leaf_desc_prob"] = leaf_desc_prob
-        self.belief["clue_leaf_desc_prob"] = clue_leaf_desc_prob
 
-    def plan_action(self):
+
+    def plan_action(self, heuristic=True):
         return self.decision_making_heuristic()
 
+    def _get_clue_leaf_desc_prob(self, leaf_desc_prob, clue_prob):
+
+        cluster_res = KMeans(n_clusters=2).fit_predict(clue_prob.reshape(-1, 1))
+        mean0 = clue_prob[cluster_res == 0].mean()
+        mean1 = clue_prob[cluster_res == 1].mean()
+        pos_label = 0 if mean0 > mean1 else 1
+        pos_num = (cluster_res == pos_label).sum()
+        if pos_num == 1 and cluster_res[-1] == pos_label:
+            # cannot successfully ground the clue object, reset clue
+            clue_leaf_desc_prob = None
+            self.clue = None
+        else:
+            clue_prob = np.expand_dims(clue_prob, 0)
+            clue_leaf_desc_prob = (clue_prob[:, :-1] * leaf_desc_prob).sum(-1).squeeze()
+
+        logger.info('Update leaf_desc_prob with clue completed')
+        logger.info('clue_leaf_desc_prob : {}'.format(clue_leaf_desc_prob))
+        return clue_leaf_desc_prob
+
     def decision_making_heuristic(self):
-        def choose_target(target_prob):
+        def choose_action(target_prob):
             if len(target_prob.shape) == 1:
                 target_prob = target_prob.reshape(-1, 1)
             cluster_res = KMeans(n_clusters=2).fit_predict(target_prob)
@@ -282,14 +289,16 @@ class Invigorate():
 
         num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
-        leaf_desc_prob = self.belief['leaf_desc_prob']
-        clue_desc_prob = self.belief['clue_leaf_desc_prob']
-
+        rel_prob = self.belief['rel_prob']
+        clue_prob = self.belief['clue_prob']
+        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
         logger.info("decision_making_heuristic: ")
         logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        logger.debug('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
+        if clue_prob is not None:
+            clue_leaf_desc_prob = self._get_clue_leaf_desc_prob(leaf_desc_prob, clue_prob)
+            logger.debug('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
 
-        action = choose_target(target_prob.copy())
+        action = choose_action(target_prob.copy())
         if action.startswith("Q"):
             if action == "Q2":
                 if self.clue is None:
@@ -307,7 +316,7 @@ class Invigorate():
                         action = current_tgt + num_box
                 else:
                     # clue is not None, the robot will grasp the clue object first
-                    l_d_probs = clue_desc_prob
+                    l_d_probs = clue_leaf_desc_prob
                     current_tgt = np.argmax(l_d_probs)
                     # grasp and continue
                     action = current_tgt + num_box
@@ -514,7 +523,12 @@ class Invigorate():
         with torch.no_grad():
             triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
             triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-            leaf_desc_prob = self._leaf_and_descendant_stats(torch.from_numpy(rel_prob_mat) * triu_mask, sample_num).numpy()
+            leaf_desc_prob, _, _, _, _ = \
+                self._leaf_and_desc_estimate(torch.from_numpy(rel_prob_mat) * triu_mask, sample_num)
+            leaf_desc_prob = leaf_desc_prob.numpy()
+
+        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+
         return leaf_desc_prob
 
     def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
@@ -640,7 +654,7 @@ class Invigorate():
 
         return ind_match_dict
 
-    def _leaf_and_descendant_stats(self, rel_prob_mat, sample_num = 1000):
+    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1000, with_virtual_node=False, removed=None):
         # TODO: Numpy may support a faster implementation.
         def sample_trees(rel_prob, sample_num=1):
             return torch.multinomial(rel_prob, sample_num, replacement=True)
@@ -651,6 +665,36 @@ class Invigorate():
             cuda_data = True
             rel_prob_mat = rel_prob_mat.cpu()
 
+        # add virtual node, with uniform relation priors
+        num_obj = rel_prob_mat.shape[-1]
+        if with_virtual_node:
+            if removed is None:
+                removed = []
+            removed = torch.tensor(removed).long()
+            v_row = torch.zeros((3, 1, num_obj + 1)).type_as(rel_prob_mat)
+            v_column = torch.zeros((3, num_obj, 1)).type_as(rel_prob_mat)
+            # no other objects can be the parent node of the virtual node,
+            # i.e., we assume that the virtual node must be a root node
+            # 1) if the virtual node is the target, its parents can be ignored
+            # 2) if the virtual node is not the target, such a setting will
+            # not affect the relationships among other nodes
+            v_column[0] = 0
+            v_column[1] = 1. / 3.
+            v_column[2] = 2. / 3.
+            v_column[1, removed] = 0.
+            v_column[2, removed] = 1.
+            rel_prob_mat = torch.cat(
+                [torch.cat([rel_prob_mat, v_column], dim=2),
+                 v_row], dim=1)
+        else:
+            # initialize the virtual node to have no relationship with other objects
+            v_row = torch.zeros((3, 1, num_obj + 1)).type_as(rel_prob_mat)
+            v_column = torch.zeros((3, num_obj, 1)).type_as(rel_prob_mat)
+            v_column[2, :, 0] = 1
+            rel_prob_mat = torch.cat(
+                [torch.cat([rel_prob_mat, v_column], dim=2),
+                 v_row], dim=1)
+
         rel_prob_mat = rel_prob_mat.permute((1, 2, 0))
         mrt_shape = rel_prob_mat.shape[:2]
         rel_prob = rel_prob_mat.view(-1, 3)
@@ -660,11 +704,14 @@ class Invigorate():
         samples = sample_trees(rel_prob[rel_valid_ind], sample_num) + 1
         mrts = torch.zeros((sample_num,) + mrt_shape).type_as(samples)
         mrts = mrts.view(sample_num, -1)
-        mrts[:, rel_valid_ind] = samples.permute((1,0))
+        mrts[:, rel_valid_ind] = samples.permute((1, 0))
         mrts = mrts.view((sample_num,) + mrt_shape)
-        f_mats = (mrts == 1)
+        p_mats = (mrts == 1)
         c_mats = (mrts == 2)
-        adj_mats = f_mats + c_mats.transpose(1,2)
+        adj_mats = p_mats + c_mats.transpose(1, 2)
+
+        def v_node_is_leaf(adj_mat):
+            return adj_mat[-1].sum() == 0
 
         def no_cycle(adj_mat):
             keep_ind = (adj_mat.sum(0) > 0)
@@ -695,20 +742,44 @@ class Invigorate():
             desc_mat = torch.zeros(mrt_shape).type_as(adj_mat).long()
             for root in roots:
                 visited, desc_list = find_descendant(root, adj_mat, visited, desc_mat)
-            return desc_mat.transpose(0,1)
+            return desc_mat.transpose(0, 1)
 
         leaf_desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
+        desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
+        desc_num = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
+        ance_num = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
+
+        if with_virtual_node:
+            v_desc_num_after_q2 = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
+
         count = 0
         for adj_mat in adj_mats:
-            if no_cycle(adj_mat):
+            if removed is None and with_virtual_node and v_node_is_leaf(adj_mat):
+                continue
+            if not no_cycle(adj_mat):
+                continue
+            else:
                 desc_mat = descendants(adj_mat)
+                desc_num += desc_mat.sum(0)
+                ance_num += desc_mat.sum(1) - 1  # ancestors don't include the object itself
                 leaf_desc_mat = desc_mat * (adj_mat.sum(1, keepdim=True) == 0)
+                desc_prob += desc_mat
                 leaf_desc_prob += leaf_desc_mat
                 count += 1
-        leaf_desc_prob = leaf_desc_prob / count
+
+        desc_num /= count
+        ance_num /= count
+        leaf_desc_prob /= count
+        desc_prob /= count
+        leaf_prob = leaf_desc_prob.diag()
         if cuda_data:
             leaf_desc_prob = leaf_desc_prob.cuda()
-        return leaf_desc_prob
+            leaf_prob = leaf_prob.cuda()
+            desc_prob = desc_prob.cuda()
+            ance_num = ance_num.cuda()
+            desc_num = desc_num.cuda()
+
+        return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
 
     def get_action_type(self, action, num_box=None):
         if num_box is None:
@@ -727,7 +798,6 @@ class Invigorate():
         # 3. incorporate the provided clue by the user
         # clue contains the tentative target contained in anwer of user for 'where is '
         logger.info('_estimate_state_with_user_clue')
-        leaf_desc_prob = self.belief['leaf_desc_prob']
         img = self.observations['img']
         bboxes = self.observations['bboxes']
         classes = self.observations['classes']
@@ -735,17 +805,17 @@ class Invigorate():
         num_box = self.observations['num_box']
         det_scores = self.observations['det_scores']
 
-        t_ground = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), clue)
-        logger.info("t_ground: {}".format(t_ground))
+        clue_ground_probs = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), clue)
+        logger.info("clue_ground_probs: {}".format(clue_ground_probs))
 
         self.clue = clue
-        for i, score in enumerate(t_ground):
+        for i, score in enumerate(clue_ground_probs):
             obj_ind = ind_match_dict[i]
             self.object_pool[obj_ind]["clue_belief"].update(score, self.obj_kdes)
         pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
-        t_ground = self._cal_target_prob_from_p_cand(pcand)
-        t_ground = np.append(t_ground, 1. - t_ground.sum())
-        logger.info("t_ground: {}".format(t_ground))
+        clue_ground_probs = self._cal_target_prob_from_p_cand(pcand)
+        clue_ground_probs = np.append(clue_ground_probs, 1. - clue_ground_probs.sum())
+        logger.info("clue_ground_probs: {}".format(clue_ground_probs))
 
         # filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in clue or clue in cls]
@@ -754,27 +824,11 @@ class Invigorate():
             for class_str in cls_filter:
                 box_score += det_scores[i][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
-                t_ground[i] = 0.001
-        t_ground /= t_ground.sum()
+                clue_ground_probs[i] = 0.001
+        clue_ground_probs /= clue_ground_probs.sum()
         logger.info('class name filter completed')
-        logger.info('t_ground : {}'.format(t_ground))
-
-        cluster_res = KMeans(n_clusters=2).fit_predict(t_ground.reshape(-1, 1))
-        mean0 = t_ground[cluster_res == 0].mean()
-        mean1 = t_ground[cluster_res == 1].mean()
-        pos_label = 0 if mean0 > mean1 else 1
-        pos_num = (cluster_res == pos_label).sum()
-        if pos_num == 1 and cluster_res[-1] == pos_label:
-            # cannot successfully ground the clue object, reset clue
-            clue_leaf_desc_prob = None
-            self.clue = None
-        else:
-            t_ground = np.expand_dims(t_ground, 0)
-            clue_leaf_desc_prob = (t_ground[:, :-1] * leaf_desc_prob).sum(-1).squeeze()
-        logger.info('clue_leaf_desc_prob : {}'.format(clue_leaf_desc_prob))
-        logger.info('Update leaf_desc_prob with clue completed')
-
-        return leaf_desc_prob, clue_leaf_desc_prob
+        logger.info('clue_ground_probs : {}'.format(clue_ground_probs))
+        return clue_ground_probs
 
     def _process_q2_ans(self, ans, nlp_server="nltk"):
         # just a heuristic analysis of the possible answers of question 2.
@@ -1206,3 +1260,208 @@ class InvigorateMultiSingleStepComparison(Invigorate):
         self.belief['clue_leaf_desc_prob'] = None
 
         return target_prob, rel_prob_mat
+
+class InvigoratePOMDP(Invigorate):
+
+    def decision_making_pomdp(self):
+
+        def planning_with_macro(belief, planning_depth=3):
+            """
+            :param belief: including "leaf_desc_prob", "desc_num", and "ground_prob"
+            :param planning_depth:
+            :return:
+            """
+            num_obj = belief["ground_prob"].shape[0] - 1  # exclude the virtual node
+
+            # ALL ACTIONS INCLUDE:
+            # Do you mean ... ? (num_obj) + Where is the target ? (1) + grasping macro (1)
+            penalty_for_asking = -2
+            penalty_for_fail = -10
+
+            def gen_grasp_macro(belief):
+
+                grasp_macros = {i: None for i in range(num_obj)}
+                belief_infos = belief["infos"]
+
+                cache_leaf_desc_prob = {}
+                cache_leaf_prob = {}
+                for i in range(num_obj + 1):
+                    grasp_macro = {"seq": [], "leaf_prob": []}
+                    grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, i]).item())
+                    grasp_macro["leaf_prob"].append(belief_infos["leaf_prob"][grasp_macro["seq"][0]].item())
+
+                    rel_mat = belief["relation_prob"].clone()
+                    while (grasp_macro["seq"][-1] != i):
+                        removed = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                        indice = ''.join([str(o) for o in np.sort(grasp_macro["seq"]).tolist()])
+                        if indice in cache_leaf_desc_prob:
+                            leaf_desc_prob = cache_leaf_desc_prob[indice]
+                            leaf_prob = cache_leaf_prob[indice]
+                        else:
+                            rel_mat[0:2, removed, :] = 0.
+                            rel_mat[0:2, :, removed] = 0.
+                            rel_mat[2, removed, :] = 1.
+                            rel_mat[2, :, removed] = 1.
+                            triu_mask = torch.triu(torch.ones(rel_mat[0].shape), diagonal=1)
+                            triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
+                            rel_mat *= triu_mask
+
+                            leaf_desc_prob, _, leaf_prob, _, _ = \
+                                self._leaf_and_desc_estimate(rel_mat, removed=grasp_macro["seq"], with_virtual_node=True)
+
+                            cache_leaf_desc_prob[indice] = leaf_desc_prob
+                            cache_leaf_prob[indice] = leaf_prob
+
+                        grasp_macro["seq"].append(torch.argmax(leaf_desc_prob[:, i]).item())
+                        grasp_macro["leaf_prob"].append(leaf_prob[grasp_macro["seq"][-1]].item())
+
+                    grasp_macro["seq"] = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                    grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
+                    grasp_macros[i] = grasp_macro
+
+                return grasp_macros
+
+            def grasp_reward_estimate(belief):
+                # reward of grasping macro, equal to: desc_num * reward_of_each_grasp_step
+                # POLICY: treat the object with the highest conf score as the target
+                ground_prob = belief["ground_prob"]
+                target = torch.argmax(ground_prob).item()
+                grasp_macros = belief["grasp_macros"][target]
+                leaf_prob = grasp_macros["leaf_prob"]
+
+                # p_remove_target = ground_prob[grasp_macros["seq"][:-1]]
+                # if p_remove_target.numel() > 0:
+                #     p_remove_target = torch.sum(p_remove_target).item()
+                # else:
+                #     p_remove_target = 0.
+                p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
+                p_fail = 1. - ground_prob[target].item() * p_not_remove_non_leaf
+
+                return penalty_for_fail * p_fail
+
+            def belief_update(belief):
+                I = torch.eye(belief["ground_prob"].shape[0]).type_as(belief["ground_prob"])
+                updated_beliefs = []
+                # Do you mean ... ?
+                # Answer No
+                beliefs_no = belief["ground_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
+                beliefs_no *= (1. - I)
+                beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10)
+                # Answer Yes
+                beliefs_yes = I.clone()
+                for i in range(beliefs_no.shape[0] - 1):
+                    updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
+
+                return updated_beliefs
+
+            def is_onehot(vec, epsilon=1e-2):
+                return (torch.abs(vec - 1) < epsilon).sum().item() > 0
+
+            def estimate_q_vec(belief, current_d):
+                if current_d == planning_depth - 1:
+                    return torch.tensor([grasp_reward_estimate(belief)])
+                else:
+                    # branches of grasping
+                    q_vec = [grasp_reward_estimate(belief)]
+                    ground_prob = belief["ground_prob"]
+                    new_beliefs = belief_update(belief)
+                    new_belief_dict = copy.deepcopy(belief)
+
+                    # q-value for asking Q1
+                    for i, new_belief in enumerate(new_beliefs):
+                        q = 0
+                        for j, b in enumerate(new_belief):
+                            new_belief_dict["ground_prob"] = b
+                            # branches of asking questions
+                            if is_onehot(b):
+                                t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
+                            else:
+                                t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
+                            if j == 0:
+                                # Answer is No
+                                q += t_q * (1 - ground_prob[i])
+                            else:
+                                # Answer is Yes
+                                q += t_q * ground_prob[i]
+                        q_vec.append(q.item())
+
+                    return torch.Tensor(q_vec).type_as(belief["ground_prob"])
+
+            infos = {}
+            with torch.no_grad():
+                infos["leaf_desc_prob"], infos["desc_prob"], infos["leaf_prob"], infos["desc_num"], infos["ance_num"] = \
+                    self._leaf_and_desc_estimate(belief["relation_prob"], sample_num=1000, with_virtual_node=True)
+            belief["infos"] = infos
+            belief["grasp_macros"] = gen_grasp_macro(belief)
+
+            q_vec = estimate_q_vec(belief, 0)
+            print("Q Value for Each Action: ")
+            print("Grasping:{:.3f}".format(q_vec.tolist()[0]))
+            print("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
+            # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
+            return torch.argmax(q_vec).item()
+
+        num_box = self.observations['num_box']
+        target_prob = self.belief['target_prob']
+        leaf_desc_prob = self.belief['leaf_desc_prob']
+        clue_desc_prob = self.belief['clue_leaf_desc_prob']
+
+        logger.info("decision_making_heuristic: ")
+        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.debug('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
+
+        a_macro = planning_with_macro(self.belief)
+        if a_macro == "Q2":
+            if self.clue is None:
+                if self.q2_num_asked < MAX_Q2_NUM:
+                    action = 3 * num_box
+                    self.q2_num_asked += 1
+                else:
+                    # here we:
+                    # 1. cannot ground the clue object successfully.
+                    # 2. cannot ground the target successfully.
+                    # 3. have asked too many Q2s.
+                    # therefore, we should grasp a random leaf object and continue.
+                    l_probs = np.diagonal(leaf_desc_prob)
+                    current_tgt = np.argmax(l_probs)
+                    action = current_tgt + num_box
+            else:
+                # clue is not None, the robot will grasp the clue object first
+                l_d_probs = clue_desc_prob
+                current_tgt = np.argmax(l_d_probs)
+                # grasp and continue
+                action = current_tgt + num_box
+        elif a_macro.startswith("Q1"):
+            action = int(a_macro.split("_")[1]) + 2 * num_box
+        else:
+            tgt_id = torch.argmax(target_prob)
+            if tgt_id == num_box:
+                if self.clue is None:
+                    if self.q2_num_asked < MAX_Q2_NUM:
+                        action = 3 * num_box
+                        self.q2_num_asked += 1
+                    else:
+                        # here we:
+                        # 1. cannot ground the clue object successfully.
+                        # 2. cannot ground the target successfully.
+                        # 3. have asked too many Q2s.
+                        # therefore, we should grasp a random leaf object and continue.
+                        l_probs = np.diagonal(leaf_desc_prob)
+                        current_tgt = np.argmax(l_probs)
+                        action = current_tgt + num_box
+                else:
+                    # clue is not None, the robot will grasp the clue object first
+                    l_d_probs = clue_desc_prob
+                    current_tgt = np.argmax(l_d_probs)
+                    # grasp and continue
+                    action = current_tgt + num_box
+            else:
+                l_d_probs = leaf_desc_prob[:, tgt_id]
+                current_tgt = np.argmax(l_d_probs)
+                if current_tgt == tgt_id:
+                    # grasp and end program
+                    action = current_tgt
+                else:
+                    # grasp and continue
+                    action = current_tgt + num_box
+        return action
