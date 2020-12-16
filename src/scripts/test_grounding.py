@@ -1,7 +1,8 @@
 import sys
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
-sys.path.insert(0, osp.join(this_dir, '../'))
+sys.path.append(osp.join(this_dir, '../'))
+sys.path.append(osp.join(this_dir, '../libraries/tools/refer'))
 
 # import matplotlib
 # matplotlib.use('Agg')
@@ -19,6 +20,8 @@ import matplotlib.pyplot as plt
 
 from config.config import *
 from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, ViLBERTGrounding
+from libraries.tools.refer.refer import REFER
+
 try:
     from ingress_srv.ingress_srv import Ingress
 except:
@@ -110,6 +113,7 @@ def draw_single_bbox(img, bbox, bbox_color=(163, 68, 187), text_str="", test_bg_
     if test_bg_color is None:
         test_bg_color = bbox_color
     bbox = tuple(bbox)
+    bbox = tuple([int(i) for i in bbox])
     text_rd = (bbox[2], bbox[1] + 25)
     cv2.rectangle(img, bbox[0:2], bbox[2:4], bbox_color, 2)
     cv2.rectangle(img, bbox[0:2], text_rd, test_bg_color, -1)
@@ -173,50 +177,6 @@ def parse_pascalvoc_labels(anno_file_path):
         gt_classes.append(cls)
 
     return boxes, gt_classes
-
-
-# def visualize_results(img, expr, g_mattnet=None, g_vilbert=None, g_ingress=None):
-#     assert not (g_mattnet is None and g_ingress is None and g_vilbert is None)
-#     ############ visualize
-#     # resize img for visualization
-#     data_viewer = DataViewer(CLASSES)
-#
-#     scalar = 500. / min(img_cv.shape[:2])
-#     img_cv = cv2.resize(img_cv, None, None, fx=scalar, fy=scalar, interpolation=cv2.INTER_LINEAR)
-#     vis_bboxes = bboxes * scalar
-#     vis_bboxes[:, -1] = bboxes[:, -1]
-#
-#     # object detection
-#     object_det_img = data_viewer.draw_objdet(img_cv.copy(), vis_bboxes, list(range(classes.shape[0])))
-#     cv2.imwrite("object_det.png", object_det_img)
-#
-#     # grounding
-#     if TEST_REFER_EXPRESSION:
-#         ground_img = data_viewer.draw_grounding_probs(img_cv.copy(), expr, vis_bboxes, ground_prob.numpy())
-#         # cv2.imwrite("ground.png", ground_img)
-#     else:
-#         ground_img = np.zeros((img_cv.shape), np.uint8)
-#
-#     # ingress
-#     ingress_img = draw_ingress_res(img_cv.copy(), vis_bboxes, context_idxs, captions[0])
-#
-#     blank_img = np.zeros((img_cv.shape), np.uint8)
-#
-#     # save result
-#     final_img = np.concatenate([np.concatenate([object_det_img, blank_img], axis = 1),
-#                                 np.concatenate([ground_img, ingress_img], axis=1)], axis = 0)
-#     out_dir = osp.join(ROOT_DIR, "images/output")
-#     save_name = im_id.split(".")[0] + "_result.png"
-#     save_path = os.path.join(out_dir, save_name)
-#     i = 1
-#     while (os.path.exists(save_path)):
-#         i += 1
-#         save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
-#         save_path = os.path.join(out_dir, save_name)
-#     cv2.imwrite(save_path, final_img)
-#     # cv2.imshow('img', final_img)
-#     # cv2.waitkey(0)
-#     # cv2.destroyAllWindows()
 
 def test_grounding(img_cv, expr):
     # get object proposals
@@ -384,7 +344,8 @@ def label_groundings_vmrd_like_single():
         bbox = visualize_for_label(im_path, expr)
 
         all_labels.append({
-            "img_name": im_name,
+            "file_name": im_name,
+            "file_path": im_path,
             "expr": expr,
             "bbox": bbox,
         })
@@ -395,14 +356,59 @@ def label_groundings_vmrd_like_single():
     return all_labels
 
 
-def check_grounding_labels(split="vmrd_like_single"):
-    label_path = osp.join(ROOT_DIR, "images", split, "grounding_gt.npy")
-    if osp.exists(label_path):
-        return np.load(label_path, allow_pickle=True)
-    else:
-        if split == "vmrd_like_single":
-            return label_groundings_vmrd_like_single()
+def generate_coco_gt_labels(data_root, data_dir, task="RefCOCO", split = "val", save_dir = "coco_feats"):
 
+    if task.startswith("RefCOCOg"):
+        refer = REFER(data_root, dataset="refcocog", splitBy="umd")
+    elif task.startswith("RefCOCO+"):
+        refer = REFER(data_root, dataset="refcoco+", splitBy="unc")
+    else:
+        refer = REFER(data_root, dataset="refcoco", splitBy="unc")
+    ref_ids = refer.getRefIds(split=split)
+    # remove_ids = np.load(os.path.join(dataroot, "cache", "coco_test_ids.npy"))
+    # remove_ids = [int(x) for x in remove_ids]
+
+    all_img_list1 = os.listdir(os.path.join(data_dir, "train2017"))
+    all_img_list2 = os.listdir(os.path.join(data_dir, "val2017"))
+    all_img_list3 = os.listdir(os.path.join(data_dir, "test2017"))
+
+    all_img_dict = {name: os.path.join(data_dir, "train2017") for name in all_img_list1 if name.endswith("jpg")}
+    all_img_dict2 = {name: os.path.join(data_dir, "val2017") for name in all_img_list2 if name.endswith("jpg")}
+    all_img_dict3 = {name: os.path.join(data_dir, "test2017") for name in all_img_list2 if name.endswith("jpg")}
+    all_img_dict.update(all_img_dict2)
+    all_img_dict.update(all_img_dict3)
+
+    all_labels = []
+    for ref_id in ref_ids:
+        ref = refer.Refs[ref_id]
+        image_id = ref["image_id"]
+        ref_id = ref["ref_id"]
+        refBox = refer.getRefBox(ref_id)
+        filename = str(image_id).rjust(12, "0") + ".jpg"
+        for sent in ref["sentences"][:1]:
+            anno_dict = {}
+            anno_dict["file_name"] = filename
+            anno_dict["file_path"] = os.path.join(all_img_dict[anno_dict["file_name"]], anno_dict["file_name"])
+            anno_dict["bbox"] = np.array([refBox[0], refBox[1], refBox[0] + refBox[2], refBox[1] + refBox[3]])
+            anno_dict["expr"] = sent["raw"]
+            all_labels.append(anno_dict)
+
+    return all_labels
+
+
+def check_grounding_labels(split="vmrd_like_single"):
+    if split not in {"refcoco_val"}:
+        label_path = osp.join(ROOT_DIR, "images", split, "grounding_gt.npy")
+        if osp.exists(label_path):
+            return np.load(label_path, allow_pickle=True)
+        else:
+            if split == "vmrd_like_single":
+                return label_groundings_vmrd_like_single()
+    else:
+        dataroot = "/data1/zhb/datasets/refcoco"
+        datadir = "/data0/svc4/code/INVIGORATE/vilbert/datasets/coco/coco/"
+        all_labels = generate_coco_gt_labels(dataroot, datadir)
+        return all_labels
 
 def iou(anchors, gt_boxes):
     """
@@ -443,21 +449,39 @@ def iou(anchors, gt_boxes):
 
     return overlaps
 
+def visualize_results(img, expr, gt, g_mattnet=None, g_vilbert=None, g_ingress=None):
+    assert not (g_mattnet is None and g_ingress is None and g_vilbert is None)
+    draw_single_bbox(img, (1, 1, img.shape[1]-1, img.shape[0]-1), text_str=expr)
+
+    draw_single_bbox(img, gt, text_str="ground truth", bbox_color=(0, 255, 0))
+    if g_vilbert is not None:
+        draw_single_bbox(img, g_vilbert, text_str="vilbert", bbox_color=(255, 0, 0))
+    if g_mattnet is not None:
+        draw_single_bbox(img, g_mattnet, text_str="mattnet", bbox_color=(0, 0, 255))
+    if g_ingress is not None:
+        draw_single_bbox(img, g_ingress, text_str="ingress")
+
+    plt.axis('off')
+    plt.imshow(img[:, :, ::-1])
+    plt.show()
+
 if __name__ == "__main__":
     rospy.init_node('test')
 
-    gt_labels = check_grounding_labels(split="vmrd_like_single")
+    gt_labels = check_grounding_labels(split="refcoco_val")
 
     acc_mattnet = 0.
     acc_vilbert = 0.
 
+    vis=True
+
     for i, gt in enumerate(gt_labels):
-        im_id = gt["img_name"]
+        im_id = gt["file_name"]
         expr = gt["expr"]
         gt_box = gt["bbox"]
+        im_path = gt["file_path"]
 
-        img_path = osp.join(ROOT_DIR, "images/" + "vmrd_like_single/" + "images/" + im_id)
-        img_cv = cv2.imread(img_path)
+        img_cv = cv2.imread(im_path)
         mattnet_bbox, vilbert_bbox = test_grounding(img_cv, expr)
 
         mattnet_score = iou(torch.tensor(mattnet_bbox[None, :]).float(), torch.tensor(gt_box[None, :]).float()).item()
@@ -467,6 +491,9 @@ if __name__ == "__main__":
         vilbert_score = iou(torch.tensor(vilbert_bbox[None, :]).float(), torch.tensor(gt_box[None, :]).float()).item()
         if vilbert_score > 0.5:
             acc_vilbert += 1
+
+        if vis:
+            visualize_results(img_cv.copy(), expr, gt_box, g_vilbert=vilbert_bbox, g_mattnet=mattnet_bbox)
 
         print('!!!!! test {} of {} complete'.format(i + 1, len(gt_labels)))
         print("MAttNet score: {:.3f}, ViLBERT score: {:.3f}".format(mattnet_score, vilbert_score))
