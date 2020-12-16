@@ -16,8 +16,6 @@ from PIL import Image
 import time
 import datetime
 
-import vmrn._init_path
-# from model.utils.config import cfg
 from vmrn.model.utils.net_utils import create_mrt
 # from sklearn.manifold import TSNE
 from config.config import *

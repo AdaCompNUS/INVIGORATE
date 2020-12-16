@@ -51,7 +51,7 @@ MAX_Q2_NUM = 1 # the robot can at most ask MAX_Q2_NUM Q2s.
 logger = logging.getLogger(LOGGER_NAME)
 
 # -------- Code ---------
-class Invigorate():
+class Invigorate(object):
     def __init__(self):
         rospy.loginfo('waiting for services...')
         rospy.wait_for_service('faster_rcnn_server')
@@ -246,8 +246,7 @@ class Invigorate():
         logger.info("estimate_state_with_user_answer completed")
         self.belief["target_prob"] = target_prob
 
-
-    def plan_action(self, heuristic=True):
+    def plan_action(self):
         return self.decision_making_heuristic()
 
     def _get_clue_leaf_desc_prob(self, leaf_desc_prob, clue_prob):
@@ -291,9 +290,8 @@ class Invigorate():
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
         clue_prob = self.belief['clue_prob']
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
+        leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
         logger.info("decision_making_heuristic: ")
-        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         if clue_prob is not None:
             clue_leaf_desc_prob = self._get_clue_leaf_desc_prob(leaf_desc_prob, clue_prob)
             logger.debug('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
@@ -519,17 +517,25 @@ class Invigorate():
                                                              rel_prob_mat[:, box_ind_j, box_ind_i][2]]
         return rel_prob_mat
 
-    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000):
+    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000, with_virtual_node=False):
+
         with torch.no_grad():
             triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
             triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-            leaf_desc_prob, _, _, _, _ = \
-                self._leaf_and_desc_estimate(torch.from_numpy(rel_prob_mat) * triu_mask, sample_num)
-            leaf_desc_prob = leaf_desc_prob.numpy()
+            leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num = \
+                self._leaf_and_desc_estimate(torch.from_numpy(rel_prob_mat) * triu_mask, sample_num,
+                                             with_virtual_node=with_virtual_node)
+
+        leaf_desc_prob = leaf_desc_prob.numpy()
+        desc_prob = desc_prob.numpy()
+        leaf_prob = leaf_prob.numpy()
+        desc_num = desc_num.numpy()
+        ance_num = ance_num.numpy()
 
         logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
+        logger.debug('leaf_prob: \n{}'.format(leaf_prob))
 
-        return leaf_desc_prob
+        return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
 
     def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
         pcand = torch.Tensor(pcand).reshape(1, -1)
@@ -883,7 +889,7 @@ class Baseline(Invigorate):
         rel_prob_mat = np.zeros(rel_score_mat.shape)
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
         # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
+        leaf_desc_prob, _, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
         target_prob = np.array(grounding_scores)
 
         # grounding result postprocess.
@@ -1261,207 +1267,182 @@ class InvigorateMultiSingleStepComparison(Invigorate):
 
         return target_prob, rel_prob_mat
 
-class InvigoratePOMDP(Invigorate):
+class InvigoratePOMDPNoUnseenObj(Invigorate):
+    def __init__(self):
+        super(InvigoratePOMDPNoUnseenObj, self).__init__()
+        self._policy_tree_max_depth = 3
+        self._penalty_for_asking = -2
+        self._penalty_for_fail = -10
+
+    def planning_with_macro(self, infos):
+        """
+        ALL ACTIONS INCLUDE:
+        Do you mean ... ? (num_obj) + Where is the target ? (1) + grasping macro (1)
+        :param belief: including "leaf_desc_prob", "desc_num", and "target_prob"
+        :param planning_depth:
+        :return:
+        """
+
+        # initialize hyperparameters
+        planning_depth = self._policy_tree_max_depth
+        penalty_for_fail = self._penalty_for_fail
+        penalty_for_asking = self._penalty_for_asking
+
+        def gen_grasp_macro(belief):
+
+            num_obj = belief["target_prob"].shape[0] - 1
+
+            grasp_macros = {i: None for i in range(num_obj)}
+            belief_infos = belief["infos"]
+
+            cache_leaf_desc_prob = {}
+            cache_leaf_prob = {}
+            for i in range(num_obj + 1):
+                grasp_macro = {"seq": [], "leaf_prob": []}
+                grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, i]).item())
+                grasp_macro["leaf_prob"].append(belief_infos["leaf_prob"][grasp_macro["seq"][0]].item())
+
+                rel_mat = belief["rel_prob"].clone()
+                while (grasp_macro["seq"][-1] != i):
+                    removed = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                    indice = ''.join([str(o) for o in np.sort(grasp_macro["seq"]).tolist()])
+                    if indice in cache_leaf_desc_prob:
+                        leaf_desc_prob = cache_leaf_desc_prob[indice]
+                        leaf_prob = cache_leaf_prob[indice]
+                    else:
+                        rel_mat[0:2, removed, :] = 0.
+                        rel_mat[0:2, :, removed] = 0.
+                        rel_mat[2, removed, :] = 1.
+                        rel_mat[2, :, removed] = 1.
+                        triu_mask = torch.triu(torch.ones(rel_mat[0].shape), diagonal=1)
+                        triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
+                        rel_mat *= triu_mask
+
+                        leaf_desc_prob, _, leaf_prob, _, _ = \
+                            self._leaf_and_desc_estimate(rel_mat, removed=grasp_macro["seq"], with_virtual_node=True)
+
+                        cache_leaf_desc_prob[indice] = leaf_desc_prob
+                        cache_leaf_prob[indice] = leaf_prob
+
+                    grasp_macro["seq"].append(torch.argmax(leaf_desc_prob[:, i]).item())
+                    grasp_macro["leaf_prob"].append(leaf_prob[grasp_macro["seq"][-1]].item())
+
+                grasp_macro["seq"] = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
+                grasp_macros[i] = grasp_macro
+
+            return grasp_macros
+
+        def grasp_reward_estimate(belief):
+            # reward of grasping macro, equal to: desc_num * reward_of_each_grasp_step
+            # POLICY: treat the object with the highest conf score as the target
+            target_prob = belief["target_prob"]
+            target = torch.argmax(target_prob).item()
+            grasp_macros = belief["grasp_macros"][target]
+            leaf_prob = grasp_macros["leaf_prob"]
+            p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
+            p_fail = 1. - target_prob[target].item() * p_not_remove_non_leaf
+            return penalty_for_fail * p_fail
+
+        def belief_update(belief):
+            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
+            updated_beliefs = []
+            # Do you mean ... ?
+            # Answer No
+            beliefs_no = belief["target_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
+            beliefs_no *= (1. - I)
+            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10)
+            # Answer Yes
+            beliefs_yes = I.clone()
+            for i in range(beliefs_no.shape[0] - 1):
+                updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
+
+            return updated_beliefs
+
+        def is_onehot(vec, epsilon=1e-2):
+            return (torch.abs(vec - 1) < epsilon).sum().item() > 0
+
+        def estimate_q_vec(belief, current_d):
+            if current_d == planning_depth - 1:
+                return torch.tensor([grasp_reward_estimate(belief)])
+            else:
+                # branches of grasping
+                q_vec = [grasp_reward_estimate(belief)]
+                target_prob = belief["target_prob"]
+                new_beliefs = belief_update(belief)
+                new_belief_dict = copy.deepcopy(belief)
+
+                # q-value for asking Q1
+                for i, new_belief in enumerate(new_beliefs):
+                    q = 0
+                    for j, b in enumerate(new_belief):
+                        new_belief_dict["target_prob"] = b
+                        # branches of asking questions
+                        if is_onehot(b):
+                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
+                        else:
+                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
+                        if j == 0:
+                            # Answer is No
+                            q += t_q * (1 - target_prob[i])
+                        else:
+                            # Answer is Yes
+                            q += t_q * target_prob[i]
+                    q_vec.append(q.item())
+
+                return torch.Tensor(q_vec).type_as(belief["target_prob"])
+
+        num_obj = self.belief["target_prob"].shape[0] - 1
+        belief = copy.deepcopy(self.belief)
+        for k in belief:
+            if belief[k] is not None:
+                belief[k] = torch.from_numpy(belief[k])
+        belief["infos"] = infos
+        for k in belief["infos"]:
+            belief["infos"][k] = torch.from_numpy(belief["infos"][k])
+        grasp_macros = belief["grasp_macros"] = gen_grasp_macro(belief)
+
+        q_vec = estimate_q_vec(belief, 0)
+        print("Q Value for Each Action: ")
+        print("Grasping:{:.3f}".format(q_vec.tolist()[0]))
+        print("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
+        # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
+
+        for k in grasp_macros:
+            for kk in grasp_macros[k]:
+                grasp_macros[k][kk] = grasp_macros[k][kk].numpy()
+        return torch.argmax(q_vec).item(), grasp_macros
+
+    def plan_action(self):
+        return self.decision_making_pomdp()
 
     def decision_making_pomdp(self):
 
-        def planning_with_macro(belief, planning_depth=3):
-            """
-            :param belief: including "leaf_desc_prob", "desc_num", and "ground_prob"
-            :param planning_depth:
-            :return:
-            """
-            num_obj = belief["ground_prob"].shape[0] - 1  # exclude the virtual node
-
-            # ALL ACTIONS INCLUDE:
-            # Do you mean ... ? (num_obj) + Where is the target ? (1) + grasping macro (1)
-            penalty_for_asking = -2
-            penalty_for_fail = -10
-
-            def gen_grasp_macro(belief):
-
-                grasp_macros = {i: None for i in range(num_obj)}
-                belief_infos = belief["infos"]
-
-                cache_leaf_desc_prob = {}
-                cache_leaf_prob = {}
-                for i in range(num_obj + 1):
-                    grasp_macro = {"seq": [], "leaf_prob": []}
-                    grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, i]).item())
-                    grasp_macro["leaf_prob"].append(belief_infos["leaf_prob"][grasp_macro["seq"][0]].item())
-
-                    rel_mat = belief["relation_prob"].clone()
-                    while (grasp_macro["seq"][-1] != i):
-                        removed = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
-                        indice = ''.join([str(o) for o in np.sort(grasp_macro["seq"]).tolist()])
-                        if indice in cache_leaf_desc_prob:
-                            leaf_desc_prob = cache_leaf_desc_prob[indice]
-                            leaf_prob = cache_leaf_prob[indice]
-                        else:
-                            rel_mat[0:2, removed, :] = 0.
-                            rel_mat[0:2, :, removed] = 0.
-                            rel_mat[2, removed, :] = 1.
-                            rel_mat[2, :, removed] = 1.
-                            triu_mask = torch.triu(torch.ones(rel_mat[0].shape), diagonal=1)
-                            triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-                            rel_mat *= triu_mask
-
-                            leaf_desc_prob, _, leaf_prob, _, _ = \
-                                self._leaf_and_desc_estimate(rel_mat, removed=grasp_macro["seq"], with_virtual_node=True)
-
-                            cache_leaf_desc_prob[indice] = leaf_desc_prob
-                            cache_leaf_prob[indice] = leaf_prob
-
-                        grasp_macro["seq"].append(torch.argmax(leaf_desc_prob[:, i]).item())
-                        grasp_macro["leaf_prob"].append(leaf_prob[grasp_macro["seq"][-1]].item())
-
-                    grasp_macro["seq"] = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
-                    grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
-                    grasp_macros[i] = grasp_macro
-
-                return grasp_macros
-
-            def grasp_reward_estimate(belief):
-                # reward of grasping macro, equal to: desc_num * reward_of_each_grasp_step
-                # POLICY: treat the object with the highest conf score as the target
-                ground_prob = belief["ground_prob"]
-                target = torch.argmax(ground_prob).item()
-                grasp_macros = belief["grasp_macros"][target]
-                leaf_prob = grasp_macros["leaf_prob"]
-
-                # p_remove_target = ground_prob[grasp_macros["seq"][:-1]]
-                # if p_remove_target.numel() > 0:
-                #     p_remove_target = torch.sum(p_remove_target).item()
-                # else:
-                #     p_remove_target = 0.
-                p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
-                p_fail = 1. - ground_prob[target].item() * p_not_remove_non_leaf
-
-                return penalty_for_fail * p_fail
-
-            def belief_update(belief):
-                I = torch.eye(belief["ground_prob"].shape[0]).type_as(belief["ground_prob"])
-                updated_beliefs = []
-                # Do you mean ... ?
-                # Answer No
-                beliefs_no = belief["ground_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
-                beliefs_no *= (1. - I)
-                beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10)
-                # Answer Yes
-                beliefs_yes = I.clone()
-                for i in range(beliefs_no.shape[0] - 1):
-                    updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
-
-                return updated_beliefs
-
-            def is_onehot(vec, epsilon=1e-2):
-                return (torch.abs(vec - 1) < epsilon).sum().item() > 0
-
-            def estimate_q_vec(belief, current_d):
-                if current_d == planning_depth - 1:
-                    return torch.tensor([grasp_reward_estimate(belief)])
-                else:
-                    # branches of grasping
-                    q_vec = [grasp_reward_estimate(belief)]
-                    ground_prob = belief["ground_prob"]
-                    new_beliefs = belief_update(belief)
-                    new_belief_dict = copy.deepcopy(belief)
-
-                    # q-value for asking Q1
-                    for i, new_belief in enumerate(new_beliefs):
-                        q = 0
-                        for j, b in enumerate(new_belief):
-                            new_belief_dict["ground_prob"] = b
-                            # branches of asking questions
-                            if is_onehot(b):
-                                t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
-                            else:
-                                t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
-                            if j == 0:
-                                # Answer is No
-                                q += t_q * (1 - ground_prob[i])
-                            else:
-                                # Answer is Yes
-                                q += t_q * ground_prob[i]
-                        q_vec.append(q.item())
-
-                    return torch.Tensor(q_vec).type_as(belief["ground_prob"])
-
-            infos = {}
-            with torch.no_grad():
-                infos["leaf_desc_prob"], infos["desc_prob"], infos["leaf_prob"], infos["desc_num"], infos["ance_num"] = \
-                    self._leaf_and_desc_estimate(belief["relation_prob"], sample_num=1000, with_virtual_node=True)
-            belief["infos"] = infos
-            belief["grasp_macros"] = gen_grasp_macro(belief)
-
-            q_vec = estimate_q_vec(belief, 0)
-            print("Q Value for Each Action: ")
-            print("Grasping:{:.3f}".format(q_vec.tolist()[0]))
-            print("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
-            # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
-            return torch.argmax(q_vec).item()
-
         num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
-        leaf_desc_prob = self.belief['leaf_desc_prob']
-        clue_desc_prob = self.belief['clue_leaf_desc_prob']
-
+        rel_prob = self.belief['rel_prob']
+        leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
         logger.info("decision_making_heuristic: ")
-        logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        logger.debug('clue_leaf_desc_prob: {}'.format(clue_desc_prob))
+        infos = {
+            "leaf_desc_prob": leaf_desc_prob,
+            "leaf_prob": leaf_prob
+        }
 
-        a_macro = planning_with_macro(self.belief)
-        if a_macro == "Q2":
-            if self.clue is None:
-                if self.q2_num_asked < MAX_Q2_NUM:
-                    action = 3 * num_box
-                    self.q2_num_asked += 1
-                else:
-                    # here we:
-                    # 1. cannot ground the clue object successfully.
-                    # 2. cannot ground the target successfully.
-                    # 3. have asked too many Q2s.
-                    # therefore, we should grasp a random leaf object and continue.
-                    l_probs = np.diagonal(leaf_desc_prob)
-                    current_tgt = np.argmax(l_probs)
-                    action = current_tgt + num_box
+        a_macro, grasp_macros = self.planning_with_macro(infos)
+        if a_macro == 0:
+            # grasping
+            tgt_id = np.argmax(target_prob)
+            grasp_macro = grasp_macros[tgt_id]
+            current_tgt = grasp_macro["seq"][0]
+
+            if len(grasp_macro["seq"]) == 1:
+                # grasp and end program
+                action = current_tgt
             else:
-                # clue is not None, the robot will grasp the clue object first
-                l_d_probs = clue_desc_prob
-                current_tgt = np.argmax(l_d_probs)
                 # grasp and continue
                 action = current_tgt + num_box
-        elif a_macro.startswith("Q1"):
-            action = int(a_macro.split("_")[1]) + 2 * num_box
+
         else:
-            tgt_id = torch.argmax(target_prob)
-            if tgt_id == num_box:
-                if self.clue is None:
-                    if self.q2_num_asked < MAX_Q2_NUM:
-                        action = 3 * num_box
-                        self.q2_num_asked += 1
-                    else:
-                        # here we:
-                        # 1. cannot ground the clue object successfully.
-                        # 2. cannot ground the target successfully.
-                        # 3. have asked too many Q2s.
-                        # therefore, we should grasp a random leaf object and continue.
-                        l_probs = np.diagonal(leaf_desc_prob)
-                        current_tgt = np.argmax(l_probs)
-                        action = current_tgt + num_box
-                else:
-                    # clue is not None, the robot will grasp the clue object first
-                    l_d_probs = clue_desc_prob
-                    current_tgt = np.argmax(l_d_probs)
-                    # grasp and continue
-                    action = current_tgt + num_box
-            else:
-                l_d_probs = leaf_desc_prob[:, tgt_id]
-                current_tgt = np.argmax(l_d_probs)
-                if current_tgt == tgt_id:
-                    # grasp and end program
-                    action = current_tgt
-                else:
-                    # grasp and continue
-                    action = current_tgt + num_box
+            action = a_macro - 1 + 2 * num_box
+
         return action

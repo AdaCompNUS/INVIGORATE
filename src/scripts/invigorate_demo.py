@@ -124,6 +124,9 @@ def main():
         invigorate_client = No_Multistep()
     elif EXP_SETTING == "no_multistep_2":
         invigorate_client = No_Multistep_2()
+    elif EXP_SETTING == "invigorate_pomdp_no_unseenobj":
+        invigorate_client = InvigoratePOMDPNoUnseenObj()
+
     logger.info("SETTING: {}".format(EXP_SETTING))
 
     data_viewer = DataViewer(CLASSES)
@@ -178,7 +181,7 @@ def main():
         bboxes = observations['bboxes']
         classes = observations['classes']
         rel_mat = observations['rel_mat']
-        rel_score_mat = observations['rel_score_mat']
+        rel_score_mat = invigorate_client.belief['rel_prob']
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
         if DISPLAY_DEBUG_IMG:
