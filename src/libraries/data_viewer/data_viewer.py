@@ -16,10 +16,50 @@ from PIL import Image
 import time
 import datetime
 
-from vmrn.model.utils.net_utils import create_mrt
 # from sklearn.manifold import TSNE
 from config.config import *
 from paper_fig_generator import gen_paper_fig
+
+def create_mrt(rel_mat, class_names=None, rel_score=None):
+    # using relationship matrix to create manipulation relationship tree
+    mrt = nx.DiGraph()
+
+    if rel_mat.size == 0:
+        # No object is detected
+        return mrt
+    elif (rel_mat > 0).sum() == 0:
+        # No relation is detected, meaning that there is only one object in the scene
+        class_names = class_names or [0]
+        mrt.add_node(class_names[0])
+        return mrt
+
+    node_num = np.max(np.where(rel_mat > 0)[0]) + 1
+    if class_names is None:
+        # no other node information
+        class_names = list(range(node_num))
+    elif isinstance(class_names[0], float):
+        # normalized confidence score
+        class_names = ["{:d}\n{:.2f}".format(i, cls) for i, cls in enumerate(class_names)]
+    else:
+        # class name
+        class_names = ["{:s}{:d}".format(cls, i) for i, cls in enumerate(class_names)]
+
+    if rel_score is None:
+        rel_score = np.zeros(rel_mat.shape, dtype=np.float32)
+
+    for obj1 in xrange(node_num):
+        mrt.add_node(class_names[obj1])
+        for obj2 in xrange(obj1):
+            if rel_mat[obj1, obj2].item() == 1:
+                # OBJ1 is the father of OBJ2
+                mrt.add_edge(class_names[obj2], class_names[obj1],
+                             weight=np.round(rel_score[obj1, obj2].item(), decimals=2))
+
+            if rel_mat[obj1, obj2].item() == 2:
+                # OBJ1 is the father of OBJ2
+                mrt.add_edge(class_names[obj1], class_names[obj2],
+                             weight=np.round(rel_score[obj1, obj2].item(), decimals=2))
+    return mrt
 
 def split_long_string(in_str, len_thresh = 30):
     if in_str =='':

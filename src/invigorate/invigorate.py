@@ -573,10 +573,11 @@ class Invigorate(object):
 
     def _bbox_filter(self, bbox, cls, cls_scores):
         # apply NMS
-        keep = nms(torch.from_numpy(bbox[:, :-1]), torch.from_numpy(bbox[:, -1]), 0.7)
+        bbox_scores = np.max(cls_scores, axis=1)
+        keep = nms(torch.from_numpy(bbox), torch.from_numpy(bbox_scores), 0.7)
         keep = keep.view(-1).numpy().tolist()
         for i in range(bbox.shape[0]):
-            if i not in keep and bbox[i][-1] > 0.9:
+            if i not in keep and bbox_scores[i] > 0.9:
                 keep.append(i)
         bbox = bbox[keep]
         cls = cls[keep]
@@ -623,6 +624,7 @@ class Invigorate(object):
         ind_match_dict = {}
         if mode == "heuristic":
             # match bboxes between two steps.
+            # TODO: THERE ARE BUGS HERE, WHICH ASSUMES THAT THE LAST DIM OF BBOX IS THE CLS
             cls_mask = np.zeros(ovs.shape, dtype=np.uint8)
             for i, cls in enumerate(bbox[:, -1]):
                 cls_mask[i][prev_bbox[:, -1] == cls] = 1

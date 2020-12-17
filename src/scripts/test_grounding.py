@@ -2,7 +2,6 @@ import sys
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
 sys.path.append(osp.join(this_dir, '../'))
-sys.path.append(osp.join(this_dir, '../libraries/tools/refer'))
 
 # import matplotlib
 # matplotlib.use('Agg')
@@ -274,6 +273,103 @@ def visualize_for_label(img_path, expr):
     return bboxes[box_id]
 
 
+def label_groundings_nus_single():
+
+    test_set = \
+        [
+            ['1.jpeg', 'blue box'],
+            ['1.jpeg', 'black remote'],
+            ['1.jpeg', 'white box'],
+            ['1.jpeg', 'the apple'],
+            ['1.jpeg', 'the bottle'],
+
+            ['2.jpeg', 'the knife'],
+            ['2.jpeg', 'black mouse'],
+            ['2.jpeg', 'banana under the remote'],
+            ['2.jpeg', 'the cup'],
+
+            ['3.jpeg', 'bottle with a pink cap'],
+            ['3.jpeg', 'red box'],
+            ['3.jpeg', 'blue notebook'],
+            ['3.jpeg', 'the bottle'],
+
+            ['4.jpeg', 'the red box'],
+            ['4.jpeg', 'yellow cup'],
+            ['4.jpeg', 'cup under the white mouse'],
+            ['4.jpeg', 'black mouse'],
+
+            ['5.jpeg', 'the red box'],
+            ['5.jpeg', 'the knife'],
+            ['5.jpeg', 'the bottle'],
+            ['5.jpeg', 'the box under the knife'],
+
+            ['6.jpeg', 'the white box'],
+            ['6.jpeg', 'the bottle'],
+            ['6.jpeg', 'the pink knife'],
+            ['6.jpeg', 'banana'],
+
+            ['7.jpeg', 'the left toothbrush'],
+            ['7.jpeg', 'the yellow knife'],
+
+            ['8.jpeg', 'the blue notebook'],
+            ['8.jpeg', 'the banana'],
+            ['8.jpeg', 'the pink knife'],
+            ['8.jpeg', 'the knife on top of the banana'],
+
+            ['9.jpeg', 'the blue toothbrush'],
+            ['9.jpeg', 'the bottle'],
+            ['9.jpeg', 'the right knife'],
+
+            ['10.jpeg', 'the bottom apple'],
+            ['10.jpeg', 'the top box'],
+
+            ['11.jpeg', 'the wooden block'],
+            ['11.jpeg', 'the yellow bottle'],
+            ['11.jpeg', 'blue cup'],
+            ['11.jpeg', 'mouse'],
+
+            ['12.jpeg', 'the bottom box'],
+            ['12.jpeg', 'the left knife'],
+            ['12.jpeg', 'banana'],
+            ['12.jpeg', 'bottle'],
+
+            ['13.jpeg', 'the remote'],
+            ['13.jpeg', 'the notebook'],
+
+            ['14.jpeg', 'the yellow bottle'],
+            ['14.jpeg', 'the white mouse'],
+            ['14.jpeg', 'the white box'],
+            ['14.jpeg', 'the top right mouse'],
+            ['14.jpeg', 'the mouse to the left of the white box'],
+
+            ['15.jpeg', 'the box under the pink knife'],
+            ['15.jpeg', 'the blue notebook'],
+            ['15.jpeg', 'the box under the bottle'],
+            ['15.jpeg', 'the bottle'],
+        ]
+
+    all_labels = []
+    save_path = osp.join(ROOT_DIR, "images", "nus_single", "grounding_gt.npy")
+
+    for i, t in enumerate(test_set):
+        im_name = t[0]
+        expr = t[1]
+
+        im_path = osp.join(ROOT_DIR, "images", "nus_single", "images", im_name)
+        bbox = visualize_for_label(im_path, expr)
+
+        all_labels.append({
+            "file_name": im_name,
+            "file_path": im_path,
+            "expr": expr,
+            "bbox": bbox,
+        })
+
+        np.save(save_path, all_labels)
+        print("Finished: {:d}/{:d}".format(i, len(test_set)))
+
+    return all_labels
+
 def label_groundings_vmrd_like_single():
 
     test_set = \
@@ -404,6 +500,8 @@ def check_grounding_labels(split="vmrd_like_single"):
         else:
             if split == "vmrd_like_single":
                 return label_groundings_vmrd_like_single()
+            elif split == "nus_single":
+                return label_groundings_nus_single()
     else:
         dataroot = "/data1/zhb/datasets/refcoco"
         datadir = "/data0/svc4/code/INVIGORATE/vilbert/datasets/coco/coco/"
@@ -468,7 +566,8 @@ def visualize_results(img, expr, gt, g_mattnet=None, g_vilbert=None, g_ingress=N
 if __name__ == "__main__":
     rospy.init_node('test')
 
-    gt_labels = check_grounding_labels(split="refcoco_val")
+    gt_labels = check_grounding_labels(split="nus_single")
+    gt_labels = gt_labels[:100]
 
     acc_mattnet = 0.
     acc_vilbert = 0.

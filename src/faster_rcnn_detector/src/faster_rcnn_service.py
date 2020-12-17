@@ -74,7 +74,7 @@ class FasterRCNNService(object):
         res.bbox = obj_box.astype(np.float64).reshape(-1).tolist()
         res.cls = obj_cls.astype(np.int32).reshape(-1).tolist()
         res.cls_scores = obj_cls_scores.astype(np.float64).reshape(-1).tolist()
-        res.box_feats = json.dumps(regional_feat)
+        res.box_feats = json.dumps("")
         return res
 
     def fasterRCNN_forward_process(self, image, data_batch, save_res=False, id =""):
@@ -85,7 +85,7 @@ class FasterRCNNService(object):
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data
         obj_boxes, obj_cls_scores = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
-            class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True)
+            class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=False)
         if save_res:
             np.save(ROOT_DIR + "/images/output/" + id + "_bbox.npy", obj_boxes)
 

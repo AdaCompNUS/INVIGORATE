@@ -32,7 +32,6 @@ import sys
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
 sys.path.insert(0, osp.join(this_dir, '../'))
-sys.path.append(osp.join(this_dir,'../faster_rcnn_detector'))
 
 import warnings
 import rospy
