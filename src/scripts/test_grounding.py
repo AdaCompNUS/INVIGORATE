@@ -95,6 +95,16 @@ def vilbert_grounding_client(img, bbox, expr):
     except rospy.ServiceException as e:
         print("Service call failed: %s"%e)
 
+def vilbert_obr_client(img, bbox):
+    rospy.wait_for_service('vilbert_obr_server')
+    try:
+        vmr_det = rospy.ServiceProxy('vilbert_obr_server', VmrDetection)
+        img_msg = br.cv2_to_imgmsg(img)
+        res = vmr_det(img_msg, bbox)
+        return res.rel_mat, res.rel_score_mat
+    except rospy.ServiceException as e:
+        print("Service call failed: %s"%e)
+
 def ingress_client(img, bbox, expr):
     print(bbox)
     ingress_client = Ingress()
@@ -271,6 +281,10 @@ def visualize_for_label(img_path, expr):
     box_id = int(box_id)
 
     return bboxes[box_id]
+
+
+def label_grounidngs_nus_multiple():
+    pass
 
 
 def label_groundings_nus_single():
