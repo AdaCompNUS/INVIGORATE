@@ -1,20 +1,6 @@
-# create cuda9.0 pytorch 1.4.0 tochvision 0.5.0 docker file
-
-# cuda9.0
-
-# install ros
-
-# install miniconda and 
-cd ~
-wget https://repo.anaconda.com/miniconda/Miniconda2-latest-Linux-x86_64.sh
-mkdir /root/.conda
-bash Miniconda2-latest-Linux-x86_64.sh -b
-
-# Edit .bashrc to resolve conflict with ROS
-
-# Setup pytorch 0.4.0 environment for mattnet and vmrn_old
-conda create -n pytorch_old python=2.7
-pip install torch-0.4.0-cp27-cp27mu-linux_x86_64.whl
+# Install
+Download adacompnus/invigorate docker
+Download adacompnus/ingress docker
 
 # setup faster_rcnn
 download model
@@ -38,3 +24,9 @@ put it in <MAttnet-root-dir>/output/refcoco_small_unc/
 # setup grasp policy
 download density estimation pickle file
 put it in grasp_planner
+
+# Use it
+follow launch_faster_rcnn_detector.sh to launch faster_rcnn_detector service in invigorate docker
+follow launch_mattnet.sh to launch grounding service in invigorate docker
+follow luanch_vmrn.sh to launch relationship detection service in invigorate docker
+follow launch_ingress.sh to launch to launch ingress service in ingress docker
