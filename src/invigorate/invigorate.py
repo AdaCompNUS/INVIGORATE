@@ -688,7 +688,7 @@ class Invigorate(object):
             # not affect the relationships among other nodes
             v_column[0] = 0
             v_column[1] = 1. / 3.
-            v_column[2] = 2. / 3.
+            v_column[2] = 2. / 3. # incorporate the prob of having parent into the prob of not having relationship
             v_column[1, removed] = 0.
             v_column[2, removed] = 1.
             rel_prob_mat = torch.cat(
@@ -1347,15 +1347,21 @@ class InvigoratePOMDPNoUnseenObj(Invigorate):
             return penalty_for_fail * p_fail
 
         def belief_update(belief):
+            '''
+            @return updated_belief, [num_obj x 2 x num_obj]
+                                    updated_belief[i] is the belief for asking q1 wrt to obj i.
+                                    updated_belief[i][0] is the belief for getting answer no, updated_belief[i][1] is the belief for getting answer yes.
+            '''
             I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
             updated_beliefs = []
             # Do you mean ... ?
             # Answer No
             beliefs_no = belief["target_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
-            beliefs_no *= (1. - I)
-            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10)
+            beliefs_no *= (1. - I) # set belief wrt to obj being asked to 0
+            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10) # normalize
             # Answer Yes
-            beliefs_yes = I.clone()
+            beliefs_yes = I.clone() # set belief wrt to obj being asked to 1 and set the rest to 0
+
             for i in range(beliefs_no.shape[0] - 1):
                 updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
 
@@ -1370,26 +1376,40 @@ class InvigoratePOMDPNoUnseenObj(Invigorate):
             else:
                 # branches of grasping
                 q_vec = [grasp_reward_estimate(belief)]
-                target_prob = belief["target_prob"]
-                new_beliefs = belief_update(belief)
-                new_belief_dict = copy.deepcopy(belief)
 
                 # q-value for asking Q1
+                target_prob = belief["target_prob"]
+                new_beliefs = belief_update(belief) # calculate b' for asking q1 about different objects at once.
+                new_belief_dict = copy.deepcopy(belief)
                 for i, new_belief in enumerate(new_beliefs):
-                    q = 0
+                    q = penalty_for_asking
                     for j, b in enumerate(new_belief):
-                        new_belief_dict["target_prob"] = b
-                        # branches of asking questions
+                        # new_belief_dict["target_prob"] = b
+                        # # branches of asking questions
+                        # if is_onehot(b):
+                        #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max()
+                        # else:
+                        #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max()
+                        # if j == 0:
+                        #     # Answer is No
+                        #     q += t_q * (1 - target_prob[i])
+                        # else:
+                        #     # Answer is Yes
+                        #     q += t_q * target_prob[i]
+
+                        # calculate value of new belief
                         if is_onehot(b):
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
+                            # set the depth to maximum depth as there is no need to plan further
+                            new_belief_val = estimate_q_vec(new_belief_dict, planning_depth - 1).max()
                         else:
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
+                            new_belief_val = estimate_q_vec(new_belief_dict, current_d + 1).max()
+
                         if j == 0:
                             # Answer is No
-                            q += t_q * (1 - target_prob[i])
+                            q += (1 - target_prob[i]) * new_belief_val # observation prob * value of new belief
                         else:
                             # Answer is Yes
-                            q += t_q * target_prob[i]
+                            q += target_prob[i] * new_belief_val # observation prob * value of new belief
                     q_vec.append(q.item())
 
                 return torch.Tensor(q_vec).type_as(belief["target_prob"])
@@ -1424,7 +1444,7 @@ class InvigoratePOMDPNoUnseenObj(Invigorate):
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
         leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
-        logger.info("decision_making_heuristic: ")
+        logger.info("decision_making_pomdp: ")
         infos = {
             "leaf_desc_prob": leaf_desc_prob,
             "leaf_prob": leaf_prob
