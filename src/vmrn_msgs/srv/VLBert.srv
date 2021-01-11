@@ -1,0 +1,9 @@
+sensor_msgs/Image img
+float64[] bboxes
+int32[] classes
+
+---
+
+float64[] ground_prob
+float64[] rel_score_mat
+int32[] rel_mat

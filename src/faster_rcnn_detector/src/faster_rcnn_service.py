@@ -85,7 +85,7 @@ class FasterRCNNService(object):
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data
         obj_boxes, obj_cls_scores = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
-            class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=False)
+            class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True)
         if save_res:
             np.save(ROOT_DIR + "/images/output/" + id + "_bbox.npy", obj_boxes)
 
