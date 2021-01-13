@@ -22,16 +22,7 @@ br = CvBridge()
 # ------- Settings ------
 DBG_PRINT = False
 
-TEST_OBJECT_DETECTION = True
-TEST_REFER_EXPRESSION = True
-TEST_CLS_NAME_FILTER = True
-TEST_CAPTION_GENERATION = False
-TEST_MRT_DETECTION = True
-TEST_GRASP_POLICY = False
-
 # ------- Constants -------
-AMBIGUOUS_THRESHOLD = 0.1
-BG_SCORE = 0
 
 def dbg_print(string):
     if DBG_PRINT:
@@ -59,34 +50,30 @@ def vlbert_client(img, bboxes, expr, num_box):
         req.expr = expr
 
         resp = vlbert_client(req)
-        ground_prob = np.array(list(resp.ground_prob))
-        # TODO 
-        # rel_score_mat = np.array(list(resp.rel_score_mat)).reshape(num_box, num_box)
-        # rel_mat = 
-        rel_score_mat = None
-        rel_mat = None
-        return ground_prob, rel_score_mat, rel_mat
+        grounding_scores = np.array(list(resp.grounding_scores))
+        rel_score_mat = np.array(list(resp.rel_score_mat)).reshape(3, num_box, num_box)
+        rel_mat = np.argmax(rel_score_mat, axis=0) + 1
+        return grounding_scores, rel_score_mat, rel_mat
     except rospy.ServiceException as e:
         # print("Service call failed: %s"%e)
         pass
-
 
 def test_obj_manipulation(img_cv, expr):
     tb = time.time()
     num_box, bboxes, classes, bbox_feats = faster_rcnn_client(img_cv)
     # dbg_print(bboxes)
-    print(num_box)
+    dbg_print(num_box)
     bboxes_with_score = np.array(bboxes).reshape(-1, 5)
     classes = np.array(classes).reshape(-1, 1)
-    print('classes: {}'.format(classes))
+    dbg_print('classes: {}'.format(classes))
     bboxes = bboxes_with_score[:, :4]
 
     data_viewer = DataViewer(CLASSES)
 
     grounding_scores, rel_score_mat, rel_mat = vlbert_client(img_cv, bboxes, expr, num_box)
-    print(grounding_scores)
-    print(rel_score_mat)
-    print(rel_mat)
+    dbg_print(grounding_scores)
+    dbg_print(rel_score_mat)
+    dbg_print(rel_mat)
 
     ############ visualize
 
@@ -97,20 +84,18 @@ def test_obj_manipulation(img_cv, expr):
     vis_bboxes = bboxes_with_cls * scalar
     vis_bboxes[:, -1] = bboxes_with_cls[:, -1]
     
-    # object detection
-    print('vis_bboxes: {}'.format(vis_bboxes))
-    object_det_img = data_viewer.draw_objdet(img_cv.copy(), vis_bboxes, list(range(classes.shape[0])))
-
-    cv2.imwrite("object_det.png", object_det_img)
-
-    vis_rel_score_mat = data_viewer.relscores_to_visscores(rel_score_mat)
-
+    # blank img filler
     blank_img = np.zeros((img_cv.shape), np.uint8)
 
+    # object detection
+    dbg_print('vis_bboxes: {}'.format(vis_bboxes))
+    object_det_img = data_viewer.draw_objdet(img_cv.copy(), vis_bboxes, list(range(classes.shape[0])))
+
     # relation
-    rel_det_img = blank_img
-    # rel_det_img = data_viewer.draw_mrt(img_cv.copy(), rel_mat, rel_score = vis_rel_score_mat)
-    # rel_det_img = cv2.resize(rel_det_img, (img_cv.shape[1], img_cv.shape[0]))
+    # rel_det_img = blank_img
+    vis_rel_score_mat = data_viewer.relscores_to_visscores(rel_score_mat)
+    rel_det_img = data_viewer.draw_mrt(img_cv.copy(), rel_mat, rel_score = vis_rel_score_mat, with_img=False)
+    rel_det_img = cv2.resize(rel_det_img, (img_cv.shape[1], img_cv.shape[0]))
 
     # grounding
     grounding_scores = np.append(grounding_scores, 0) # dummy background score
@@ -120,22 +105,44 @@ def test_obj_manipulation(img_cv, expr):
     # save result
     final_img = np.concatenate([np.concatenate([object_det_img, rel_det_img], axis = 1),
                                 np.concatenate([ground_img, blank_img], axis=1)], axis = 0)
-    # out_dir = "../images/output"
-    # save_name = im_id.split(".")[0] + "_result.png"
-    # save_path = os.path.join(out_dir, save_name)
-    # i = 1
-    # while (os.path.exists(save_path)):
-    #     i += 1
-    #     save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
-    #     save_path = os.path.join(out_dir, save_name)
-    # cv2.imwrite(save_path, final_img)
-    cv2.imshow('img', final_img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    out_dir = "../images/output"
+    save_name = im_id.split(".")[0] + "_result.png"
+    save_path = os.path.join(out_dir, save_name)
+    i = 1
+    while (os.path.exists(save_path)):
+        i += 1
+        save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
+        save_path = os.path.join(out_dir, save_name)
+    cv2.imwrite(save_path, final_img)
+
+    # Show images (Optional)
+    # cv2.imshow('img', final_img)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    rospy.init_node('test')
+    rospy.init_node('test_vlbert')
 
-    img_cv = cv2.imread("../images/33.png")
-    expr = 'banana'
-    test_obj_manipulation(img_cv, expr)
+    # Unit Test
+    # img_cv = cv2.imread("../images/15.png")
+    # expr = 'white mouse'
+    # test_obj_manipulation(img_cv, expr)
+
+    # Batch Test with Vis
+    TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
+             ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
+             ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
+             ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
+             ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
+             ['37.png', 'apple under banana'],
+             ['38.png', 'apple under banana'],
+             ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
+            #  ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
+            ]
+
+    for i, test in enumerate(TESTS):
+        im_id = test[0]
+        expr = test[1]
+        img_cv = cv2.imread("../images/" + im_id)
+        test_obj_manipulation(img_cv, expr)
+        print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))

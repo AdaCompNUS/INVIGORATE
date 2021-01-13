@@ -21,6 +21,14 @@ from config.config import *
 from paper_fig_generator import gen_paper_fig
 
 def create_mrt(rel_mat, class_names=None, rel_score=None):
+    '''
+    rel_mat: np.array of size [num_box, num_box] 
+             where rel_mat[i, j] is the relationship between obj i and obj j. 
+             1 means i is the parent of j.
+             2 means i is the child of j.
+             3 means i has no relation to j.
+    '''
+
     # using relationship matrix to create manipulation relationship tree
     mrt = nx.DiGraph()
 
@@ -56,7 +64,7 @@ def create_mrt(rel_mat, class_names=None, rel_score=None):
                              weight=np.round(rel_score[obj1, obj2].item(), decimals=2))
 
             if rel_mat[obj1, obj2].item() == 2:
-                # OBJ1 is the father of OBJ2
+                # OBJ2 is the father of OBJ1
                 mrt.add_edge(class_names[obj1], class_names[obj2],
                              weight=np.round(rel_score[obj1, obj2].item(), decimals=2))
     return mrt

@@ -67,6 +67,7 @@ class vlbert_server(object):
 
         bboxes = req.bboxes  # 1d array
         bboxes = np.array(bboxes).reshape(-1, 4)  # reshape into 2d array
+        num_box = bboxes.shape[0]
 
         # run inference
         output = {}
@@ -75,9 +76,29 @@ class vlbert_server(object):
             output.update(result)
 
         resp = VLBertResponse()
-        resp.ground_prob = output['grounding_logits'].cpu().numpy().flatten().tolist()
-        resp.rel_score_mat = output['obr_probs'].cpu().numpy().flatten().tolist()
-        resp.rel_mat = output['pred_rels'].cpu().numpy().flatten().tolist()
+        resp.grounding_scores = output['grounding_logits'].cpu().numpy().flatten().tolist()
+        obr_prob = output['obr_probs'].cpu().numpy()
+
+        # parse obr_prob into rel_score_mat 
+        # where rel_score_mat[0, i, j] is the probability of i being the parent of j,
+        # where rel_score_mat[1, i, j] is the probability of i being the child of j,
+        # where rel_score_mat[2, i, j] is the probability of i having no relation to j,
+        rel_score_mat = np.zeros((3, num_box, num_box))
+        obr_prob_idx = 0
+        for i in range(num_box):
+            for j in range(i + 1, num_box):
+                rel_score_mat[0, i, j] = obr_prob[obr_prob_idx, 0]
+                rel_score_mat[1, i, j] = obr_prob[obr_prob_idx, 1]
+                rel_score_mat[2, i, j] = obr_prob[obr_prob_idx, 2]
+                obr_prob_idx += 1
+                rel_score_mat[0, j, i] = obr_prob[obr_prob_idx, 0] 
+                rel_score_mat[1, j, i] = obr_prob[obr_prob_idx, 1] 
+                rel_score_mat[2, j, i] = obr_prob[obr_prob_idx, 2]
+                obr_prob_idx += 1
+        assert obr_prob_idx == obr_prob.shape[0]
+
+        resp.rel_score_mat = rel_score_mat.flatten().tolist()
+        resp.rel_mat = []
 
         return resp
 
@@ -92,7 +113,8 @@ class vlbert_server(object):
     def _process_data(self, image, boxes, exp, task_id=0):
 
         img_info = torch.from_numpy(
-            np.array(list(image.size) + [1.0, 1.0])).unsqueeze(0)
+            np.array([image.size[0],image.size[1], 1.0, 1.0])).unsqueeze(0)
+            #np.array([ 450, 600, 1.0, 1.0])).unsqueeze(0)
 
         if task_id == 0:
             exp_ids = self._tokenize_exp(exp)
@@ -121,6 +143,7 @@ class vlbert_server(object):
 
         result = {}
         if task_id == 0:
+            import pdb; pdb.set_trace()
             result.update(self._key_filter(output, ['grounding_logits']))
         elif task_id == 1:
             result.update(self._key_filter(output, ['obr_probs', 'pred_rels']))
