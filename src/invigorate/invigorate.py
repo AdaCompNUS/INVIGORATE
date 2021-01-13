@@ -9,6 +9,16 @@ Leaf and desc prob is stored as a NxN matrix.
 M[a. b] represents the probability of a being the leaf and descendant of b
 '''
 
+'''
+leaf_and_desc
+   x1                 x2                vn
+x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
+x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
+vn  N.A.              N.A.              N.A.
+
+Assume p(x1) = 0, p(x2) = 1
+'''
+
 import warnings
 
 from torch import t

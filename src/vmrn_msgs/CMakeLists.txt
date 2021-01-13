@@ -31,6 +31,7 @@ add_service_files(
   MAttNetGroundingV2.srv
   ObjectDetection.srv
   VmrDetection.srv
+  VLBert.srv
 )
 
 generate_messages(
