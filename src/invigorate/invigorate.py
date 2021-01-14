@@ -164,7 +164,6 @@ class Invigorate(object):
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
         logger.info('Step 1: raw grounding completed')
         logger.debug('raw target_prob: {}'.format(target_prob))

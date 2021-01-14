@@ -20,7 +20,7 @@ from libraries.data_viewer.data_viewer import DataViewer
 br = CvBridge()
 
 # ------- Settings ------
-DBG_PRINT = False
+DBG_PRINT = True
 
 # ------- Constants -------
 
@@ -61,12 +61,13 @@ def vlbert_client(img, bboxes, expr, num_box):
 def test_obj_manipulation(img_cv, expr):
     tb = time.time()
     num_box, bboxes, classes, bbox_feats = faster_rcnn_client(img_cv)
-    # dbg_print(bboxes)
-    dbg_print(num_box)
     bboxes_with_score = np.array(bboxes).reshape(-1, 5)
     classes = np.array(classes).reshape(-1, 1)
-    dbg_print('classes: {}'.format(classes))
     bboxes = bboxes_with_score[:, :4]
+    dbg_print(bboxes)
+    dbg_print(num_box)
+    dbg_print('classes: {}'.format(classes))
+    return
 
     data_viewer = DataViewer(CLASSES)
 
@@ -124,25 +125,25 @@ if __name__ == "__main__":
     rospy.init_node('test_vlbert')
 
     # Unit Test
-    # img_cv = cv2.imread("../images/15.png")
-    # expr = 'white mouse'
-    # test_obj_manipulation(img_cv, expr)
+    img_cv = cv2.imread("../images/15.png")
+    expr = 'white mouse'
+    test_obj_manipulation(img_cv, expr)
 
     # Batch Test with Vis
-    TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
-             ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
-             ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
-             ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
-             ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
-             ['37.png', 'apple under banana'],
-             ['38.png', 'apple under banana'],
-             ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
-            #  ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
-            ]
+    # TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
+    #          ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
+    #          ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
+    #          ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
+    #          ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
+    #          ['37.png', 'apple under banana'],
+    #          ['38.png', 'apple under banana'],
+    #          ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
+    #         #  ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
+    #         ]
 
-    for i, test in enumerate(TESTS):
-        im_id = test[0]
-        expr = test[1]
-        img_cv = cv2.imread("../images/" + im_id)
-        test_obj_manipulation(img_cv, expr)
-        print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
+    # for i, test in enumerate(TESTS):
+    #     im_id = test[0]
+    #     expr = test[1]
+    #     img_cv = cv2.imread("../images/" + im_id)
+    #     test_obj_manipulation(img_cv, expr)
+    #     print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
