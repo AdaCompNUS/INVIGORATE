@@ -23,14 +23,15 @@ torch.backends.cudnn.enabled = False
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-class VlbertService(object):
+
+class vlbert_server(object):
     def __init__(self, args, config):
 
         self._init_network()
         self.transform = self._init_transform(config)
         self.task_ids = config.DATASET.TASK_ID
 
-        s = rospy.Service('vlbert_service', VLBert, self._vlbert_callback)
+        s = rospy.Service('tpn_service', VLBert, self._vlbert_callback)
         print("READY TO RUN VL-BERT!")
 
     def _init_network(self):
@@ -151,6 +152,7 @@ class VlbertService(object):
 
         return result
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser('Inference config parser')
@@ -161,5 +163,5 @@ if __name__ == "__main__":
         update_config(args.cfg)
 
     rospy.init_node('vlbert_server')
-    VlbertService(args, config)
+    vlbert_server(args, config)
     rospy.spin()

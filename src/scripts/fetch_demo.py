@@ -24,7 +24,7 @@ from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 
 import vmrn._init_path
-from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
+from vmrn.model.utils.net_utils import inner_loop_planning
 from config.config import *
 from invigorate.integrase import INTEGRASE
 from libraries.data_viewer.data_viewer import DataViewer
