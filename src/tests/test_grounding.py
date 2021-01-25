@@ -35,6 +35,7 @@ DBG_PRINT = False
 TEST_CLS_NAME_FILTER = False
 TEST_CAPTION_GENERATION = False
 TEST_INGRESS_REFEXP = False
+TEST_VLBERT_REFEXP = False
 
 # ------- Constants -------
 AMBIGUOUS_THRESHOLD = 0.1
@@ -211,6 +212,16 @@ def test_grounding(img_cv, expr):
     dbg_print('ViLBERT ground_scores: {}'.format(ground_scores_vilbert))
     dbg_print('ViLBERT ground_prob: {}'.format(ground_prob_vilbert))
 
+    if TEST_VLBERT_REFEXP:
+        ground_scores_vlbert = vlbert_grounding_client(img_cv, bboxes.reshape(-1).tolist(), expr)
+        if WITHBG:
+            ground_scores_vlbert = list(ground_scores_vlbert)
+            ground_scores_vlbert.append(BG_SCORE_VLBERT)
+        with torch.no_grad():
+            ground_prob_vlbert = torch.nn.functional.softmax(torch.tensor(ground_scores_vlbert), dim=0)
+        dbg_print('ViLBERT ground_scores: {}'.format(ground_scores_vlbert))
+        dbg_print('ViLBERT ground_prob: {}'.format(ground_prob_vlbert))
+
     if TEST_INGRESS_REFEXP:
         # grounding with INGRESS
         bbox_2d_xywh = xyxy_to_xywh(bboxes[:, :4])
@@ -281,7 +292,6 @@ def visualize_for_label(img_path, expr):
     box_id = int(box_id)
 
     return bboxes[box_id]
-
 
 def label_grounidngs_nus_multiple():
     pass

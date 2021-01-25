@@ -97,7 +97,7 @@ class VlbertService(object):
         assert obr_prob_idx == obr_prob.shape[0]
 
         resp.rel_score_mat = rel_score_mat.flatten().tolist()
-        resp.rel_mat = []
+        #resp.rel_mat = []
 
         return resp
 
@@ -112,15 +112,17 @@ class VlbertService(object):
     def _process_data(self, image, boxes, exp, task_id=0):
 
         img_info = torch.from_numpy(
-            np.array([image.size[0],image.size[1], 1.0, 1.0])).unsqueeze(0)
+            np.array([image.size[0],image.size[1], 1.0, 1.0])).float()
             #np.array([ 450, 600, 1.0, 1.0])).unsqueeze(0)
+        boxes = torch.from_numpy(boxes).float()
 
         if task_id == 0:
             exp_ids = self._tokenize_exp(exp)
-            return self.transform(image, None, None, None, None)[0].unsqueeze(0), torch.from_numpy(boxes).unsqueeze(0).float(), img_info.float(),  exp_ids.unsqueeze(0)
-
+            image, boxes, _, img_info, _ =  self.transform(image, boxes, None, img_info, None)
+            return image.unsqueeze(0), boxes.unsqueeze(0), img_info.unsqueeze(0),  exp_ids.unsqueeze(0)
         elif task_id == 1:
-            return self.transform(image, None, None, None, None)[0].unsqueeze(0), torch.from_numpy(boxes).unsqueeze(0).float(), img_info.float()
+            image, boxes, _, img_info, _ =  self.transform(image, boxes, None, img_info, None)
+            return image.unsqueeze(0), boxes.unsqueeze(0), img_info.unsqueeze(0),  None
         else:
             raise NotImplementedError
 
@@ -142,7 +144,6 @@ class VlbertService(object):
 
         result = {}
         if task_id == 0:
-            import pdb; pdb.set_trace()
             result.update(self._key_filter(output, ['grounding_logits']))
         elif task_id == 1:
             result.update(self._key_filter(output, ['obr_probs', 'pred_rels']))

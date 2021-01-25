@@ -32,6 +32,7 @@ add_service_files(
   ObjectDetection.srv
   VmrDetection.srv
   VLBert.srv
+  Grounding.srv
 )
 
 generate_messages(
