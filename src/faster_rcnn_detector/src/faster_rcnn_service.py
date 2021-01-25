@@ -22,7 +22,7 @@ from vmrn.roi_data_layer.roidb import combined_roidb
 from vmrn.model.utils.data_viewer import dataViewer
 from vmrn.model.rpn.bbox_transform import bbox_xy_to_xywh
 
-from vmrn_msgs.srv import ObjectDetection, ObjectDetectionResponse
+from invigorate_msgs.srv import ObjectDetection, ObjectDetectionResponse
 
 class FasterRCNNService(object):
     def __init__(self, args, model_path):
@@ -52,7 +52,7 @@ class FasterRCNNService(object):
 
     def det_serv_callback(self, req):
         img_msg = req.img
-        
+
         # detect objects
         img = self.br.imgmsg_to_cv2(img_msg)
         data_batch = prepare_data_batch_from_cvimage(img, is_cuda = True)
@@ -66,7 +66,7 @@ class FasterRCNNService(object):
         # optionally, get regional feature
         regional_feat = {}
         if req.get_box_feat:
-            regional_feat = self.get_region_features(img, data_batch[1][0][2], obj_box, obj_cls) # 
+            regional_feat = self.get_region_features(img, data_batch[1][0][2], obj_box, obj_cls) #
             regional_feat['Feats'] = self.convert_regional_feat_to_python_list(regional_feat['Feats'])
 
         res = ObjectDetectionResponse()
@@ -80,7 +80,7 @@ class FasterRCNNService(object):
     def fasterRCNN_forward_process(self, image, data_batch, save_res=False, id =""):
         with torch.no_grad():
             result  = self.RCNN(data_batch)
-            
+
         rois = result[0][0][:,1:5].data
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data
@@ -102,10 +102,10 @@ class FasterRCNNService(object):
             cv2.imwrite(ROOT_DIR + "/images/output/" + id + "object_det.png", obj_det_img)
 
         return obj_boxes, obj_classes, obj_cls_name, obj_cls_scores
-    
+
     def get_region_features(self, image, im_scales, obj_boxes, obj_classes):
         obj_boxes = obj_boxes[:, :4]
-        
+
         # add to dets
         dets = []
         det_id = 0
@@ -141,7 +141,7 @@ class FasterRCNNService(object):
         lfeats = torch.from_numpy(lfeats).cuda()
         dif_lfeats = torch.from_numpy(dif_lfeats).cuda()
         cxt_lfeats = torch.from_numpy(cxt_lfeats).cuda()
-        
+
         # return
         data = {}
         data['det_ids'] = det_ids
@@ -150,7 +150,7 @@ class FasterRCNNService(object):
         data['cxt_det_ids'] = cxt_det_ids
         data['Feats'] = {'pool5': pool5, 'fc7': fc7, 'lfeats': lfeats, 'dif_lfeats': dif_lfeats,
                          'cxt_fc7': cxt_fc7, 'cxt_lfeats': cxt_lfeats}
-        
+
         return data
 
     def compute_lfeats(self, det_ids, Dets, im):
@@ -262,7 +262,7 @@ class FasterRCNNService(object):
                 cxt_det_ids[i, j] = cand_det_id
         cxt_det_ids = cxt_det_ids.tolist()
         return cxt_feats, cxt_lfeats, cxt_det_ids
-    
+
     def convert_regional_feat_to_python_list(self, feats):
         pool5 = feats['pool5'].detach().cpu().numpy().tolist()
         fc7 = feats['fc7'].detach().cpu().numpy().tolist()
@@ -270,7 +270,7 @@ class FasterRCNNService(object):
         dif_lfeats = feats['dif_lfeats'].detach().cpu().numpy().tolist()
         cxt_fc7 = feats['cxt_fc7'].detach().cpu().numpy().tolist()
         cxt_lfeats = feats['cxt_lfeats'].detach().cpu().numpy().tolist()
-        
+
         feats['pool5'] = pool5
         feats['fc7'] = fc7
         feats['lfeats'] = lfeats

@@ -18,7 +18,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 from config.config import *
-from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, ViLBERTGrounding
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, ViLBERTGrounding
 from libraries.tools.refer.refer import REFER
 
 try:

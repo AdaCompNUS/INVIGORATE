@@ -42,7 +42,7 @@ import nltk
 import logging
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
-from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, VLBert
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, VLBert
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
@@ -237,7 +237,7 @@ class Invigorate(object):
 
         logger.info("estimate_state_with_user_answer completed")
         self.belief["target_prob"] = target_prob
-    
+
     def plan_action(self):
         return self.decision_making_pomdp()
 
@@ -542,8 +542,8 @@ class Invigorate(object):
 
     def _rel_score_process(self, rel_score_mat):
         '''
-        rel_mat: np.array of size [num_box, num_box] 
-                 where rel_mat[i, j] is the relationship between obj i and obj j. 
+        rel_mat: np.array of size [num_box, num_box]
+                 where rel_mat[i, j] is the relationship between obj i and obj j.
                  1 means i is the parent of j.
                  2 means i is the child of j.
                  3 means i has no relation to j.

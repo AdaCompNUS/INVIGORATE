@@ -14,8 +14,9 @@ import time
 import vmrn._init_path
 from vmrn.model.utils.data_viewer import dataViewer
 # from vmrn.model.utils.net_utils import relscores_to_visscores
-from vmrn_msgs.srv import MAttNetGroundingV2, ObjectDetection, VmrDetection
+from invigorate_msgs.srv import MAttNetGroundingV2, ObjectDetection, VmrDetection
 from ingress_srv.ingress_srv import Ingress
+from libraries import ros_clients
 
 br = CvBridge()
 
@@ -24,48 +25,48 @@ DBG_PRINT = False
 
 TEST_OBJECT_DETECTION = True
 TEST_REFER_EXPRESSION = True
-TEST_CLS_NAME_FILTER = True
+TEST_CLS_NAME_FILTER = False
 TEST_CAPTION_GENERATION = False
 TEST_MRT_DETECTION = True
 TEST_GRASP_POLICY = False
 
 # ------- Constants -------
 AMBIGUOUS_THRESHOLD = 0.1
-BG_SCORE = 0
+BG_SCORE = -100
 
 def dbg_print(string):
     if DBG_PRINT:
         print(string)
 
-def faster_rcnn_client(img):
-    rospy.wait_for_service('faster_rcnn_server')
-    try:
-        obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
-        img_msg = br.cv2_to_imgmsg(img)
-        res = obj_det(img_msg, True)
-        return res.num_box, res.bbox, res.cls, res.box_feats
-    except rospy.ServiceException as e:
-        print("Service call failed: %s"%e)
+# def faster_rcnn_client(img):
+#     rospy.wait_for_service('faster_rcnn_server')
+#     try:
+#         obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
+#         img_msg = br.cv2_to_imgmsg(img)
+#         res = obj_det(img_msg, True)
+#         return res.num_box, res.bbox, res.cls, res.box_feats
+#     except rospy.ServiceException as e:
+#         print("Service call failed: %s"%e)
 
-def vmrn_client(img, bbox):
-    rospy.wait_for_service('vmrn_server')
-    try:
-        vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
-        img_msg = br.cv2_to_imgmsg(img)
-        res = vmr_det(img_msg, bbox)
-        return res.rel_mat, res.rel_score_mat
-    except rospy.ServiceException as e:
-        print("Service call failed: %s"%e)
+# def vmrn_client(img, bbox):
+#     rospy.wait_for_service('vmrn_server')
+#     try:
+#         vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
+#         img_msg = br.cv2_to_imgmsg(img)
+#         res = vmr_det(img_msg, bbox)
+#         return res.rel_mat, res.rel_score_mat
+#     except rospy.ServiceException as e:
+#         print("Service call failed: %s"%e)
 
-def mattnet_client(img, expr, img_data):
-    rospy.wait_for_service('mattnet_server_v2')
-    try:
-        grounding = rospy.ServiceProxy('mattnet_server_v2', MAttNetGroundingV2)
-        img_msg = br.cv2_to_imgmsg(img)
-        res = grounding(img_msg, expr, img_data)
-        return res.ground_scores
-    except rospy.ServiceException as e:
-        print("Service call failed: %s"%e)
+# def vilbert_client(img, expr, img_data):
+#     rospy.wait_for_service('vilbert_grounding_service')
+#     try:
+#         grounding = rospy.ServiceProxy('vilbert_grounding_service', Grounding)
+#         img_msg = br.cv2_to_imgmsg(img)
+#         res = grounding(img_msg, expr, img_data)
+#         return res.ground_scores
+#     except rospy.ServiceException as e:
+#         print("Service call failed: %s"%e)
 
 # def densecap_client(img, bbox, classes, expr):
 #     print(bbox)
@@ -90,7 +91,7 @@ def vis_action(action_str, shape):
 def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
     obj_name = CLASSES[obj_cls]
     cxt_obj_name = CLASSES[cxt_obj_cls]
-    
+
     if cxt_obj_cls == 0:
         rel_caption_sentence = '{} {} (of image)'.format(obj_name, rel_caption)
     else:
@@ -99,10 +100,15 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
     return rel_caption_sentence
 
 def test_obj_manipulation(img_cv, expr):
+
+    obj_detector = ros_clients.detectron2_detector.Detectron2Detector()
+    obr_detector = ros_clients.vmrn_client.VMRNClient()
+    grounding_client = ros_clients.vilbert_client.VilbertClient()
+
     # test object detection
     if TEST_OBJECT_DETECTION:
         tb = time.time()
-        num_box, bboxes, classes, bbox_feats = faster_rcnn_client(img_cv)
+        num_box, bboxes, classes, bbox_feats = obj_detector.detect_objects(img_cv)
         dbg_print(bboxes)
         dbg_print(num_box)
         bboxes = np.array(bboxes).reshape(-1, 5)
@@ -113,17 +119,17 @@ def test_obj_manipulation(img_cv, expr):
     else:
         dbg_print('TEST_OBJECT_DETECTION is false, quit')
         return
-    
+
     if TEST_MRT_DETECTION:
-        rel_result = vmrn_client(img_cv, obj_result[1])
+        rel_result = obr_detector.detect_obr(img_cv, bboxes)
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box))
-        vis_rel_score_mat = relscores_to_visscores(rel_score_mat)
+        vis_rel_score_mat = data_viewer.relscores_to_visscores(rel_score_mat)
     else:
         dbg_print('TEST_MRT_DETECTION is false, skip')
-    
+
     if TEST_REFER_EXPRESSION:
-        ground_scores = list(mattnet_client(img_cv, expr, bbox_feats))
+        ground_scores = list(grounding_client(img_cv, expr))
         ground_scores.append(BG_SCORE)
         ground_prob = torch.nn.functional.softmax(10 * torch.Tensor(ground_scores), dim=0)
         dbg_print('ground_scores: {}'.format(ground_scores))
@@ -137,7 +143,7 @@ def test_obj_manipulation(img_cv, expr):
             if cls_name not in expr: # simple filter
                 ground_prob[i] = 0.0
                 ground_scores[i] = -float('inf')
-        
+
         ground_prob /= torch.sum(ground_prob)
         dbg_print('filtered_ground_prob: {}'.format(ground_prob))
 

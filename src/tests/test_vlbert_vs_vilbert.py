@@ -14,7 +14,7 @@ import os
 import time
 
 from config.config import *
-from vmrn_msgs.srv import *
+from invigorate_msgs.srv import *
 from libraries.data_viewer.data_viewer import DataViewer
 
 from rls_perception_msgs.srv import *
@@ -128,7 +128,7 @@ def test_obj_manipulation(img_cv, expr):
     bboxes_with_cls = np.concatenate([bboxes, classes], axis=-1)
     vis_bboxes = bboxes_with_cls * scalar
     vis_bboxes[:, -1] = bboxes_with_cls[:, -1]
-    
+
     # blank img filler
     blank_img = np.zeros((img_cv.shape), np.uint8)
 

@@ -42,7 +42,7 @@ import nltk
 import logging
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
-from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 

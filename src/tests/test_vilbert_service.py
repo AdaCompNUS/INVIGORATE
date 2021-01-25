@@ -15,7 +15,7 @@ import time
 from scipy.special import softmax
 
 from config.config import *
-from vmrn_msgs.srv import *
+from invigorate_msgs.srv import *
 from libraries.data_viewer.data_viewer import DataViewer
 
 from rls_perception_msgs.srv import *
@@ -103,7 +103,7 @@ def test_obj_manipulation(img_cv, expr, im_id):
     #     cls_name = CLASSES[classes[i][0]]
     #     if cls_name not in expr: # simple filter
     #         ground_prob[i] = 0.0
-    
+
     # ground_prob /= np.sum(ground_prob)
     # dbg_print('filtered_ground_prob: {}'.format(ground_prob))
     ground_prob = grounding_scores
@@ -116,7 +116,7 @@ def test_obj_manipulation(img_cv, expr, im_id):
     bboxes_with_cls = np.concatenate([bboxes, classes], axis=-1)
     vis_bboxes = bboxes_with_cls * scalar
     vis_bboxes[:, -1] = bboxes_with_cls[:, -1]
-    
+
     # blank img filler
     blank_img = np.zeros((img_cv.shape), np.uint8)
 

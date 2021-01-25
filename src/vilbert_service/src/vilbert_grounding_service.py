@@ -36,8 +36,8 @@ from pytorch_transformers.tokenization_bert import BertTokenizer
 from vilbert.vilbert.vilbert import VILBertForVLTasks, BertConfig, BertForMultiModalPreTraining
 # from invigorate import INVIGORATE
 
-from vmrn_msgs.srv import ObjectDetectionResponse, VmrDetectionResponse, GroundingResponse 
-from vmrn_msgs.srv import ObjectDetection, VmrDetection, Grounding
+from invigorate_msgs.srv import ObjectDetectionResponse, VmrDetectionResponse, GroundingResponse
+from invigorate_msgs.srv import ObjectDetection, VmrDetection, Grounding
 
 SENTENCE_COMPLETION=True
 

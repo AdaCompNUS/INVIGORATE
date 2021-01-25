@@ -11,7 +11,7 @@ from vlbert.invigorate.modules import *
 from vlbert.external.pytorch_pretrained_bert import BertTokenizer
 from vlbert.invigorate.function.config import config, update_config
 
-from vmrn_msgs.srv import *
+from invigorate_msgs.srv import *
 import rospy
 import argparse
 from PIL import Image
@@ -79,7 +79,7 @@ class vlbert_server(object):
         resp.grounding_scores = output['grounding_logits'].cpu().numpy().flatten().tolist()
         obr_prob = output['obr_probs'].cpu().numpy()
 
-        # parse obr_prob into rel_score_mat 
+        # parse obr_prob into rel_score_mat
         # where rel_score_mat[0, i, j] is the probability of i being the parent of j,
         # where rel_score_mat[1, i, j] is the probability of i being the child of j,
         # where rel_score_mat[2, i, j] is the probability of i having no relation to j,
@@ -91,8 +91,8 @@ class vlbert_server(object):
                 rel_score_mat[1, i, j] = obr_prob[obr_prob_idx, 1]
                 rel_score_mat[2, i, j] = obr_prob[obr_prob_idx, 2]
                 obr_prob_idx += 1
-                rel_score_mat[0, j, i] = obr_prob[obr_prob_idx, 0] 
-                rel_score_mat[1, j, i] = obr_prob[obr_prob_idx, 1] 
+                rel_score_mat[0, j, i] = obr_prob[obr_prob_idx, 0]
+                rel_score_mat[1, j, i] = obr_prob[obr_prob_idx, 1]
                 rel_score_mat[2, j, i] = obr_prob[obr_prob_idx, 2]
                 obr_prob_idx += 1
         assert obr_prob_idx == obr_prob.shape[0]

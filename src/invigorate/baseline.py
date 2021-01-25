@@ -4,7 +4,7 @@ import logging
 
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
-from vmrn_msgs.srv import *
+from invigorate_msgs.srv import *
 
 from tpn import TPN
 
