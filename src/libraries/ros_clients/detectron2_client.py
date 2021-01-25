@@ -6,7 +6,7 @@ from invigorate_msgs.srv import *
 class Detectron2Client():
     def __init__(self):
         self._br = CvBridge()
-        self._obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
+        self._obj_det = rospy.ServiceProxy('object_detection_srv', ObjectDetection)
 
     def detect_objects(self, img):
         img_msg = self._br.cv2_to_imgmsg(img)
