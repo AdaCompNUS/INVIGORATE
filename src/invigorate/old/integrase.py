@@ -17,7 +17,7 @@ import os.path as osp
 from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning
 from vmrn.model.rpn.bbox_transform import bbox_overlaps
 from vmrn.model.utils.density_estimator import object_belief, gaussian_kde
-from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
 from ingress_srv.ingress_srv import Ingress
 
 from config.config import *
@@ -29,11 +29,11 @@ from config.config import *
 
 BG_SCORE = 0.25
 
-# -------- Static ---------- 
+# -------- Static ----------
 br = CvBridge()
 # nlp = StanfordCoreNLP('nlpserver/stanford-corenlp')
 
-# -------- Code ---------- 
+# -------- Code ----------
 # NEW VERSION with MAttNet
 class INTEGRASE(object):
     def __init__(self):
@@ -221,7 +221,7 @@ class INTEGRASE(object):
                 leaf_desc_prob, [N+1xN+1]
                 ground_score,   [N+1]
                 ground_result,  [N+1]
-                ind_match_dict, 
+                ind_match_dict,
                 grasps,         [Nx5x8], 5 grasps for every object, every grasp is x1y1, x2y2, x3y3, x4y4
         '''
 
@@ -248,7 +248,7 @@ class INTEGRASE(object):
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"] = scores[k]
 
-        # add history bounding boxes that are not detected in this timestamp 
+        # add history bounding boxes that are not detected in this timestamp
         for i, o in enumerate(self.object_pool):
             if i not in ind_match_dict.values() and o["removed"] == False and o["ground_belief"] > 0.5:
                 bboxes = np.append(bboxes, o["bbox"])
@@ -289,7 +289,7 @@ class INTEGRASE(object):
         rel_mat = np.array(rel_result[0]).reshape((num_box, num_box)) # [NxN]
         rel_score_mat = np.array(rel_result[1]).reshape((3, num_box, num_box)) #[3xNxN], 3 diff kinds of relationship
         grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
-        grasps = self.grasp_filter(bboxes, grasps) 
+        grasps = self.grasp_filter(bboxes, grasps)
         print('Step 2: mrt and grasp pose detection completed')
 
         # TODO: updating the relationship probability according to the new observation

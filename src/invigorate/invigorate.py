@@ -9,6 +9,16 @@ Leaf and desc prob is stored as a NxN matrix.
 M[a. b] represents the probability of a being the leaf and descendant of b
 '''
 
+'''
+leaf_and_desc
+   x1                 x2                vn
+x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
+x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
+vn  N.A.              N.A.              N.A.
+
+Assume p(x1) = 0, p(x2) = 1
+'''
+
 import warnings
 
 from torch import t
@@ -32,7 +42,7 @@ import nltk
 import logging
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
-from vmrn_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, VLBert
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
@@ -56,13 +66,16 @@ class Invigorate(object):
         rospy.loginfo('waiting for services...')
         rospy.wait_for_service('faster_rcnn_server')
         rospy.wait_for_service('vmrn_server')
-        rospy.wait_for_service('mattnet_server')
+        rospy.wait_for_service('vlbert_server')
         self._obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
-        self._vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
-        self._grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
+        self._grasp_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
+        self._tpn_det = rospy.ServiceProxy('vlbert_server', VLBert)
 
         self._br = CvBridge()
 
+        self._policy_tree_max_depth = 3
+        self._penalty_for_asking = -2
+        self._penalty_for_fail = -10
         self.history_scores = []
         self.object_pool = []
         self.rel_pool = {}
@@ -99,19 +112,27 @@ class Invigorate(object):
             return None
         logger.info('Perceive_img: _object_detection finished')
 
-        # relationship and grasp detection
-        rel_mat, rel_score_mat, grasps = self._mrt_detection(img, bboxes)
-        logger.info('Perceive_img: mrt and grasp detection finished')
+        # # relationship and grasp detection
+        # rel_mat, rel_score_mat, grasps = self._mrt_detection(img, bboxes)
+        # logger.info('Perceive_img: mrt and grasp detection finished')
+
+        # # grounding
+        # grounding_scores = self._visual_grounding(img, bboxes, expr)
+        # logger.info('Perceive_img: mattnet grounding finished')
+
+        # relationship and grounding
+        grounding_scores, rel_score_mat = self._tpn_client(img, bboxes, expr)
 
         # object and relationship detection post process
+        rel_mat, rel_score_mat = self._rel_score_process(rel_score_mat)
         ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat)
         num_box = bboxes.shape[0]
         logger.info('Perceive_img: post process of object and mrt detection finished')
 
-        # grounding
-        grounding_scores = self._mattnet_grounding(img, bboxes, expr)
-        logger.info('Perceive_img: mattnet grounding finished')
+        # grasp
+        grasps = self._grasp_client(img, bboxes)
 
+        # combine into a dictionary
         observations = {}
         observations['img'] = img
         observations['expr'] = expr
@@ -143,7 +164,6 @@ class Invigorate(object):
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
         logger.info('Step 1: raw grounding completed')
         logger.debug('raw target_prob: {}'.format(target_prob))
@@ -190,166 +210,249 @@ class Invigorate(object):
         logger.info('Step 3: incorporate QA history completed')
         logger.info('target_prob: {}'.format(target_prob))
 
-        # 3. incorporate the provided clue by the user
-        clue_prob = None
-        if self.clue is not None:
-            clue_prob = self._estimate_state_with_user_clue(self.clue)
-        logger.info('Step 4: incorporate clue by user completed')
-        logger.info('clue_probs: \n{}'.format(clue_prob))
-
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
-        self.belief['clue_prob'] = clue_prob
 
     def estimate_state_with_user_answer(self, action, answer):
+
         target_prob = self.belief["target_prob"]
         num_box = self.observations['num_box']
         ind_match_dict = self.observations['ind_match_dict']
         ans = answer.lower()
 
-        # Q1
-        if self.get_action_type(action, num_box) == 'Q1':
-            logger.info("Invigorate: handling answer for Q1")
-            target_idx = action - 2 * num_box
-            if ans in {"yes", "yeah", "yep", "sure"}:
-                # set non-target
-                target_prob[:] = 0
-                for obj in self.object_pool:
-                    obj["is_target"] = 0
-                # set target
-                target_prob[target_idx] = 1
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
-            elif ans in {"no", "nope", "nah"}:
-                target_prob[target_idx] = 0
-                target_prob /= np.sum(target_prob)
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
-
-        # Q2
-        elif self.get_action_type(action, num_box) == 'Q2':
-            logger.info("Invigorate: handling answer for Q2")
-
-            target_idx = np.argmax(target_prob[:-1])
-            if ans in {"yes", "yeah", "yep", "sure"}:
-                # set non-target
-                target_prob[:] = 0
-                for obj in self.object_pool:
-                    obj["is_target"] = 0
-                # set target
-                target_prob[target_idx] = 1
-                self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
-            else:
-                ans = self._process_q2_ans(ans)
-                clue_prob = self._estimate_state_with_user_clue(ans)
-                logger.debug('clue_probs: \n{}'.format(clue_prob))
-                self.belief["clue_prob"] = clue_prob
+        logger.info("Invigorate: handling answer for Q1")
+        target_idx = action - 2 * num_box
+        if ans in {"yes", "yeah", "yep", "sure"}:
+            # set non-target
+            target_prob[:] = 0
+            for obj in self.object_pool:
+                obj["is_target"] = 0
+            # set target
+            target_prob[target_idx] = 1
+            self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
+        elif ans in {"no", "nope", "nah"}:
+            target_prob[target_idx] = 0
+            target_prob /= np.sum(target_prob)
+            self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
 
         logger.info("estimate_state_with_user_answer completed")
         self.belief["target_prob"] = target_prob
 
     def plan_action(self):
-        return self.decision_making_heuristic()
-
-    def _get_clue_leaf_desc_prob(self, leaf_desc_prob, clue_prob):
-
-        cluster_res = KMeans(n_clusters=2).fit_predict(clue_prob.reshape(-1, 1))
-        mean0 = clue_prob[cluster_res == 0].mean()
-        mean1 = clue_prob[cluster_res == 1].mean()
-        pos_label = 0 if mean0 > mean1 else 1
-        pos_num = (cluster_res == pos_label).sum()
-        if pos_num == 1 and cluster_res[-1] == pos_label:
-            # cannot successfully ground the clue object, reset clue
-            clue_leaf_desc_prob = None
-            self.clue = None
-        else:
-            clue_prob = np.expand_dims(clue_prob, 0)
-            clue_leaf_desc_prob = (clue_prob[:, :-1] * leaf_desc_prob).sum(-1).squeeze()
-
-        logger.info('Update leaf_desc_prob with clue completed')
-        logger.info('clue_leaf_desc_prob : {}'.format(clue_leaf_desc_prob))
-        return clue_leaf_desc_prob
-
-    def decision_making_heuristic(self):
-        def choose_action(target_prob):
-            if len(target_prob.shape) == 1:
-                target_prob = target_prob.reshape(-1, 1)
-            cluster_res = KMeans(n_clusters=2).fit_predict(target_prob)
-            mean0 = target_prob[cluster_res==0].mean()
-            mean1 = target_prob[cluster_res==1].mean()
-            pos_label = 0 if mean0 > mean1 else 1
-            pos_num = (cluster_res==pos_label).sum()
-            if pos_num > 1:
-                return ("Q1_{:d}".format(np.argmax(target_prob[:-1].reshape(-1))))
-            else:
-                if cluster_res[-1] == pos_label:
-                    return "Q2"
-                else:
-                    return "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1)))
-            # return "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1)))
-
-        num_box = self.observations['num_box']
-        target_prob = self.belief['target_prob']
-        rel_prob = self.belief['rel_prob']
-        clue_prob = self.belief['clue_prob']
-        leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
-        logger.info("decision_making_heuristic: ")
-        if clue_prob is not None:
-            clue_leaf_desc_prob = self._get_clue_leaf_desc_prob(leaf_desc_prob, clue_prob)
-            logger.debug('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
-
-        action = choose_action(target_prob.copy())
-        if action.startswith("Q"):
-            if action == "Q2":
-                if self.clue is None:
-                    if self.q2_num_asked < MAX_Q2_NUM:
-                        action = 3 * num_box
-                        self.q2_num_asked += 1
-                    else:
-                        # here we:
-                        # 1. cannot ground the clue object successfully.
-                        # 2. cannot ground the target successfully.
-                        # 3. have asked too many Q2s.
-                        # therefore, we should grasp a random leaf object and continue.
-                        l_probs = np.diagonal(leaf_desc_prob)
-                        current_tgt = np.argmax(l_probs)
-                        action = current_tgt + num_box
-                else:
-                    # clue is not None, the robot will grasp the clue object first
-                    l_d_probs = clue_leaf_desc_prob
-                    current_tgt = np.argmax(l_d_probs)
-                    # grasp and continue
-                    action = current_tgt + num_box
-            else:
-                action = int(action.split("_")[1]) + 2 * num_box
-        else:
-            selected_obj = int(action.split("_")[1])
-            l_d_probs = leaf_desc_prob[:, selected_obj]
-            current_tgt = np.argmax(l_d_probs)
-            if current_tgt == selected_obj:
-                # grasp and end program
-                action = current_tgt
-            else:
-                # grasp and continue
-                action = current_tgt + num_box
-
-            # if the action is asking Q2, it is necessary to check whether the previous answer is useful.
-            # if useful, the robot will use the previous answer instead of requiring a new answer from the user.
-            # if a != 3 * num_box or self.clue is None:
-            #     self.result_container.append(
-            #         save_visualization(img, bboxes, rel_mat, vis_rel_score_mat, expr, ground_result, a, self.data_viewer))
-
-        return action
+        return self.decision_making_pomdp()
 
     def transit_state(self, action):
         num_box = self.observations['num_box']
         ind_match_dict = self.observations['ind_match_dict']
 
         action_type = self.get_action_type(action)
-        if action_type == 'Q1' or action_type == 'Q2':
+        if action_type == 'Q1':
             # asking question does not change state
             return
         else:
             # mark object as being removed
             self.object_pool[ind_match_dict[action % num_box]]["removed"] = True
+
+    def get_action_type(self, action, num_box=None):
+        if num_box is None:
+            num_box = self.observations['num_box']
+
+        if action < num_box:
+            return 'GRASP_AND_END'
+        elif action < 2 * num_box:
+            return 'GRASP_AND_CONTINUE'
+        elif action < 3 * num_box:
+            return 'Q1'
+
+    def planning_with_macro(self, infos):
+        """
+        ALL ACTIONS INCLUDE:
+        Do you mean ... ? (num_obj) + grasping macro (1)
+        :param belief: including "leaf_desc_prob", "desc_num", and "target_prob"
+        :param planning_depth:
+        :return:
+        """
+
+        # initialize hyperparameters
+        planning_depth = self._policy_tree_max_depth
+        penalty_for_fail = self._penalty_for_fail
+        penalty_for_asking = self._penalty_for_asking
+
+        def gen_grasp_macro(belief):
+
+            num_obj = belief["target_prob"].shape[0] - 1
+
+            grasp_macros = {i: None for i in range(num_obj)}
+            belief_infos = belief["infos"]
+
+            cache_leaf_desc_prob = {}
+            cache_leaf_prob = {}
+            for i in range(num_obj + 1):
+                grasp_macro = {"seq": [], "leaf_prob": []}
+                grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, i]).item())
+                grasp_macro["leaf_prob"].append(belief_infos["leaf_prob"][grasp_macro["seq"][0]].item())
+
+                rel_mat = belief["rel_prob"].clone()
+                while (grasp_macro["seq"][-1] != i):
+                    removed = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                    indice = ''.join([str(o) for o in np.sort(grasp_macro["seq"]).tolist()])
+                    if indice in cache_leaf_desc_prob:
+                        leaf_desc_prob = cache_leaf_desc_prob[indice]
+                        leaf_prob = cache_leaf_prob[indice]
+                    else:
+                        rel_mat[0:2, removed, :] = 0.
+                        rel_mat[0:2, :, removed] = 0.
+                        rel_mat[2, removed, :] = 1.
+                        rel_mat[2, :, removed] = 1.
+                        triu_mask = torch.triu(torch.ones(rel_mat[0].shape), diagonal=1)
+                        triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
+                        rel_mat *= triu_mask
+
+                        leaf_desc_prob, _, leaf_prob, _, _ = \
+                            self._leaf_and_desc_estimate(rel_mat, removed=grasp_macro["seq"], with_virtual_node=True)
+
+                        cache_leaf_desc_prob[indice] = leaf_desc_prob
+                        cache_leaf_prob[indice] = leaf_prob
+
+                    grasp_macro["seq"].append(torch.argmax(leaf_desc_prob[:, i]).item())
+                    grasp_macro["leaf_prob"].append(leaf_prob[grasp_macro["seq"][-1]].item())
+
+                grasp_macro["seq"] = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
+                grasp_macros[i] = grasp_macro
+
+            return grasp_macros
+
+        def grasp_reward_estimate(belief):
+            # reward of grasping macro, equal to: desc_num * reward_of_each_grasp_step
+            # POLICY: treat the object with the highest conf score as the target
+            target_prob = belief["target_prob"]
+            target = torch.argmax(target_prob).item()
+            grasp_macros = belief["grasp_macros"][target]
+            leaf_prob = grasp_macros["leaf_prob"]
+            p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
+            p_fail = 1. - target_prob[target].item() * p_not_remove_non_leaf
+            return penalty_for_fail * p_fail
+
+        def belief_update(belief):
+            '''
+            @return updated_belief, [num_obj x 2 x num_obj]
+                                    updated_belief[i] is the belief for asking q1 wrt to obj i.
+                                    updated_belief[i][0] is the belief for getting answer no, updated_belief[i][1] is the belief for getting answer yes.
+            '''
+            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
+            updated_beliefs = []
+            # Do you mean ... ?
+            # Answer No
+            beliefs_no = belief["target_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
+            beliefs_no *= (1. - I) # set belief wrt to obj being asked to 0
+            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10) # normalize
+            # Answer Yes
+            beliefs_yes = I.clone() # set belief wrt to obj being asked to 1 and set the rest to 0
+
+            for i in range(beliefs_no.shape[0] - 1):
+                updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
+
+            return updated_beliefs
+
+        def is_onehot(vec, epsilon=1e-2):
+            return (torch.abs(vec - 1) < epsilon).sum().item() > 0
+
+        def estimate_q_vec(belief, current_d):
+            if current_d == planning_depth - 1:
+                return torch.tensor([grasp_reward_estimate(belief)])
+            else:
+                # branches of grasping
+                q_vec = [grasp_reward_estimate(belief)]
+
+                # q-value for asking Q1
+                target_prob = belief["target_prob"]
+                new_beliefs = belief_update(belief) # calculate b' for asking q1 about different objects at once.
+                new_belief_dict = copy.deepcopy(belief)
+                for i, new_belief in enumerate(new_beliefs):
+                    q = penalty_for_asking
+                    for j, b in enumerate(new_belief):
+                        # new_belief_dict["target_prob"] = b
+                        # # branches of asking questions
+                        # if is_onehot(b):
+                        #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max()
+                        # else:
+                        #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max()
+                        # if j == 0:
+                        #     # Answer is No
+                        #     q += t_q * (1 - target_prob[i])
+                        # else:
+                        #     # Answer is Yes
+                        #     q += t_q * target_prob[i]
+
+                        # calculate value of new belief
+                        if is_onehot(b):
+                            # set the depth to maximum depth as there is no need to plan further
+                            new_belief_val = estimate_q_vec(new_belief_dict, planning_depth - 1).max()
+                        else:
+                            new_belief_val = estimate_q_vec(new_belief_dict, current_d + 1).max()
+
+                        if j == 0:
+                            # Answer is No
+                            q += (1 - target_prob[i]) * new_belief_val # observation prob * value of new belief
+                        else:
+                            # Answer is Yes
+                            q += target_prob[i] * new_belief_val # observation prob * value of new belief
+                    q_vec.append(q.item())
+
+                return torch.Tensor(q_vec).type_as(belief["target_prob"])
+
+        num_obj = self.belief["target_prob"].shape[0] - 1
+        belief = copy.deepcopy(self.belief)
+        for k in belief:
+            if belief[k] is not None:
+                belief[k] = torch.from_numpy(belief[k])
+        belief["infos"] = infos
+        for k in belief["infos"]:
+            belief["infos"][k] = torch.from_numpy(belief["infos"][k])
+        grasp_macros = belief["grasp_macros"] = gen_grasp_macro(belief)
+
+        q_vec = estimate_q_vec(belief, 0)
+        print("Q Value for Each Action: ")
+        print("Grasping:{:.3f}".format(q_vec.tolist()[0]))
+        print("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
+        # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
+
+        for k in grasp_macros:
+            for kk in grasp_macros[k]:
+                grasp_macros[k][kk] = grasp_macros[k][kk].numpy()
+        return torch.argmax(q_vec).item(), grasp_macros
+
+    def decision_making_pomdp(self):
+
+        num_box = self.observations['num_box']
+        target_prob = self.belief['target_prob']
+        rel_prob = self.belief['rel_prob']
+        leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
+        logger.info("decision_making_pomdp: ")
+        infos = {
+            "leaf_desc_prob": leaf_desc_prob,
+            "leaf_prob": leaf_prob
+        }
+
+        a_macro, grasp_macros = self.planning_with_macro(infos)
+        if a_macro == 0:
+            # grasping
+            tgt_id = np.argmax(target_prob)
+            grasp_macro = grasp_macros[tgt_id]
+            current_tgt = grasp_macro["seq"][0]
+
+            if len(grasp_macro["seq"]) == 1:
+                # grasp and end program
+                action = current_tgt
+            else:
+                # grasp and continue
+                action = current_tgt + num_box
+
+        else:
+            action = a_macro - 1 + 2 * num_box
+
+        return action
 
     def _init_kde(self):
         cur_dir = osp.dirname(osp.abspath(__file__))
@@ -382,20 +485,44 @@ class Invigorate(object):
         kde_norel = gaussian_kde(norel, bandwidth=0.1)
         self.rel_kdes = [kde_parents, kde_children, kde_norel]
 
+    def _init_object(self, bbox, score):
+        new_box = {}
+        new_box["bbox"] = bbox
+        new_box["cls_scores"] = score
+        new_box["cand_belief"] = object_belief()
+        new_box["target_prob"] = 0.
+        new_box["ground_scores_history"] = []
+        new_box["clue"] = None
+        new_box["clue_belief"] = object_belief()
+        # if self.target_in_pool:
+        #     new_box["confirmed"] = True
+        # else:
+        #     new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
+        new_box["is_target"] = -1 # -1 means unknown
+        new_box["removed"] = False
+        return new_box
+
+    def _init_relation(self, rel_score):
+        new_rel = {}
+        new_rel["rel_score"] = rel_score
+        new_rel["rel_score_history"] = []
+        new_rel["rel_belief"] = relation_belief()
+        return new_rel
+
     def _faster_rcnn_client(self, img):
         img_msg = self._br.cv2_to_imgmsg(img)
         res = self._obj_det(img_msg, False)
         return res.num_box, res.bbox, res.cls, res.cls_scores
 
-    def _vmrn_client(self, img, bbox):
+    def _grasp_client(self, img, bbox):
         img_msg = self._br.cv2_to_imgmsg(img)
-        res = self._vmr_det(img_msg, bbox)
-        return res.rel_mat, res.rel_score_mat, res.grasps
+        res = self._grasp_det(img_msg, bbox)
+        return res.grasps
 
-    def _mattnet_client(self, img, bbox, cls, expr):
+    def _tpn_client(self, img, bbox, expr):
         img_msg = self._br.cv2_to_imgmsg(img)
-        res = self._grounding(img_msg, bbox, cls, expr)
-        return res.ground_prob
+        res = self._tpn(img_msg, bbox, expr)
+        return res.grounding_scores, res.rel_score_mat
 
     def _object_detection(self, img):
         obj_result = self._faster_rcnn_client(img)
@@ -412,6 +539,17 @@ class Invigorate(object):
         class_names = [CLASSES[i[0]] for i in classes]
         logger.info('_object_detection classes: {}'.format(class_names))
         return bboxes, classes, class_scores
+
+    def _rel_score_process(self, rel_score_mat):
+        '''
+        rel_mat: np.array of size [num_box, num_box]
+                 where rel_mat[i, j] is the relationship between obj i and obj j.
+                 1 means i is the parent of j.
+                 2 means i is the child of j.
+                 3 means i has no relation to j.
+        '''
+        rel_mat = np.argmax(rel_score_mat, axis=0) + 1
+        return rel_mat, rel_score_mat
 
     def _bbox_post_process(self, bboxes, scores, rel_scores):
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
@@ -437,48 +575,6 @@ class Invigorate(object):
                     new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
                 self.rel_pool[(j, det_to_pool[i])] = new_rel
         return det_to_pool, not_matched
-
-    def _init_object(self, bbox, score):
-        new_box = {}
-        new_box["bbox"] = bbox
-        new_box["cls_scores"] = score
-        new_box["cand_belief"] = object_belief()
-        new_box["target_prob"] = 0.
-        new_box["ground_scores_history"] = []
-        new_box["clue"] = None
-        new_box["clue_belief"] = object_belief()
-        # if self.target_in_pool:
-        #     new_box["confirmed"] = True
-        # else:
-        #     new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
-        new_box["is_target"] = -1 # -1 means unknown
-        new_box["removed"] = False
-        return new_box
-
-    def _init_relation(self, rel_score):
-        new_rel = {}
-        new_rel["rel_score"] = rel_score
-        new_rel["rel_score_history"] = []
-        new_rel["rel_belief"] = relation_belief()
-        return new_rel
-
-    def _mrt_detection(self, img, bboxes):
-        num_box = bboxes.shape[0]
-        # logger.info(num_box)
-        rel_result = self._vmrn_client(img, bboxes[:, :4].reshape(-1).tolist())
-        rel_mat = np.array(rel_result[0]).reshape((num_box, num_box))
-        # logger.info(rel_result[1])
-        if num_box == 1: # TODO hack!!
-            rel_score_mat = (0.0, 0.0, 0.0)
-        else:
-            rel_score_mat = rel_result[1]
-        rel_score_mat = np.array(rel_score_mat).reshape((3, num_box, num_box))
-        grasps = np.array(rel_result[2]).reshape((num_box, 5, -1))
-        grasps = self._grasp_filter(bboxes, grasps)
-        return rel_mat, rel_score_mat, grasps
-
-    def _mattnet_grounding(self, img, bboxes, expr):
-        return self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), expr)
 
     def _multi_step_grounding(self, mattnet_score, ind_match_dict):
         num_box = len(mattnet_score)
@@ -534,6 +630,133 @@ class Invigorate(object):
 
         logger.debug('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
         logger.debug('leaf_prob: \n{}'.format(leaf_prob))
+
+        return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
+
+    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1000, with_virtual_node=False, removed=None):
+        # TODO: Numpy may support a faster implementation.
+        def sample_trees(rel_prob, sample_num=1):
+            return torch.multinomial(rel_prob, sample_num, replacement=True)
+
+        cuda_data = False
+        if rel_prob_mat.is_cuda:
+            # this function runs much faster on CPU.
+            cuda_data = True
+            rel_prob_mat = rel_prob_mat.cpu()
+
+        # add virtual node, with uniform relation priors
+        num_obj = rel_prob_mat.shape[-1]
+        if with_virtual_node:
+            if removed is None:
+                removed = []
+            removed = torch.tensor(removed).long()
+            v_row = torch.zeros((3, 1, num_obj + 1)).type_as(rel_prob_mat)
+            v_column = torch.zeros((3, num_obj, 1)).type_as(rel_prob_mat)
+            # no other objects can be the parent node of the virtual node,
+            # i.e., we assume that the virtual node must be a root node
+            # 1) if the virtual node is the target, its parents can be ignored
+            # 2) if the virtual node is not the target, such a setting will
+            # not affect the relationships among other nodes
+            v_column[0] = 0
+            v_column[1] = 1. / 3.
+            v_column[2] = 2. / 3. # incorporate the prob of having parent into the prob of not having relationship
+            v_column[1, removed] = 0.
+            v_column[2, removed] = 1.
+            rel_prob_mat = torch.cat(
+                [torch.cat([rel_prob_mat, v_column], dim=2),
+                 v_row], dim=1)
+        else:
+            # initialize the virtual node to have no relationship with other objects
+            v_row = torch.zeros((3, 1, num_obj + 1)).type_as(rel_prob_mat)
+            v_column = torch.zeros((3, num_obj, 1)).type_as(rel_prob_mat)
+            v_column[2, :, 0] = 1
+            rel_prob_mat = torch.cat(
+                [torch.cat([rel_prob_mat, v_column], dim=2),
+                 v_row], dim=1)
+
+        rel_prob_mat = rel_prob_mat.permute((1, 2, 0))
+        mrt_shape = rel_prob_mat.shape[:2]
+        rel_prob = rel_prob_mat.view(-1, 3)
+        rel_valid_ind = rel_prob.sum(-1) > 0
+
+        # sample mrts
+        samples = sample_trees(rel_prob[rel_valid_ind], sample_num) + 1
+        mrts = torch.zeros((sample_num,) + mrt_shape).type_as(samples)
+        mrts = mrts.view(sample_num, -1)
+        mrts[:, rel_valid_ind] = samples.permute((1, 0))
+        mrts = mrts.view((sample_num,) + mrt_shape)
+        p_mats = (mrts == 1)
+        c_mats = (mrts == 2)
+        adj_mats = p_mats + c_mats.transpose(1, 2)
+
+        def v_node_is_leaf(adj_mat):
+            return adj_mat[-1].sum() == 0
+
+        def no_cycle(adj_mat):
+            keep_ind = (adj_mat.sum(0) > 0)
+            if keep_ind.sum() == 0:
+                return True
+            elif keep_ind.sum() == adj_mat.shape[0]:
+                return False
+            adj_mat = adj_mat[keep_ind][:, keep_ind]
+            return no_cycle(adj_mat)
+
+        def descendants(adj_mat):
+            def find_children(node, adj_mat):
+                return torch.nonzero(adj_mat[node]).view(-1).tolist()
+
+            def find_descendant(node, adj_mat, visited, desc_mat):
+                if node in visited:
+                    return visited, desc_mat
+                else:
+                    desc_mat[node][node] = 1
+                    for child in find_children(node, adj_mat):
+                        visited, desc_mat = find_descendant(child, adj_mat, visited, desc_mat)
+                        desc_mat[node] = (desc_mat[node] | desc_mat[child])
+                    visited.append(node)
+                return visited, desc_mat
+
+            roots = torch.nonzero(adj_mat.sum(0) == 0).view(-1).tolist()
+            visited = []
+            desc_mat = torch.zeros(mrt_shape).type_as(adj_mat).long()
+            for root in roots:
+                visited, desc_list = find_descendant(root, adj_mat, visited, desc_mat)
+            return desc_mat.transpose(0, 1)
+
+        leaf_desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
+        desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
+        desc_num = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
+        ance_num = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
+
+        if with_virtual_node:
+            v_desc_num_after_q2 = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
+
+        count = 0
+        for adj_mat in adj_mats:
+            if removed is None and with_virtual_node and v_node_is_leaf(adj_mat):
+                continue
+            if not no_cycle(adj_mat):
+                continue
+            else:
+                desc_mat = descendants(adj_mat)
+                desc_num += desc_mat.sum(0)
+                ance_num += desc_mat.sum(1) - 1  # ancestors don't include the object itself
+                leaf_desc_mat = desc_mat * (adj_mat.sum(1, keepdim=True) == 0)
+                desc_prob += desc_mat
+                leaf_desc_prob += leaf_desc_mat
+                count += 1
+
+        desc_num /= count
+        ance_num /= count
+        leaf_desc_prob /= count
+        desc_prob /= count
+        leaf_prob = leaf_desc_prob.diag()
+        if cuda_data:
+            leaf_desc_prob = leaf_desc_prob.cuda()
+            leaf_prob = leaf_prob.cuda()
+            desc_prob = desc_prob.cuda()
+            ance_num = ance_num.cuda()
+            desc_num = desc_num.cuda()
 
         return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
 
@@ -662,553 +885,6 @@ class Invigorate(object):
 
         return ind_match_dict
 
-    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1000, with_virtual_node=False, removed=None):
-        # TODO: Numpy may support a faster implementation.
-        def sample_trees(rel_prob, sample_num=1):
-            return torch.multinomial(rel_prob, sample_num, replacement=True)
-
-        cuda_data = False
-        if rel_prob_mat.is_cuda:
-            # this function runs much faster on CPU.
-            cuda_data = True
-            rel_prob_mat = rel_prob_mat.cpu()
-
-        # add virtual node, with uniform relation priors
-        num_obj = rel_prob_mat.shape[-1]
-        if with_virtual_node:
-            if removed is None:
-                removed = []
-            removed = torch.tensor(removed).long()
-            v_row = torch.zeros((3, 1, num_obj + 1)).type_as(rel_prob_mat)
-            v_column = torch.zeros((3, num_obj, 1)).type_as(rel_prob_mat)
-            # no other objects can be the parent node of the virtual node,
-            # i.e., we assume that the virtual node must be a root node
-            # 1) if the virtual node is the target, its parents can be ignored
-            # 2) if the virtual node is not the target, such a setting will
-            # not affect the relationships among other nodes
-            v_column[0] = 0
-            v_column[1] = 1. / 3.
-            v_column[2] = 2. / 3.
-            v_column[1, removed] = 0.
-            v_column[2, removed] = 1.
-            rel_prob_mat = torch.cat(
-                [torch.cat([rel_prob_mat, v_column], dim=2),
-                 v_row], dim=1)
-        else:
-            # initialize the virtual node to have no relationship with other objects
-            v_row = torch.zeros((3, 1, num_obj + 1)).type_as(rel_prob_mat)
-            v_column = torch.zeros((3, num_obj, 1)).type_as(rel_prob_mat)
-            v_column[2, :, 0] = 1
-            rel_prob_mat = torch.cat(
-                [torch.cat([rel_prob_mat, v_column], dim=2),
-                 v_row], dim=1)
-
-        rel_prob_mat = rel_prob_mat.permute((1, 2, 0))
-        mrt_shape = rel_prob_mat.shape[:2]
-        rel_prob = rel_prob_mat.view(-1, 3)
-        rel_valid_ind = rel_prob.sum(-1) > 0
-
-        # sample mrts
-        samples = sample_trees(rel_prob[rel_valid_ind], sample_num) + 1
-        mrts = torch.zeros((sample_num,) + mrt_shape).type_as(samples)
-        mrts = mrts.view(sample_num, -1)
-        mrts[:, rel_valid_ind] = samples.permute((1, 0))
-        mrts = mrts.view((sample_num,) + mrt_shape)
-        p_mats = (mrts == 1)
-        c_mats = (mrts == 2)
-        adj_mats = p_mats + c_mats.transpose(1, 2)
-
-        def v_node_is_leaf(adj_mat):
-            return adj_mat[-1].sum() == 0
-
-        def no_cycle(adj_mat):
-            keep_ind = (adj_mat.sum(0) > 0)
-            if keep_ind.sum() == 0:
-                return True
-            elif keep_ind.sum() == adj_mat.shape[0]:
-                return False
-            adj_mat = adj_mat[keep_ind][:, keep_ind]
-            return no_cycle(adj_mat)
-
-        def descendants(adj_mat):
-            def find_children(node, adj_mat):
-                return torch.nonzero(adj_mat[node]).view(-1).tolist()
-
-            def find_descendant(node, adj_mat, visited, desc_mat):
-                if node in visited:
-                    return visited, desc_mat
-                else:
-                    desc_mat[node][node] = 1
-                    for child in find_children(node, adj_mat):
-                        visited, desc_mat = find_descendant(child, adj_mat, visited, desc_mat)
-                        desc_mat[node] = (desc_mat[node] | desc_mat[child])
-                    visited.append(node)
-                return visited, desc_mat
-
-            roots = torch.nonzero(adj_mat.sum(0) == 0).view(-1).tolist()
-            visited = []
-            desc_mat = torch.zeros(mrt_shape).type_as(adj_mat).long()
-            for root in roots:
-                visited, desc_list = find_descendant(root, adj_mat, visited, desc_mat)
-            return desc_mat.transpose(0, 1)
-
-        leaf_desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
-        desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
-        desc_num = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
-        ance_num = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
-
-        if with_virtual_node:
-            v_desc_num_after_q2 = torch.zeros(mrt_shape[0]).type_as(rel_prob_mat)
-
-        count = 0
-        for adj_mat in adj_mats:
-            if removed is None and with_virtual_node and v_node_is_leaf(adj_mat):
-                continue
-            if not no_cycle(adj_mat):
-                continue
-            else:
-                desc_mat = descendants(adj_mat)
-                desc_num += desc_mat.sum(0)
-                ance_num += desc_mat.sum(1) - 1  # ancestors don't include the object itself
-                leaf_desc_mat = desc_mat * (adj_mat.sum(1, keepdim=True) == 0)
-                desc_prob += desc_mat
-                leaf_desc_prob += leaf_desc_mat
-                count += 1
-
-        desc_num /= count
-        ance_num /= count
-        leaf_desc_prob /= count
-        desc_prob /= count
-        leaf_prob = leaf_desc_prob.diag()
-        if cuda_data:
-            leaf_desc_prob = leaf_desc_prob.cuda()
-            leaf_prob = leaf_prob.cuda()
-            desc_prob = desc_prob.cuda()
-            ance_num = ance_num.cuda()
-            desc_num = desc_num.cuda()
-
-        return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
-
-    def get_action_type(self, action, num_box=None):
-        if num_box is None:
-            num_box = self.observations['num_box']
-
-        if action < num_box:
-            return 'GRASP_AND_END'
-        elif action < 2 * num_box:
-            return 'GRASP_AND_CONTINUE'
-        elif action < 3 * num_box:
-            return 'Q1'
-        else:
-            return 'Q2'
-
-    def _estimate_state_with_user_clue(self, clue):
-        # 3. incorporate the provided clue by the user
-        # clue contains the tentative target contained in anwer of user for 'where is '
-        logger.info('_estimate_state_with_user_clue')
-        img = self.observations['img']
-        bboxes = self.observations['bboxes']
-        classes = self.observations['classes']
-        ind_match_dict = self.observations['ind_match_dict']
-        num_box = self.observations['num_box']
-        det_scores = self.observations['det_scores']
-
-        clue_ground_probs = self._mattnet_client(img, bboxes[:, :4].reshape(-1).tolist(), bboxes[:, -1].reshape(-1).tolist(), clue)
-        logger.info("clue_ground_probs: {}".format(clue_ground_probs))
-
-        self.clue = clue
-        for i, score in enumerate(clue_ground_probs):
-            obj_ind = ind_match_dict[i]
-            self.object_pool[obj_ind]["clue_belief"].update(score, self.obj_kdes)
-        pcand = [self.object_pool[ind_match_dict[i]]["clue_belief"].belief[1] for i in range(num_box)]
-        clue_ground_probs = self._cal_target_prob_from_p_cand(pcand)
-        clue_ground_probs = np.append(clue_ground_probs, 1. - clue_ground_probs.sum())
-        logger.info("clue_ground_probs: {}".format(clue_ground_probs))
-
-        # filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in clue or clue in cls]
-        for i in range(bboxes.shape[0]):
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                clue_ground_probs[i] = 0.001
-        clue_ground_probs /= clue_ground_probs.sum()
-        logger.info('class name filter completed')
-        logger.info('clue_ground_probs : {}'.format(clue_ground_probs))
-        return clue_ground_probs
-
-    def _process_q2_ans(self, ans, nlp_server="nltk"):
-        # just a heuristic analysis of the possible answers of question 2.
-        # if no clue is included, it should return a empty string.
-        # MAIN IDEA:
-        # 1. Find the last prep or verb in the sentence
-        # 2. Return the subsequence after this word
-
-        # it has been tested for, e.g., it's right there, i don't know,
-        # oh, emm, i think i don't know, etc.
-        # the stanford core nlp (stanza) seems a little better than nltk according to my test.
-
-        if nlp_server == "nltk":
-            text = nltk.word_tokenize(ans)
-            pos_tags = nltk.pos_tag(text)
-        else:
-            doc = self.stanford_nlp_server(ans)
-            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
-
-        verb_ind = -1
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag.startswith("VB"):
-                verb_ind = i
-
-        prep_ind = -1
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag in {"IN", "TO"}:
-                prep_ind = i
-
-        ind = max(verb_ind, prep_ind)
-        clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
-        clue = ' '.join(clue_tokens)
-        logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
-        return clue
-
-class Baseline(Invigorate):
-
-    def estimate_state_with_observation(self, observations):
-        logger.info("Baseline: estimate_state_with_observation")
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
-        grounding_scores = observations['grounding_scores']
-        rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
-        ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
-
-        # Estimate leaf_and_desc_prob and target_prob greedily
-        logger.debug("grounding_scores: {}".format(grounding_scores))
-        logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        rel_prob_mat = np.zeros(rel_score_mat.shape)
-        rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
-        # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
-        leaf_desc_prob, _, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
-        target_prob = np.array(grounding_scores)
-
-        # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for i in range(bboxes.shape[0]):
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                target_prob[i] = -10.
-        logger.info('Step 2: class name filter completed')
-        logger.info('target_prob : {}'.format(target_prob))
-
-        max_ind = np.argmax(target_prob)
-        target_prob = np.zeros(len(target_prob) + 1)
-        target_prob[max_ind] = 1
-        logger.info('target_prob : {}'.format(target_prob))
-        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
-        self.belief['target_prob'] = target_prob
-        self.belief["clue_leaf_desc_prob"] = None
-
-class No_Uncertainty(Invigorate):
-
-    def estimate_state_with_observation(self, observations):
-        logger.info("No_Uncertainty: estimate_state_with_observation")
-
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
-        grounding_scores = observations['grounding_scores']
-        rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
-        ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
-
-        # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(grounding_scores))
-        logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-        logger.debug("rel_prob_mat after multi_step: {}".format(rel_prob_mat))
-        # NOTE: here no rel uncertainty
-        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) == 0] = 1
-        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) < 0] = 0
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
-
-        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
-        logger.info('Step 1: raw grounding completed')
-        logger.info('raw target_prob: {}'.format(target_prob))
-        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-
-        # grounding result postprocess.
-        # filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for i in range(bboxes.shape[0]):
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                target_prob[i] = 0.
-        # TODO. This means candidate belief estimation has problem
-        # if after name filter, all prob sum to zero, the object is in background
-        if target_prob.sum() == 0.0:
-            target_prob[-1] = 1.0
-        target_prob /= target_prob.sum()
-        logger.info('Step 2: class name filter completed')
-        logger.info('target_prob : {}'.format(target_prob))
-
-        # NOTE: here no target uncertainty
-        max_ind = np.argmax(target_prob[:-1])
-        target_prob[:] = 0
-        target_prob[max_ind] = 1
-
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
-        self.belief['target_prob'] = target_prob
-        self.belief["clue_leaf_desc_prob"] = None
-
-class No_Multistep(Invigorate):
-
-    def _cal_target_prob_from_ground_score(self, ground_scores):
-        bg_score = 0.25
-        ground_scores = np.append(ground_scores, bg_score)
-        return f.softmax(torch.FloatTensor(ground_scores), dim=0).numpy()
-
-    def estimate_state_with_observation(self, observations):
-        logger.info("No_Multistep: estimate_state_with_observation")
-
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
-        grounding_scores = observations['grounding_scores']
-        rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
-        ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
-
-        # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
-        logger.debug("grounding_scores: {}".format(grounding_scores))
-        logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        # NOTE: here no multi-step for both rel_prob_mat and target_prob
-        rel_prob_mat = rel_score_mat
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
-        target_prob = self._cal_target_prob_from_ground_score(np.array(grounding_scores))
-        logger.info('Step 1: raw grounding completed')
-        logger.info('raw target_prob: {}'.format(target_prob))
-        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-
-        # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for i in range(bboxes.shape[0]):
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                target_prob[i] = 0.
-        # TODO. This means candidate belief estimation has problem
-        # if after name filter, all prob sum to zero, the object is in background
-        if target_prob.sum() == 0.0:
-            target_prob[-1] = 1.0
-        target_prob /= target_prob.sum()
-        logger.info('Step 2: class name filter completed')
-        logger.info('target_prob : {}'.format(target_prob))
-
-        # 2. incorporate QA history
-        target_prob_backup = target_prob.copy()
-        for k, v in ind_match_dict.items():
-            # if self.object_pool[v]["confirmed"] == True:
-            #     if self.object_pool[v]["ground_belief"] == 1.:
-            #         target_prob[:] = 0.
-            #         target_prob[k] = 1.
-            #     elif self.object_pool[v]["ground_belief"] == 0.:
-            #         target_prob[k] = 0.
-            if self.object_pool[v]["is_target"] == 1:
-                target_prob[:] = 0.
-                target_prob[k] = 1.
-            elif self.object_pool[v]["is_target"] == 0:
-                target_prob[k] = 0.
-        # sanity check
-        if target_prob.sum() > 0:
-            target_prob /= target_prob.sum()
-        else:
-            # something wrong with the matching process. roll back
-            for i in observations['not_matched']:
-                target_prob[i] = target_prob_backup[i]
-            target_prob[-1] = target_prob_backup[-1]
-            target_prob /= target_prob.sum()
-
-        # update target_prob
-        for k, v in ind_match_dict.items():
-            self.object_pool[v]["target_prob"] = target_prob[k]
-
-        logger.info('Step 3: incorporate QA history completed')
-        logger.info('target_prob: {}'.format(target_prob))
-
-        # 3. incorporate the provided clue by the user
-        clue_leaf_desc_prob = None
-        if self.clue is not None:
-            self.belief['leaf_desc_prob'] = leaf_desc_prob
-            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
-        logger.info('Step 4: incorporate clue by user completed')
-        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        logger.info('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
-
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
-        self.belief['target_prob'] = target_prob
-        self.belief['clue_leaf_desc_prob'] = clue_leaf_desc_prob
-
-class No_Multistep_2(No_Multistep):
-    def _cal_target_prob_from_ground_score(self, ground_scores):
-        bg_score = 0.25
-        ground_scores = np.append(ground_scores, bg_score)
-        ground_scores *= 10 # NOTE!!! the difference is here
-        return f.softmax(torch.FloatTensor(ground_scores), dim=0).numpy()
-
-class No_Rel_Uncertainty(Invigorate):
-
-    def estimate_state_with_observation(self, observations):
-        logger.info("No_Rel_Uncertainty: estimate_state_with_observation")
-
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
-        grounding_scores = observations['grounding_scores']
-        rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
-        ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
-
-        # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(grounding_scores))
-        logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-        # NOTE: here no rel prob!!!
-        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) == 0] = 1
-        rel_prob_mat[rel_prob_mat - rel_prob_mat.max(axis=0) < 0] = 0
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat, 1)
-
-        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
-        logger.info('Step 1: raw grounding completed')
-        logger.info('raw target_prob: {}'.format(target_prob))
-        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-
-        # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for i in range(bboxes.shape[0]):
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                target_prob[i] = 0.
-        # TODO. This means candidate belief estimation has problem
-        # if after name filter, all prob sum to zero, the object is in background
-        if target_prob.sum() == 0.0:
-            target_prob[-1] = 1.0
-        target_prob /= target_prob.sum()
-        logger.info('Step 2: class name filter completed')
-        logger.info('target_prob : {}'.format(target_prob))
-
-        # 2. incorporate QA history
-        target_prob_backup = target_prob.copy()
-        for k, v in ind_match_dict.items():
-            # if self.object_pool[v]["confirmed"] == True:
-            #     if self.object_pool[v]["ground_belief"] == 1.:
-            #         target_prob[:] = 0.
-            #         target_prob[k] = 1.
-            #     elif self.object_pool[v]["ground_belief"] == 0.:
-            #         target_prob[k] = 0.
-            if self.object_pool[v]["is_target"] == 1:
-                target_prob[:] = 0.
-                target_prob[k] = 1.
-            elif self.object_pool[v]["is_target"] == 0:
-                target_prob[k] = 0.
-        # sanity check
-        if target_prob.sum() > 0:
-            target_prob /= target_prob.sum()
-        else:
-            # something wrong with the matching process. roll back
-            for i in observations['not_matched']:
-                target_prob[i] = target_prob_backup[i]
-            target_prob[-1] = target_prob_backup[-1]
-            target_prob /= target_prob.sum()
-
-        # update target_prob
-        for k, v in ind_match_dict.items():
-            self.object_pool[v]["target_prob"] = target_prob[k]
-
-        logger.info('Step 3: incorporate QA history completed')
-        logger.info('target_prob: {}'.format(target_prob))
-
-        # 3. incorporate the provided clue by the user
-        clue_leaf_desc_prob = None
-        if self.clue is not None:
-            self.belief['leaf_desc_prob'] = leaf_desc_prob
-            leaf_desc_prob, clue_leaf_desc_prob = self._estimate_state_with_user_clue(self.clue)
-        logger.info('Step 4: incorporate clue by user completed')
-        logger.info('leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-        logger.info('clue_leaf_desc_prob: {}'.format(clue_leaf_desc_prob))
-
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
-        self.belief['target_prob'] = target_prob
-        self.belief["clue_leaf_desc_prob"] = None
-
-class No_Tgt_Uncertainty(Invigorate):
-
-    def estimate_state_with_observation(self, observations):
-        logger.info("No_Tgt_Uncertainty: estimate_state_with_observation")
-
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
-        grounding_scores = observations['grounding_scores']
-        rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
-        ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
-
-        # Estimate leaf_and_desc_prob and target_prob
-        logger.debug("grounding_scores: {}".format(grounding_scores))
-        logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-        leaf_desc_prob = self._get_leaf_desc_prob_from_rel_mat(rel_prob_mat)
-
-        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
-        logger.info('Step 1: raw grounding completed')
-        logger.info('raw target_prob: {}'.format(target_prob))
-        logger.info('raw leaf_desc_prob: \n{}'.format(leaf_desc_prob))
-
-        # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for i in range(bboxes.shape[0]):
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                target_prob[i] = 0.
-        # TODO. This means candidate belief estimation has problem
-        # if after name filter, all prob sum to zero, the object is in background
-        if target_prob.sum() == 0.0:
-            target_prob[-1] = 1.0
-        target_prob /= target_prob.sum()
-        logger.info('Step 2: class name filter completed')
-        logger.info('target_prob : {}'.format(target_prob))
-
-        # NOTE: no target uncertainty!!
-        max_ind = np.argmax(target_prob[:-1])
-        target_prob[:] = 0
-        target_prob[max_ind] = 1
-
-        self.belief['leaf_desc_prob'] = leaf_desc_prob
-        self.belief['target_prob'] = target_prob
-        self.belief["clue_leaf_desc_prob"] = None
-
 class InvigorateMultiSingleStepComparison(Invigorate):
     def _cal_target_prob_from_ground_score(self, ground_scores):
         bg_score = 0.25
@@ -1268,183 +944,3 @@ class InvigorateMultiSingleStepComparison(Invigorate):
         self.belief['clue_leaf_desc_prob'] = None
 
         return target_prob, rel_prob_mat
-
-class InvigoratePOMDPNoUnseenObj(Invigorate):
-    def __init__(self):
-        super(InvigoratePOMDPNoUnseenObj, self).__init__()
-        self._policy_tree_max_depth = 3
-        self._penalty_for_asking = -2
-        self._penalty_for_fail = -10
-
-    def planning_with_macro(self, infos):
-        """
-        ALL ACTIONS INCLUDE:
-        Do you mean ... ? (num_obj) + Where is the target ? (1) + grasping macro (1)
-        :param belief: including "leaf_desc_prob", "desc_num", and "target_prob"
-        :param planning_depth:
-        :return:
-        """
-
-        # initialize hyperparameters
-        planning_depth = self._policy_tree_max_depth
-        penalty_for_fail = self._penalty_for_fail
-        penalty_for_asking = self._penalty_for_asking
-
-        def gen_grasp_macro(belief):
-
-            num_obj = belief["target_prob"].shape[0] - 1
-
-            grasp_macros = {i: None for i in range(num_obj)}
-            belief_infos = belief["infos"]
-
-            cache_leaf_desc_prob = {}
-            cache_leaf_prob = {}
-            for i in range(num_obj + 1):
-                grasp_macro = {"seq": [], "leaf_prob": []}
-                grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, i]).item())
-                grasp_macro["leaf_prob"].append(belief_infos["leaf_prob"][grasp_macro["seq"][0]].item())
-
-                rel_mat = belief["rel_prob"].clone()
-                while (grasp_macro["seq"][-1] != i):
-                    removed = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
-                    indice = ''.join([str(o) for o in np.sort(grasp_macro["seq"]).tolist()])
-                    if indice in cache_leaf_desc_prob:
-                        leaf_desc_prob = cache_leaf_desc_prob[indice]
-                        leaf_prob = cache_leaf_prob[indice]
-                    else:
-                        rel_mat[0:2, removed, :] = 0.
-                        rel_mat[0:2, :, removed] = 0.
-                        rel_mat[2, removed, :] = 1.
-                        rel_mat[2, :, removed] = 1.
-                        triu_mask = torch.triu(torch.ones(rel_mat[0].shape), diagonal=1)
-                        triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
-                        rel_mat *= triu_mask
-
-                        leaf_desc_prob, _, leaf_prob, _, _ = \
-                            self._leaf_and_desc_estimate(rel_mat, removed=grasp_macro["seq"], with_virtual_node=True)
-
-                        cache_leaf_desc_prob[indice] = leaf_desc_prob
-                        cache_leaf_prob[indice] = leaf_prob
-
-                    grasp_macro["seq"].append(torch.argmax(leaf_desc_prob[:, i]).item())
-                    grasp_macro["leaf_prob"].append(leaf_prob[grasp_macro["seq"][-1]].item())
-
-                grasp_macro["seq"] = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
-                grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
-                grasp_macros[i] = grasp_macro
-
-            return grasp_macros
-
-        def grasp_reward_estimate(belief):
-            # reward of grasping macro, equal to: desc_num * reward_of_each_grasp_step
-            # POLICY: treat the object with the highest conf score as the target
-            target_prob = belief["target_prob"]
-            target = torch.argmax(target_prob).item()
-            grasp_macros = belief["grasp_macros"][target]
-            leaf_prob = grasp_macros["leaf_prob"]
-            p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
-            p_fail = 1. - target_prob[target].item() * p_not_remove_non_leaf
-            return penalty_for_fail * p_fail
-
-        def belief_update(belief):
-            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
-            updated_beliefs = []
-            # Do you mean ... ?
-            # Answer No
-            beliefs_no = belief["target_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
-            beliefs_no *= (1. - I)
-            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10)
-            # Answer Yes
-            beliefs_yes = I.clone()
-            for i in range(beliefs_no.shape[0] - 1):
-                updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
-
-            return updated_beliefs
-
-        def is_onehot(vec, epsilon=1e-2):
-            return (torch.abs(vec - 1) < epsilon).sum().item() > 0
-
-        def estimate_q_vec(belief, current_d):
-            if current_d == planning_depth - 1:
-                return torch.tensor([grasp_reward_estimate(belief)])
-            else:
-                # branches of grasping
-                q_vec = [grasp_reward_estimate(belief)]
-                target_prob = belief["target_prob"]
-                new_beliefs = belief_update(belief)
-                new_belief_dict = copy.deepcopy(belief)
-
-                # q-value for asking Q1
-                for i, new_belief in enumerate(new_beliefs):
-                    q = 0
-                    for j, b in enumerate(new_belief):
-                        new_belief_dict["target_prob"] = b
-                        # branches of asking questions
-                        if is_onehot(b):
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max())
-                        else:
-                            t_q = (penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max())
-                        if j == 0:
-                            # Answer is No
-                            q += t_q * (1 - target_prob[i])
-                        else:
-                            # Answer is Yes
-                            q += t_q * target_prob[i]
-                    q_vec.append(q.item())
-
-                return torch.Tensor(q_vec).type_as(belief["target_prob"])
-
-        num_obj = self.belief["target_prob"].shape[0] - 1
-        belief = copy.deepcopy(self.belief)
-        for k in belief:
-            if belief[k] is not None:
-                belief[k] = torch.from_numpy(belief[k])
-        belief["infos"] = infos
-        for k in belief["infos"]:
-            belief["infos"][k] = torch.from_numpy(belief["infos"][k])
-        grasp_macros = belief["grasp_macros"] = gen_grasp_macro(belief)
-
-        q_vec = estimate_q_vec(belief, 0)
-        print("Q Value for Each Action: ")
-        print("Grasping:{:.3f}".format(q_vec.tolist()[0]))
-        print("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
-        # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
-
-        for k in grasp_macros:
-            for kk in grasp_macros[k]:
-                grasp_macros[k][kk] = grasp_macros[k][kk].numpy()
-        return torch.argmax(q_vec).item(), grasp_macros
-
-    def plan_action(self):
-        return self.decision_making_pomdp()
-
-    def decision_making_pomdp(self):
-
-        num_box = self.observations['num_box']
-        target_prob = self.belief['target_prob']
-        rel_prob = self.belief['rel_prob']
-        leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
-        logger.info("decision_making_heuristic: ")
-        infos = {
-            "leaf_desc_prob": leaf_desc_prob,
-            "leaf_prob": leaf_prob
-        }
-
-        a_macro, grasp_macros = self.planning_with_macro(infos)
-        if a_macro == 0:
-            # grasping
-            tgt_id = np.argmax(target_prob)
-            grasp_macro = grasp_macros[tgt_id]
-            current_tgt = grasp_macro["seq"][0]
-
-            if len(grasp_macro["seq"]) == 1:
-                # grasp and end program
-                action = current_tgt
-            else:
-                # grasp and continue
-                action = current_tgt + num_box
-
-        else:
-            action = a_macro - 1 + 2 * num_box
-
-        return action

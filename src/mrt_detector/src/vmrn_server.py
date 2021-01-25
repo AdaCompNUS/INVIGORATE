@@ -11,7 +11,7 @@ import os.path as osp
 
 import sys
 sys.path.append("..")
-from vmrn_msgs.srv import VmrDetection, VmrDetectionResponse
+from invigorate_msgs.srv import VmrDetection, VmrDetectionResponse
 
 import vmrn_old._init_path
 from vmrn_old.model.utils.config import cfg, cfg_from_file

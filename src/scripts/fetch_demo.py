@@ -1,15 +1,4 @@
 #!/usr/bin/env python
-
-'''
-leaf_and_desc
-   x1                 x2                vn
-x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
-x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
-vn  N.A.              N.A.              N.A.
-
-Assume p(x1) = 0, p(x2) = 1
-'''
-
 '''
 Action
 0~N grasp and end
@@ -35,7 +24,7 @@ from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 
 import vmrn._init_path
-from vmrn.model.utils.net_utils import leaf_and_descendant_stats, inner_loop_planning, relscores_to_visscores
+from vmrn.model.utils.net_utils import inner_loop_planning
 from config.config import *
 from invigorate.integrase import INTEGRASE
 from libraries.data_viewer.data_viewer import DataViewer

@@ -16,7 +16,7 @@ from scipy.misc import imread, imresize
 import sys
 sys.path.append("..")
 
-from vmrn_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
+from invigorate_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
 
 from MAttNet.tools.mattnet import MattNet
 

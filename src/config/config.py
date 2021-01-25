@@ -21,6 +21,10 @@ CLASSES = ['__background__',  # always index 0
                'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
                'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
 
+CLASSES_2 = ['__background__',  # always index 0
+               'box', 'banana', 'notebook', 'apple', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
+               'remote controller', 'can', 'knife', 'cup', 'wallet', 'glasses', 'toothbrush']
+
 CLASSES_TO_IND = dict(zip(CLASSES, range(len(CLASSES))))
 
 TEST = 0
@@ -34,6 +38,7 @@ MODE = TEST # 0 for test, 1 for experiment
 # EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_multistep_2" # choose from: baseline, no_uncert, no_multistep, invigorate
 EXP_SETTING = "invigorate_pomdp_no_unseenobj"
+
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 10
 SCENE_NUM = 10

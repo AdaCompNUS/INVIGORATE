@@ -51,7 +51,9 @@ import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
-from invigorate.invigorate import *
+from invigorate.invigorate import Invigorate
+from invigorate.baseline import Baseline
+from invigorate.tpn import TPN
 # from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
@@ -117,14 +119,16 @@ def main():
         invigorate_client = Invigorate()
     elif EXP_SETTING == "baseline":
         invigorate_client = Baseline()
-    elif EXP_SETTING == "no_uncert":
-        invigorate_client = No_Uncertainty()
-    elif EXP_SETTING == "no_multistep":
-        invigorate_client = No_Multistep()
-    elif EXP_SETTING == "no_multistep_2":
-        invigorate_client = No_Multistep_2()
-    elif EXP_SETTING == "invigorate_pomdp_no_unseenobj":
-        invigorate_client = InvigoratePOMDPNoUnseenObj()
+    elif EXP_SETTING == 'tpn':
+        invigorate_client = TPN()
+    # elif EXP_SETTING == "no_uncert":
+    #     invigorate_client = No_Uncertainty()
+    # elif EXP_SETTING == "no_multistep":
+    #     invigorate_client = No_Multistep()
+    # elif EXP_SETTING == "no_multistep_2":
+    #     invigorate_client = No_Multistep_2()
+    # elif EXP_SETTING == "invigorate_pomdp_no_unseenobj":
+    #     invigorate_client = InvigoratePOMDPNoUnseenObj()
 
     logger.info("SETTING: {}".format(EXP_SETTING))
 
@@ -211,28 +215,28 @@ def main():
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
             exec_type = EXEC_ASK
-        else: # action type is Q2
-            logger.info("Askig Q2 and continuing")
-            if invigorate_client.clue is not None:
-                # special case.
-                dummy_question_answer = invigorate_client.clue
-                question_str = ''
-                exec_type = EXEC_DUMMY_ASK
-            elif target_prob[-1] == 1:
-                question_str = Q2["type2"]
-                exec_type = EXEC_ASK
-            elif (target_prob[:-1] > 0.02).sum() == 1:
-                target_idx = np.argmax(target_prob[:-1])
-                if GENERATE_CAPTIONS:
-                    # generate caption
-                    caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
-                    question_str = Q2["type3"].format(caption)
-                else:
-                    question_str = Q2["type3"].format(target_idx + "th object")
-                exec_type = EXEC_ASK
-            else:
-                question_str = Q2["type1"]
-                exec_type = EXEC_ASK
+        # else: # action type is Q2
+        #     logger.info("Askig Q2 and continuing")
+        #     if invigorate_client.clue is not None:
+        #         # special case.
+        #         dummy_question_answer = invigorate_client.clue
+        #         question_str = ''
+        #         exec_type = EXEC_DUMMY_ASK
+        #     elif target_prob[-1] == 1:
+        #         question_str = Q2["type2"]
+        #         exec_type = EXEC_ASK
+        #     elif (target_prob[:-1] > 0.02).sum() == 1:
+        #         target_idx = np.argmax(target_prob[:-1])
+        #         if GENERATE_CAPTIONS:
+        #             # generate caption
+        #             caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
+        #             question_str = Q2["type3"].format(caption)
+        #         else:
+        #             question_str = Q2["type3"].format(target_idx + "th object")
+        #         exec_type = EXEC_ASK
+        #     else:
+        #         question_str = Q2["type1"]
+        #         exec_type = EXEC_ASK
 
         # exec action
         if exec_type == EXEC_GRASP:
