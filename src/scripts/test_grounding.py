@@ -46,6 +46,17 @@ def dbg_print(string):
     if DBG_PRINT:
         print(string)
 
+
+CLASSES = ['__background__',  # always index 0
+               'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
+               'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
+               'remote', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
+               'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
+               'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch', 'ball']
+
+CLASSES_TO_IND = dict(zip(CLASSES, range(len(CLASSES))))
+
+
 def faster_rcnn_detection(img):
     rospy.wait_for_service('faster_rcnn_server')
     try:
@@ -187,9 +198,14 @@ def parse_pascalvoc_labels(anno_file_path):
 
     return boxes, gt_classes
 
-def test_grounding(img_cv, expr):
+def test_grounding(img_cv, expr, gt_boxes=None):
     # get object proposals
-    num_box, bboxes, classes = faster_rcnn_detection(img_cv)
+    if gt_boxes is None:
+        num_box, bboxes, classes = faster_rcnn_detection(img_cv)
+    else:
+        num_box = gt_box.shape[0]
+        bboxes = gt_boxes[:, :4]
+        classes = gt_boxes[:, 4]
 
     # grounding with MAttNet
     ground_scores_mattnet = mattnet_client(img_cv, bboxes.reshape(-1).tolist(), classes.reshape(-1).tolist(), expr)
@@ -252,8 +268,33 @@ def test_grounding(img_cv, expr):
     else:
         return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)]
 
+def visualize_for_label_captions(img_path, bbox, cls):
 
-def visualize_for_label(img_path, expr):
+    img = PIL.Image.open(img_path).convert('RGB')
+    img = np.array(img)
+    img_to_show = img.copy()
+
+    img_h, img_w = img_to_show.shape[:2]
+    target_w = 640
+    scaler = float(target_w) / float(img_w)
+    img_to_show = cv2.resize(img_to_show, (target_w, int(img_h * scaler)))
+    bboxes_to_show = bbox.copy() * scaler
+
+    bbox = bbox.astype(np.int32).tolist()
+    print("Object infos: {}, {}".format(cls, bbox))
+    draw_single_bbox(img_to_show, bboxes_to_show, text_str=cls)
+
+    plt.axis('off')
+    plt.imshow(img_to_show)
+    plt.show()
+
+    captions = raw_input("Please input the captions:")
+    captions = captions.split(";")
+    captions = [c.strip() for c in captions if len(c.strip()) > 0]
+
+    return captions
+
+def visualize_for_label_grounding(img_path, expr):
 
     img_name = img_path.split("/")[-1]
     img_id = ".".join(img_name.split(".")[:-1])
@@ -286,8 +327,51 @@ def visualize_for_label(img_path, expr):
 def label_grounidngs_nus_multiple():
     pass
 
+def label_captions_nus_single_2():
+    save_path = osp.join(ROOT_DIR, "images", "nus_single_2", "grounding_gt.npy")
+    all_labels = []
+
+    labeled_img_set = set()
+    if os.path.exists(save_path):
+        labeled = np.load(save_path, allow_pickle=True, encoding="latin1")
+        for l in labeled:
+            labeled_img_set.add(l["file_name"])
+        all_labels = list(labeled)
+
+    img_dir = osp.join(ROOT_DIR, "images", "nus_single_2", "images")
+    img_list = os.listdir(img_dir)
+    for i, im_name in enumerate(img_list):
+
+        if not im_name.endswith("jpg") or im_name in labeled_img_set:
+            continue
+
+        im_path = osp.join(ROOT_DIR, "images", "nus_single_2", "images", im_name)
+
+        img_name = im_path.split("/")[-1]
+        img_id = ".".join(img_name.split(".")[:-1])
+        label_dir = osp.join("/".join(im_path.split("/")[:-2]), "labels")
+        label_file = osp.join(label_dir, img_id + ".xml")
+        bboxes, classes = parse_pascalvoc_labels(label_file)
+
+        for i in range(bboxes.shape[0]):
+            captions = visualize_for_label_captions(im_path, bboxes[i], classes[i])
+            for expr in captions:
+                all_labels.append({
+                    "file_name": im_name,
+                    "file_path": im_path,
+                    "expr": expr,
+                    "bbox": bboxes[i],
+                })
+
+            np.save(save_path, all_labels)
+            print("Finished: {:d}/{:d}".format(i, bboxes.shape[0]))
+
+    return all_labels
 
 def label_groundings_nus_single():
+    save_path = osp.join(ROOT_DIR, "images", "nus_single", "grounding_gt.npy")
+    if osp.exists(save_path):
+        return np.load(save_path, allow_pickle=True)
 
     test_set = \
         [
@@ -363,14 +447,13 @@ def label_groundings_nus_single():
         ]
 
     all_labels = []
-    save_path = osp.join(ROOT_DIR, "images", "nus_single", "grounding_gt.npy")
 
     for i, t in enumerate(test_set):
         im_name = t[0]
         expr = t[1]
 
         im_path = osp.join(ROOT_DIR, "images", "nus_single", "images", im_name)
-        bbox = visualize_for_label(im_path, expr)
+        bbox = visualize_for_label_grounding(im_path, expr)
 
         all_labels.append({
             "file_name": im_name,
@@ -385,6 +468,9 @@ def label_groundings_nus_single():
     return all_labels
 
 def label_groundings_vmrd_like_single():
+    save_path = osp.join(ROOT_DIR, "images", "vmrd_like_single", "grounding_gt.npy")
+    if osp.exists(save_path):
+        return np.load(save_path, allow_pickle=True)
 
     test_set = \
         [['0.png', 'cup under the apple'],
@@ -444,14 +530,13 @@ def label_groundings_vmrd_like_single():
          ]
 
     all_labels = []
-    save_path = osp.join(ROOT_DIR, "images", "vmrd_like_single", "grounding_gt.npy")
 
     for i, t in enumerate(test_set):
         im_name = t[0]
         expr = t[1]
 
         im_path = osp.join(ROOT_DIR, "images", "vmrd_like_single", "images", im_name)
-        bbox = visualize_for_label(im_path, expr)
+        bbox = visualize_for_label_grounding(im_path, expr)
 
         all_labels.append({
             "file_name": im_name,
@@ -506,16 +591,14 @@ def generate_coco_gt_labels(data_root, data_dir, task="RefCOCO", split = "val", 
     return all_labels
 
 
-def check_grounding_labels(split="vmrd_like_single"):
+def check_grounding_labels(split="vmrd_like_single", relabel=False):
     if split not in {"refcoco_val"}:
-        label_path = osp.join(ROOT_DIR, "images", split, "grounding_gt.npy")
-        if osp.exists(label_path):
-            return np.load(label_path, allow_pickle=True)
-        else:
-            if split == "vmrd_like_single":
-                return label_groundings_vmrd_like_single()
-            elif split == "nus_single":
-                return label_groundings_nus_single()
+        if split == "vmrd_like_single":
+            return label_groundings_vmrd_like_single()
+        elif split == "nus_single":
+            return label_groundings_nus_single()
+        elif split == "nus_single_2":
+            return label_captions_nus_single_2()
     else:
         dataroot = "/data1/zhb/datasets/refcoco"
         datadir = "/data0/svc4/code/INVIGORATE/vilbert/datasets/coco/coco/"
@@ -580,13 +663,17 @@ def visualize_results(img, expr, gt, g_mattnet=None, g_vilbert=None, g_ingress=N
 if __name__ == "__main__":
     rospy.init_node('test')
 
-    gt_labels = check_grounding_labels(split="nus_single")
-    gt_labels = gt_labels[:100]
+    gt_labels = check_grounding_labels(split="nus_single_2", relabel=True)
+    gt_labels = gt_labels
 
     acc_mattnet = 0.
     acc_vilbert = 0.
 
     vis=True
+    use_gt_box=False
+
+    vis_ground_stat_vilbert = dict(zip(CLASSES, np.zeros((len(CLASSES), 2)).tolist()))
+    vis_ground_stat_mattnet = dict(zip(CLASSES, np.zeros((len(CLASSES), 2)).tolist()))
 
     for i, gt in enumerate(gt_labels):
         im_id = gt["file_name"]
@@ -594,22 +681,57 @@ if __name__ == "__main__":
         gt_box = gt["bbox"]
         im_path = gt["file_path"]
 
+        # load obj det anns
+        img_name = im_path.split("/")[-1]
+        img_id = ".".join(img_name.split(".")[:-1])
+        label_dir = osp.join("/".join(im_path.split("/")[:-2]), "labels")
+        label_file = osp.join(label_dir, img_id + ".xml")
+        bboxes, classes = parse_pascalvoc_labels(label_file)
+        gt_ind = iou(torch.tensor(bboxes).float(), torch.tensor(gt_box[None, :]).float()).reshape(-1).numpy().argmax()
+        gt_cls = classes[gt_ind]
+
+        # rescale the input
         img_cv = cv2.imread(im_path)
-        mattnet_bbox, vilbert_bbox = test_grounding(img_cv, expr)
+        img_h, img_w = img_cv.shape[:2]
+        target_w = 640
+        scaler = float(target_w) / float(img_w)
+        img_cv = cv2.resize(img_cv, (target_w, int(img_h * scaler)))
+        gt_box = gt_box.astype(np.float32) * scaler
+
+        if use_gt_box:
+            classes = [CLASSES_TO_IND[cls] for cls in classes if cls in CLASSES_TO_IND]
+            assert bboxes.shape[0] == len(classes)
+            bboxes = bboxes.astype(np.float32)*scaler
+            bboxes = np.concatenate([bboxes, np.array(classes).reshape(-1, 1)], axis=-1)
+            mattnet_bbox, vilbert_bbox = test_grounding(img_cv, expr, gt_boxes=bboxes)
+        else:
+            mattnet_bbox, vilbert_bbox = test_grounding(img_cv, expr, gt_boxes=None)
 
         mattnet_score = iou(torch.tensor(mattnet_bbox[None, :]).float(), torch.tensor(gt_box[None, :]).float()).item()
+        vis_ground_stat_mattnet[gt_cls][0] += 1
         if mattnet_score > 0.5:
             acc_mattnet += 1
+            vis_ground_stat_mattnet[gt_cls][1] += 1
 
         vilbert_score = iou(torch.tensor(vilbert_bbox[None, :]).float(), torch.tensor(gt_box[None, :]).float()).item()
+        vis_ground_stat_vilbert[gt_cls][0] += 1
         if vilbert_score > 0.5:
             acc_vilbert += 1
+            vis_ground_stat_vilbert[gt_cls][1] += 1
 
         if vis:
             visualize_results(img_cv.copy(), expr, gt_box, g_vilbert=vilbert_bbox, g_mattnet=mattnet_bbox)
 
         print('!!!!! test {} of {} complete'.format(i + 1, len(gt_labels)))
         print("MAttNet score: {:.3f}, ViLBERT score: {:.3f}".format(mattnet_score, vilbert_score))
+
+        for k, v in vis_ground_stat_vilbert.items():
+            if v[0] > 0:
+                print("ViLBERT ({}) accuracy: {:.3f}".format(k, v[1] / v[0]))
+
+        for k, v in vis_ground_stat_mattnet.items():
+            if v[0] > 0:
+                print("MAttNet ({}) accuracy: {:.3f}".format(k, v[1] / v[0]))
 
     acc_mattnet /= len(gt_labels)
     acc_vilbert /= len(gt_labels)
