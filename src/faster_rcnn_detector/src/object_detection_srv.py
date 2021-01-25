@@ -53,23 +53,22 @@ class ObjectDetectionService():
         return im
 
     def _detect_objects(self, req):
-        if req.image.encoding != '8UC3':
+        if req.img.encoding != '8UC3':
             rospy.logerr("object_detection_srv, image encoding not supported!!")
-            res = DetectObjectsResponse()
+            res = ObjectDetectionResponse()
             return res
 
-        img_cv2 = self._imgmsg_to_cv2(req.image)
+        img_cv2 = self._imgmsg_to_cv2(req.img)
         outputs = self._predictor(img_cv2)
         # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
         print(outputs["instances"].pred_classes)
         print(outputs["instances"].pred_boxes)
         self._visualize(img_cv2, outputs)
 
-        res = DetectObjectsResponse()
         pred_classes = outputs["instances"].pred_classes.cpu().numpy().tolist()
         num_box = len(pred_classes)
         pred_bboxes = outputs["instances"].pred_boxes.tensor.cpu().numpy().reshape(-1).tolist()
-        cls_scores = outputs["instances"].scores.numpy().tolist()
+        cls_scores = outputs["instances"].scores.cpu().numpy().tolist()
         # pred_bboxes =  pred_bboxes.cpu().numpy().tolist()
 
         res = ObjectDetectionResponse()
