@@ -9,7 +9,8 @@ class VMRNClient():
         self._br = CvBridge()
         self._vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
 
-    def detect_obr(self, img, bbox):
+    def detect_obr(self, img, bboxes):
         img_msg = self._br.cv2_to_imgmsg(img)
-        res = self._vmr_det(img_msg, bbox)
+        bboxes = bboxes.flatten().tolist()
+        res = self._vmr_det(img_msg, bboxes)
         return res.rel_mat, res.rel_score_mat

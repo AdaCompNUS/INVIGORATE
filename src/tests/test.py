@@ -3,6 +3,9 @@ matplotlib.use('Agg')
 
 import sys
 import os.path as osp
+this_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, osp.join(this_dir, '../'))
+
 import rospy
 import cv2
 from cv_bridge import CvBridge
@@ -11,17 +14,19 @@ import numpy as np
 import os
 import time
 
-import vmrn._init_path
-from vmrn.model.utils.data_viewer import dataViewer
-# from vmrn.model.utils.net_utils import relscores_to_visscores
-from invigorate_msgs.srv import MAttNetGroundingV2, ObjectDetection, VmrDetection
+from config.config import *
+from libraries.data_viewer.data_viewer import DataViewer
+from invigorate_msgs.srv import *
 from ingress_srv.ingress_srv import Ingress
-from libraries import ros_clients
+from libraries.ros_clients.detectron2_client import Detectron2Client
+from libraries.ros_clients.vilbert_client import VilbertClient
+from libraries.ros_clients.vmrn_client import VMRNClient
+from libraries.robots.dummy_robot import DummyRobot
 
 br = CvBridge()
 
 # ------- Settings ------
-DBG_PRINT = False
+DBG_PRINT = True
 
 TEST_OBJECT_DETECTION = True
 TEST_REFER_EXPRESSION = True
@@ -32,7 +37,7 @@ TEST_GRASP_POLICY = False
 
 # ------- Constants -------
 AMBIGUOUS_THRESHOLD = 0.1
-BG_SCORE = -100
+BG_SCORE = -15
 
 def dbg_print(string):
     if DBG_PRINT:
@@ -100,22 +105,22 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
     return rel_caption_sentence
 
 def test_obj_manipulation(img_cv, expr):
-
-    obj_detector = ros_clients.detectron2_detector.Detectron2Detector()
-    obr_detector = ros_clients.vmrn_client.VMRNClient()
-    grounding_client = ros_clients.vilbert_client.VilbertClient()
+    obr_detector = VMRNClient()
+    grounding_client = VilbertClient()
+    obj_detector = Detectron2Client()
 
     # test object detection
     if TEST_OBJECT_DETECTION:
         tb = time.time()
-        num_box, bboxes, classes, bbox_feats = obj_detector.detect_objects(img_cv)
+        num_box, bboxes, classes, cls_scores = obj_detector.detect_objects(img_cv)
         dbg_print(bboxes)
         dbg_print(num_box)
-        bboxes = np.array(bboxes).reshape(-1, 5)
-        classes = np.array(classes).reshape(-1, 1)
+        dbg_print(cls_scores)
+        bboxes = np.array(bboxes).reshape(-1, 4)
+        classes = np.array(classes).reshape(-1, 1) + 1
         dbg_print('classes: {}'.format(classes))
         bbox_2d = bboxes[:, :4]
-        bboxes = np.concatenate([bboxes, classes], axis=-1)
+        bboxes_with_cls = np.concatenate([bboxes, classes], axis=-1)
     else:
         dbg_print('TEST_OBJECT_DETECTION is false, quit')
         return
@@ -129,7 +134,7 @@ def test_obj_manipulation(img_cv, expr):
         dbg_print('TEST_MRT_DETECTION is false, skip')
 
     if TEST_REFER_EXPRESSION:
-        ground_scores = list(grounding_client(img_cv, expr))
+        ground_scores = list(grounding_client.ground(img_cv, bboxes, expr))
         ground_scores.append(BG_SCORE)
         ground_prob = torch.nn.functional.softmax(10 * torch.Tensor(ground_scores), dim=0)
         dbg_print('ground_scores: {}'.format(ground_scores))
@@ -194,8 +199,8 @@ def test_obj_manipulation(img_cv, expr):
     # resize img for visualization
     scalar = 500. / min(img_cv.shape[:2])
     img_cv = cv2.resize(img_cv, None, None, fx=scalar, fy=scalar, interpolation=cv2.INTER_LINEAR)
-    vis_bboxes = bboxes * scalar
-    vis_bboxes[:, -1] = bboxes[:, -1]
+    vis_bboxes = bboxes_with_cls * scalar
+    vis_bboxes[:, -1] = bboxes_with_cls[:, -1]
 
     # object detection
     object_det_img = data_viewer.draw_objdet(img_cv.copy(), vis_bboxes, list(range(classes.shape[0])))
@@ -250,57 +255,46 @@ def test_obj_manipulation(img_cv, expr):
     final_img = np.concatenate([np.concatenate([object_det_img, rel_det_img], axis = 1),
                                 np.concatenate([ground_img, caption_img], axis=1),
                                 np.concatenate([action_img, blank_img], axis=1)], axis = 0)
-    out_dir = "../images/output"
-    save_name = im_id.split(".")[0] + "_result.png"
-    save_path = os.path.join(out_dir, save_name)
-    i = 1
-    while (os.path.exists(save_path)):
-        i += 1
-        save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
-        save_path = os.path.join(out_dir, save_name)
-    cv2.imwrite(save_path, final_img)
-    # cv2.imshow('img', final_img)
-    # cv2.waitkey(0)
-    # cv2.destroyAllWindows()
+
+    # out_dir = "../images/output"
+    # save_name = im_id.split(".")[0] + "_result.png"
+    # save_path = os.path.join(out_dir, save_name)
+    # i = 1
+    # while (os.path.exists(save_path)):
+    #     i += 1
+    #     save_name = im_id.split(".")[0] + "_result_{:d}.png".format(i)
+    #     save_path = os.path.join(out_dir, save_name)
+    # cv2.imwrite(save_path, final_img)
+
+    cv2.imshow('img', final_img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     rospy.init_node('test')
+    data_viewer = DataViewer(COCO_CLASSES)
 
-    CLASSES = ['__background__',  # always index 0
-                 'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
-                 'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-                 'remote controller', 'cans', 'tape', 'knife', 'wrench', 'cup', 'charger',
-                 'badminton', 'wallet', 'wrist developer', 'glasses', 'pliers', 'headset',
-                 'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
-    data_viewer = dataViewer(CLASSES)
+    # dummy robot
+    robot = DummyRobot()
+    img, _ = robot.read_imgs()
+    expr = robot.listen()
+    test_obj_manipulation(img, expr)
 
     # user input
-    img_array = ['']
 
     # im_id = '1.png'
-    # expr = 'cup under banana'
+    # expr = 'cup under banana'DataViewer
+    #         #  ['38.png', 'apple under banana'],
+    #          ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
+    #          ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
+    #         ]
 
-    # img_cv = cv2.imread("../images/" + im_id)
-
-    # test(img_cv, expr)
-
-    TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
-             ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
-             ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
-             ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
-             ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
-            #  ['37.png', 'apple under banana'],
-            #  ['38.png', 'apple under banana'],
-             ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
-             ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
-            ]
-
-    for i, test in enumerate(TESTS):
-        im_id = test[0]
-        expr = test[1]
-        img_cv = cv2.imread("../images/" + im_id)
-        test_obj_manipulation(img_cv, expr)
-        print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
+    # for i, test in enumerate(TESTS):
+    #     im_id = test[0]
+    #     expr = test[1]
+    #     img_cv = cv2.imread("../images/" + im_id)
+    #     test_obj_manipulation(img_cv, expr)
+    #     print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
 
 
 
