@@ -112,11 +112,10 @@ EXPERIMENT = 1
 # --------------- Settings ------------------
 MODE = TEST # 0 for test, 1 for experiment
 # EXP_SETTING = "baseline" # choose from: baseline, no_uncert, no_multistep, invigorate
-# EXP_SETTING = "no_uncert" # choose from: baseline, no_uncert, no_multistep, invigorate
-# EXP_SETTING = "no_multistep" # choose from: baseline, no_uncert, no_multistep, invigorate
-# EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "tpn" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
+EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_multistep_2" # choose from: baseline, no_uncert, no_multistep, invigorate
-EXP_SETTING = "invigorate_pomdp_no_unseenobj"
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 10
@@ -124,9 +123,9 @@ SCENE_NUM = 10
 VER_NUM = 0
 if EXP_SETTING == "baseline":
     VER_NUM = 1
-elif EXP_SETTING == "no_uncert":
+elif EXP_SETTING == "tpn":
     VER_NUM = 2
-elif EXP_SETTING == "no_multistep":
+elif EXP_SETTING == "heuristic":
     VER_NUM = 3
 elif EXP_SETTING == "invigorate":
     VER_NUM = 4

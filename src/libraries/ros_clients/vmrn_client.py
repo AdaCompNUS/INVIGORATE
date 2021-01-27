@@ -13,4 +13,15 @@ class VMRNClient():
         img_msg = self._br.cv2_to_imgmsg(img)
         bboxes = bboxes.flatten().tolist()
         res = self._vmr_det(img_msg, bboxes)
+        self._res_cache = res
         return res.rel_mat, res.rel_score_mat
+
+    def detect_grasps(self, img, bboxes, get_cache=True):
+        if get_cache:
+            res = self._res_cache
+        else:
+            img_msg = self._br.cv2_to_imgmsg(img)
+            bboxes = bboxes.flatten().tolist()
+            res = self._vmr_det(img_msg, bboxes)
+
+        return res.grasps

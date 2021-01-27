@@ -35,7 +35,7 @@ class TPN(Invigorate):
         rel_prob_mat = np.zeros(rel_score_mat.shape)
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
         # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
-        
+
         # Estimate grounding score greedily
         target_prob = np.array(grounding_scores)
         max_ind = np.argmax(target_prob)
@@ -57,12 +57,12 @@ class TPN(Invigorate):
 
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
-    
-    def plan_action(self):
-        return self.decision_making_heuristic()
 
-    def decision_making_heuristic(self):
-        logger.info("TPN: decision_making_heuristic")
+    def plan_action(self):
+        return self.decision_making_greedy()
+
+    def decision_making_greedy(self):
+        logger.info("TPN: decision_making_greedy")
 
         num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
@@ -70,7 +70,7 @@ class TPN(Invigorate):
         leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
 
         # choose grasp action greedily, ignoring background
-        action = "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1))) 
+        action = "G_{:d}".format(np.argmax(target_prob[:-1].reshape(-1)))
 
         # post process action (grasp only)
         selected_obj = int(action.split("_")[1])

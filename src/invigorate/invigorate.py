@@ -19,6 +19,8 @@ vn  N.A.              N.A.              N.A.
 Assume p(x1) = 0, p(x2) = 1
 '''
 
+from src.libraries.ros_clients.vmrn_client import VMRNClient
+from src.libraries.ros_clients.vilbert_client import VilbertClient
 import warnings
 
 from torch import t
@@ -42,7 +44,11 @@ import nltk
 import logging
 
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
-from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, VLBert
+from invigorate_msgs.srv import ObjectDetection, VmrDetection, VLBert
+# from libraries.ros_clients.detectron2_client import Detectron2Client
+from libraries.ros_clients.detectron2_client import Detectron2Client
+from libraries.ros_clients.vmrn_client import VMRNClient
+from libraries.ros_clients.vilbert_client import VilbertClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
@@ -65,11 +71,13 @@ class Invigorate(object):
     def __init__(self):
         rospy.loginfo('waiting for services...')
         rospy.wait_for_service('faster_rcnn_server')
-        rospy.wait_for_service('vmrn_server')
-        rospy.wait_for_service('vlbert_server')
         self._obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
-        self._grasp_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
-        self._tpn_det = rospy.ServiceProxy('vlbert_server', VLBert)
+        # self._grasp_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
+        # self._tpn_det = rospy.ServiceProxy('vlbert_server', VLBert)
+        self._vis_ground_client = VilbertClient()
+        self._vmrn_client = VMRNClient()
+        self._rel_det_client = self._vmrn_client
+        self._grasp_det_client = self._vmrn_client
 
         self._br = CvBridge()
 
@@ -112,25 +120,26 @@ class Invigorate(object):
             return None
         logger.info('Perceive_img: _object_detection finished')
 
-        # # relationship and grasp detection
-        # rel_mat, rel_score_mat, grasps = self._mrt_detection(img, bboxes)
-        # logger.info('Perceive_img: mrt and grasp detection finished')
+        # relationship
+        rel_mat, rel_score_mat = self._rel_det_client.detect_obr(img, bboxes)
+        logger.info('Perceive_img: mrt detection finished')
 
-        # # grounding
-        # grounding_scores = self._visual_grounding(img, bboxes, expr)
-        # logger.info('Perceive_img: mattnet grounding finished')
+        # grounding
+        grounding_scores = self._visual_grounding(img, bboxes, expr)
+        logger.info('Perceive_img: mattnet grounding finished')
 
-        # relationship and grounding
-        grounding_scores, rel_score_mat = self._tpn_client(img, bboxes, expr)
+        # relationship
+        # rel_score_mat = self._vis_ground_client.ground(img, bboxes, expr)
+
+        # grasp
+        grasps = self._grasp_det_client.detect_grasps(img, bboxes)
+        logger.info('Perceive_img: grasp detection finished')
 
         # object and relationship detection post process
         rel_mat, rel_score_mat = self._rel_score_process(rel_score_mat)
         ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat)
         num_box = bboxes.shape[0]
         logger.info('Perceive_img: post process of object and mrt detection finished')
-
-        # grasp
-        grasps = self._grasp_client(img, bboxes)
 
         # combine into a dictionary
         observations = {}

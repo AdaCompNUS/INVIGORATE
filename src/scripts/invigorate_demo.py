@@ -54,19 +54,13 @@ from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import Invigorate
 from invigorate.baseline import Baseline
 from invigorate.tpn import TPN
+from invigorate.heuristic import Heuristic
 # from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
-DISPLAY_DEBUG_IMG = True
-
-if ROBOT == 'Fetch':
-    from libraries.robots.fetch_robot import FetchRobot
-
-# -------- Constants --------
+ROBOT = 'Dummy'in
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
@@ -121,6 +115,9 @@ def main():
         invigorate_client = Baseline()
     elif EXP_SETTING == 'tpn':
         invigorate_client = TPN()
+    elif EXP_SETTING == 'heuristic':
+        invigorate_client = Heuristic()
+
     # elif EXP_SETTING == "no_uncert":
     #     invigorate_client = No_Uncertainty()
     # elif EXP_SETTING == "no_multistep":
