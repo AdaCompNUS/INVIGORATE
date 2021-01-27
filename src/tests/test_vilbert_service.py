@@ -138,7 +138,7 @@ def test_obj_manipulation(img_cv, expr, im_id):
     final_img = np.concatenate([np.concatenate([object_det_img, rel_det_img], axis = 1),
                                 np.concatenate([ground_img, blank_img], axis=1)], axis = 0)
 
-    # # save result
+    ## save result
     out_dir = "../images/output"
     save_name = im_id.split(".")[0] + "_result.png"
     save_path = os.path.join(out_dir, save_name)

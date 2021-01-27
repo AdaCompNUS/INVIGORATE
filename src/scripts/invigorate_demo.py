@@ -53,7 +53,7 @@ from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import Invigorate
 from invigorate.baseline import Baseline
-from invigorate.tpn import TPN
+from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
@@ -116,8 +116,8 @@ def main():
         invigorate_client = Invigorate()
     elif EXP_SETTING == "baseline":
         invigorate_client = Baseline()
-    elif EXP_SETTING == 'tpn':
-        invigorate_client = TPN()
+    elif EXP_SETTING == 'greedy':
+        invigorate_client = Greedy()
     elif EXP_SETTING == 'heuristic':
         invigorate_client = Heuristic()
 

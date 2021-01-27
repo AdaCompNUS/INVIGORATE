@@ -12,7 +12,7 @@ logger = logging.getLogger(LOGGER_NAME)
 
 # -------- Code --------
 
-class TPN(Invigorate):
+class Greedy(Invigorate):
     '''
     Heuristic, No POMDP
     '''

@@ -44,6 +44,7 @@ from invigorate_msgs.srv import ObjectDetection, VmrDetection, VLBert
 from libraries.ros_clients.detectron2_client import Detectron2Client
 from libraries.ros_clients.vmrn_client import VMRNClient
 from libraries.ros_clients.vilbert_client import VilbertClient
+from libraries.ros_clients.mattnet_client import MAttNetClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
@@ -69,7 +70,8 @@ class Invigorate(object):
         self._obj_det = rospy.ServiceProxy('faster_rcnn_server', ObjectDetection)
         # self._grasp_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
         # self._tpn_det = rospy.ServiceProxy('vlbert_server', VLBert)
-        self._vis_ground_client = VilbertClient()
+        # self._vis_ground_client = VilbertClient()
+        self._vis_ground_client = MAttNetClient()
         self._vmrn_client = VMRNClient()
         self._rel_det_client = self._vmrn_client
         self._grasp_det_client = self._vmrn_client
@@ -120,7 +122,7 @@ class Invigorate(object):
         logger.info('Perceive_img: mrt detection finished')
 
         # grounding
-        grounding_scores = self._vis_ground_client.ground(img, bboxes, expr)
+        grounding_scores = self._vis_ground_client.ground(img, bboxes, expr, classes)
         logger.info('Perceive_img: mattnet grounding finished')
 
         # relationship
@@ -377,7 +379,8 @@ class Invigorate(object):
                 for i, new_belief in enumerate(new_beliefs):
                     q = penalty_for_asking
                     for j, b in enumerate(new_belief):
-                        # new_belief_dict["target_prob"] = b
+                        new_belief_dict["target_prob"] = b
+
                         # # branches of asking questions
                         # if is_onehot(b):
                         #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max()
@@ -418,9 +421,9 @@ class Invigorate(object):
         grasp_macros = belief["grasp_macros"] = gen_grasp_macro(belief)
 
         q_vec = estimate_q_vec(belief, 0)
-        print("Q Value for Each Action: ")
-        print("Grasping:{:.3f}".format(q_vec.tolist()[0]))
-        print("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
+        logger.info("Q Value for Each Action: ")
+        logger.info("Grasping:{:.3f}".format(q_vec.tolist()[0]))
+        logger.info("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
         # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
 
         for k in grasp_macros:
@@ -460,10 +463,10 @@ class Invigorate(object):
         return action
 
     def _init_kde(self):
-        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation.pkl')) as f:
-        # with open(osp.join(KDE_MODEL_PATH, 'old/density_esti_train_data.pkl')) as f:
+        # with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_vilbert.pkl')) as f:
+        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_mattnet.pkl')) as f:
             data = pkl.load(f)
-        # data = data["ground"]
+        data = data["ground"]
         pos_data = []
         neg_data = []
         for d in data:
