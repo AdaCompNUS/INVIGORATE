@@ -3,6 +3,7 @@ import os.path as osp
 # --------------- Constants ----------------
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
+KDE_MODEL_PATH = osp.join(ROOT_DIR, 'model')
 
 Q2={
     "type1": "I have not found the target. Where is it?", # COMMON FORMAT
@@ -110,16 +111,16 @@ TEST = 0
 EXPERIMENT = 1
 
 # --------------- Settings ------------------
-MODE = TEST # 0 for test, 1 for experiment
+MODE = EXPERIMENT # 0 for test, 1 for experiment
 # EXP_SETTING = "baseline" # choose from: baseline, no_uncert, no_multistep, invigorate
-# EXP_SETTING = "tpn" # choose from: baseline, no_uncert, no_multistep, invigorate
+EXP_SETTING = "tpn" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
-EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_multistep_2" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # ------------- EXP Settings --------------
-PARTICIPANT_NUM = 10
-SCENE_NUM = 10
+PARTICIPANT_NUM = 1
+SCENE_NUM = 1
 VER_NUM = 0
 if EXP_SETTING == "baseline":
     VER_NUM = 1

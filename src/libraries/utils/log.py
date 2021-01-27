@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 import os.path as osp
 import sys
+import os
 
 # this_dir = osp.dirname(osp.abspath(__file__))
 # sys.path.insert(0, osp.join(this_dir, '../../'))
@@ -16,6 +17,8 @@ if MODE == EXPERIMENT:
     LOG_FILE = osp.join(EXP_RES_DIR, "demo_{}.log".format(date_time))
 else:
     LOG_FILE = osp.join(ROOT_DIR, "logs/demo_{}.log".format(date_time))
+if not osp.exists(osp.dirname(LOG_FILE)):
+    os.makedirs(osp.dirname(LOG_FILE))
 LOG_LEVEL = logging.DEBUG
 
 logger = logging.getLogger(LOGGER_NAME)

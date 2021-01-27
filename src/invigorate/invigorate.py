@@ -18,17 +18,12 @@ vn  N.A.              N.A.              N.A.
 
 Assume p(x1) = 0, p(x2) = 1
 '''
-
-from src.libraries.ros_clients.vmrn_client import VMRNClient
-from src.libraries.ros_clients.vilbert_client import VilbertClient
 import warnings
-
-from torch import t
-
 import rospy
 import cv2
 from cv_bridge import CvBridge
 import torch
+from torch import t
 import torch.nn.functional as f
 import numpy as np
 from scipy import optimize
@@ -125,7 +120,7 @@ class Invigorate(object):
         logger.info('Perceive_img: mrt detection finished')
 
         # grounding
-        grounding_scores = self._visual_grounding(img, bboxes, expr)
+        grounding_scores = self._vis_ground_client.ground(img, bboxes, expr)
         logger.info('Perceive_img: mattnet grounding finished')
 
         # relationship
@@ -133,6 +128,7 @@ class Invigorate(object):
 
         # grasp
         grasps = self._grasp_det_client.detect_grasps(img, bboxes)
+        grasps = self._grasp_filter(bboxes, grasps)
         logger.info('Perceive_img: grasp detection finished')
 
         # object and relationship detection post process
@@ -464,10 +460,10 @@ class Invigorate(object):
         return action
 
     def _init_kde(self):
-        cur_dir = osp.dirname(osp.abspath(__file__))
-        with open(osp.join(cur_dir, 'density_esti_train_data.pkl')) as f:
+        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation.pkl')) as f:
+        # with open(osp.join(KDE_MODEL_PATH, 'old/density_esti_train_data.pkl')) as f:
             data = pkl.load(f)
-        data = data["ground"]
+        # data = data["ground"]
         pos_data = []
         neg_data = []
         for d in data:
@@ -480,11 +476,11 @@ class Invigorate(object):
         pos_data = np.sort(pos_data, axis=0)[5:-5]
         neg_data = np.expand_dims(np.array(neg_data), axis=-1)
         neg_data = np.sort(neg_data, axis=0)[5:-5]
-        kde_pos = gaussian_kde(pos_data)
-        kde_neg = gaussian_kde(neg_data)
+        kde_pos = gaussian_kde(pos_data, bandwidth=1.0)
+        kde_neg = gaussian_kde(neg_data, bandwidth=1.0)
         self.obj_kdes = [kde_neg, kde_pos]
 
-        with open(osp.join(cur_dir, "rel_density_estimation.pkl"), "rb") as f:
+        with open(osp.join(KDE_MODEL_PATH, "relation_density_estimation.pkl"), "rb") as f:
             rel_data = pkl.load(f)
         parents = np.array([d["det_score"] for d in rel_data if d["gt"] == 1])
         children = np.array([d["det_score"] for d in rel_data if d["gt"] == 2])
@@ -540,12 +536,13 @@ class Invigorate(object):
             return None, None, None
 
         bboxes = np.array(obj_result[1]).reshape(num_box, -1)
-        logger.info('_object_detection: \n{}'.format(bboxes))
+        bboxes = bboxes[:, :4]
         classes = np.array(obj_result[2]).reshape(num_box, 1)
         class_scores = np.array(obj_result[3]).reshape(num_box, -1)
         bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
 
         class_names = [CLASSES[i[0]] for i in classes]
+        logger.info('_object_detection: \n{}'.format(bboxes))
         logger.info('_object_detection classes: {}'.format(class_names))
         return bboxes, classes, class_scores
 

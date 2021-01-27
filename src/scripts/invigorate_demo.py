@@ -55,15 +55,18 @@ from invigorate.invigorate import Invigorate
 from invigorate.baseline import Baseline
 from invigorate.tpn import TPN
 from invigorate.heuristic import Heuristic
-# from libraries.caption_generator import caption_generator
+from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
+from libraries.robots.fetch_robot import FetchRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'in
+ROBOT = 'Fetch'
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
+DISPLAY_DEBUG_IMG = True
+GENERATE_CAPTIONS = True
 
 # ------- Statics -----------
 logger = logging.getLogger(LOGGER_NAME)

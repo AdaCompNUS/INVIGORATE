@@ -36,23 +36,23 @@ class TPN(Invigorate):
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
         # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
 
-        # Estimate grounding score greedily
-        target_prob = np.array(grounding_scores)
-        max_ind = np.argmax(target_prob)
-        target_prob = np.zeros(len(target_prob) + 1)
-        target_prob[max_ind] = 1
-        logger.info('target_prob: {}'.format(target_prob))
-
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
+        target_prob = np.array(grounding_scores)
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
         for i in range(bboxes.shape[0]):
             box_score = 0
             for class_str in cls_filter:
                 box_score += det_scores[i][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
-                target_prob[i] = -10.
+                target_prob[i] = float('-inf')
         logger.info('Step 2: class name filter completed')
+        logger.info('target_prob: {}'.format(target_prob))
+
+        # Estimate grounding score greedily
+        max_ind = np.argmax(target_prob)
+        target_prob = np.zeros(len(target_prob) + 1)
+        target_prob[max_ind] = 1
         logger.info('target_prob: {}'.format(target_prob))
 
         self.belief['target_prob'] = target_prob

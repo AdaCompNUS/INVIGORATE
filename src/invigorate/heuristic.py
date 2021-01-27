@@ -25,7 +25,6 @@ class Heuristic(Invigorate):
         num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
-        clue_prob = self.belief['clue_prob']
         leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
         logger.info("decision_making_heuristic: ")
 

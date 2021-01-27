@@ -41,7 +41,7 @@ BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
-DUMMY_GRASP = False
+DUMMY_GRASP = True
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
