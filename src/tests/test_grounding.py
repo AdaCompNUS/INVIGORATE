@@ -18,7 +18,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 from config.config import *
-from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, ViLBERTGrounding
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, Grounding
 from libraries.tools.refer.refer import REFER
 
 try:
@@ -53,7 +53,7 @@ CLASSES = ['__background__',  # always index 0
                'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
                'remote', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
                'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
-               'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch', 'ball']
+               'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch', 'ball', 'toy', 'spoon', 'carrot', 'scissors']
 
 CLASSES_TO_IND = dict(zip(CLASSES, range(len(CLASSES))))
 
@@ -100,10 +100,10 @@ def mattnet_client(img, bbox, classes, expr):
 def vilbert_grounding_client(img, bbox, expr):
     rospy.wait_for_service('vilbert_grounding_server')
     try:
-        grounding = rospy.ServiceProxy('vilbert_grounding_server', ViLBERTGrounding)
+        grounding = rospy.ServiceProxy('vilbert_grounding_server', Grounding)
         img_msg = br.cv2_to_imgmsg(img)
         res = grounding(img_msg, bbox, expr)
-        return res.ground_prob
+        return res.grounding_scores
     except rospy.ServiceException as e:
         print("Service call failed: %s"%e)
 
@@ -277,7 +277,8 @@ def test_grounding(img_cv, expr, gt_boxes=None):
     if TEST_INGRESS_REFEXP:
         return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)], bboxes[top_idx_ingress[0]]
     else:
-        return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)]
+        return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)], \
+               ground_scores_mattnet, ground_scores_vilbert
 
 def visualize_for_label_captions(img_path, bbox, cls):
 
@@ -336,6 +337,59 @@ def visualize_for_label_grounding(img_path, expr):
 
 def label_grounidngs_nus_multiple():
     pass
+
+def label_captions_nus_single_3():
+    save_path = osp.join(ROOT_DIR, "images", "nus_single_3", "grounding_gt.npy")
+    all_labels = []
+
+    labeled_img_set = set()
+    labeled_box = {}
+    if os.path.exists(save_path):
+        labeled = np.load(save_path, allow_pickle=True, encoding="latin1")
+        for l in labeled:
+            labeled_img_set.add(l["file_name"])
+            if l["file_name"] not in labeled_box:
+                labeled_box[l["file_name"]] = []
+            labeled_box[l["file_name"]].append(list(l["bbox"]))
+        all_labels = list(labeled)
+        for k, v in labeled_box.items():
+            labeled_box[k] = np.array(v)
+            labeled_box[k] = np.unique(labeled_box[k], axis=0)
+
+    img_dir = osp.join(ROOT_DIR, "images", "nus_single_3", "images")
+    img_list = os.listdir(img_dir)
+    for i, im_name in enumerate(img_list):
+
+        if not im_name.endswith("jpg"):
+            continue
+
+        im_path = osp.join(ROOT_DIR, "images", "nus_single_3", "images", im_name)
+
+        img_name = im_path.split("/")[-1]
+        img_id = ".".join(img_name.split(".")[:-1])
+        label_dir = osp.join("/".join(im_path.split("/")[:-2]), "labels")
+        label_file = osp.join(label_dir, img_id + ".xml")
+        bboxes, classes = parse_pascalvoc_labels(label_file)
+
+        for i in range(bboxes.shape[0]):
+
+            # check whether this bounding box has already labeled
+            if im_name in labeled_box and iou(torch.as_tensor(labeled_box[im_name]), torch.as_tensor(bboxes[i]).unsqueeze(0)).max().item() > 0.95:
+                continue
+
+            captions = visualize_for_label_captions(im_path, bboxes[i], classes[i])
+            for expr in captions:
+                all_labels.append({
+                    "file_name": im_name,
+                    "file_path": im_path,
+                    "expr": expr,
+                    "bbox": bboxes[i],
+                })
+
+            np.save(save_path, all_labels)
+            print("Finished: {:d}/{:d}".format(i, bboxes.shape[0]))
+
+    return all_labels
 
 def label_captions_nus_single_2():
     save_path = osp.join(ROOT_DIR, "images", "nus_single_2", "grounding_gt.npy")
@@ -609,6 +663,8 @@ def check_grounding_labels(split="vmrd_like_single", relabel=False):
             return label_groundings_nus_single()
         elif split == "nus_single_2":
             return label_captions_nus_single_2()
+        elif split == "nus_single_3":
+            return label_captions_nus_single_3()
     else:
         dataroot = "/data1/zhb/datasets/refcoco"
         datadir = "/data0/svc4/code/INVIGORATE/vilbert/datasets/coco/coco/"
@@ -673,18 +729,19 @@ def visualize_results(img, expr, gt, g_mattnet=None, g_vilbert=None, g_ingress=N
 if __name__ == "__main__":
     rospy.init_node('test')
 
-    gt_labels = check_grounding_labels(split="nus_single_2", relabel=True)
+    gt_labels = check_grounding_labels(split="nus_single_3", relabel=True)
     gt_labels = gt_labels
 
     acc_mattnet = 0.
     acc_vilbert = 0.
 
     vis=True
-    use_gt_box=False
+    use_gt_box=True
 
     vis_ground_stat_vilbert = dict(zip(CLASSES, np.zeros((len(CLASSES), 2)).tolist()))
     vis_ground_stat_mattnet = dict(zip(CLASSES, np.zeros((len(CLASSES), 2)).tolist()))
 
+    collected_scores_vilbert = []
     for i, gt in enumerate(gt_labels):
         im_id = gt["file_name"]
         expr = gt["expr"]
@@ -709,13 +766,19 @@ if __name__ == "__main__":
         gt_box = gt_box.astype(np.float32) * scaler
 
         if use_gt_box:
+            print(classes)
             classes = [CLASSES_TO_IND[cls] for cls in classes if cls in CLASSES_TO_IND]
             assert bboxes.shape[0] == len(classes)
             bboxes = bboxes.astype(np.float32)*scaler
             bboxes = np.concatenate([bboxes, np.array(classes).reshape(-1, 1)], axis=-1)
-            mattnet_bbox, vilbert_bbox = test_grounding(img_cv, expr, gt_boxes=bboxes)
+            mattnet_bbox, vilbert_bbox, mattnet_ground_score, vilbert_ground_score = test_grounding(img_cv, expr, gt_boxes=bboxes)
         else:
-            mattnet_bbox, vilbert_bbox = test_grounding(img_cv, expr, gt_boxes=None)
+            mattnet_bbox, vilbert_bbox, mattnet_ground_score, vilbert_ground_score = test_grounding(img_cv, expr, gt_boxes=None)
+
+        collected_scores_vilbert.append({
+            "gt": [str(gt_ind)],
+            "scores": np.array(vilbert_ground_score)
+        })
 
         mattnet_score = iou(torch.tensor(mattnet_bbox[None, :]).float(), torch.tensor(gt_box[None, :]).float()).item()
         vis_ground_stat_mattnet[gt_cls][0] += 1
@@ -737,12 +800,16 @@ if __name__ == "__main__":
 
         for k, v in vis_ground_stat_vilbert.items():
             if v[0] > 0:
-                print("ViLBERT ({}) accuracy: {:.3f}".format(k, v[1] / v[0]))
+                print("ViLBERT ({}) accuracy: {:.3f} ({}/{})".format(k, v[1] / v[0], v[1], v[0]))
 
         for k, v in vis_ground_stat_mattnet.items():
             if v[0] > 0:
-                print("MAttNet ({}) accuracy: {:.3f}".format(k, v[1] / v[0]))
+                print("MAttNet ({}) accuracy: {:.3f} ({}/{})".format(k, v[1] / v[0], v[1], v[0]))
 
     acc_mattnet /= len(gt_labels)
     acc_vilbert /= len(gt_labels)
     print("MAttNet Acc: {:.3f}, ViLBERT Acc: {:.3f}".format(acc_mattnet, acc_vilbert))
+
+    import pickle
+    with open("ground_density_estimation.pkl", "wb") as f:
+        pickle.dump(collected_scores_vilbert, f)

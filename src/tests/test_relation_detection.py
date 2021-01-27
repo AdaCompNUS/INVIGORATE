@@ -16,9 +16,10 @@ import xml.etree.ElementTree as ET
 import PIL
 from PIL import Image
 import matplotlib.pyplot as plt
+import pickle
 
 from config.config import *
-from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, ViLBERTGrounding
+from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, Grounding
 from libraries.tools.refer.refer import REFER
 
 try:
@@ -235,6 +236,56 @@ def label_obrs_ycb_single():
     return all_labels
 
 
+def label_obrs_nus_single_2():
+
+    all_labels = []
+    save_path = osp.join(ROOT_DIR, "images", "nus_single_2", "obr_gt.npy")
+    img_dir = osp.join(ROOT_DIR, "images", "nus_single_2", "images")
+    img_list = os.listdir(img_dir)
+    img_list = [i for i in img_list if i.split(".")[-1] in {"png", "jpg", "jpeg"}]
+    for i, im_name in enumerate(img_list):
+
+        im_path = osp.join(ROOT_DIR, "images", "nus_single_2", "images", im_name)
+        bboxes, rel_mat = visualize_for_label(im_path)
+
+        all_labels.append({
+            "file_name": im_name,
+            "file_path": im_path,
+            "rel_mat": rel_mat,
+            "bbox": bboxes
+        })
+
+        np.save(save_path, all_labels)
+        print("Finished: {:d}/{:d}".format(i, len(img_list)))
+
+    return all_labels
+
+
+def label_obrs_nus_single_3():
+
+    all_labels = []
+    save_path = osp.join(ROOT_DIR, "images", "nus_single_3", "obr_gt.npy")
+    img_dir = osp.join(ROOT_DIR, "images", "nus_single_3", "images")
+    img_list = os.listdir(img_dir)
+    img_list = [i for i in img_list if i.split(".")[-1] in {"png", "jpg", "jpeg"}]
+    for i, im_name in enumerate(img_list):
+
+        im_path = osp.join(ROOT_DIR, "images", "nus_single_3", "images", im_name)
+        bboxes, rel_mat = visualize_for_label(im_path)
+
+        all_labels.append({
+            "file_name": im_name,
+            "file_path": im_path,
+            "rel_mat": rel_mat,
+            "bbox": bboxes,
+        })
+
+        np.save(save_path, all_labels)
+        print("Finished: {:d}/{:d}".format(i, len(img_list)))
+
+    return all_labels
+
+
 def label_obrs_nus_single():
 
     all_labels = []
@@ -295,6 +346,10 @@ def check_grounding_labels(split="nus_single"):
             return label_obrs_nus_single()
         elif split == "vmrd_like_single":
             return label_obrs_vmrd_like_single()
+        elif split == "nus_single_2":
+            return label_obrs_nus_single_2()
+        elif split == "nus_single_3":
+            return label_obrs_nus_single_3()
         elif split == "ycb_single":
             return label_obrs_ycb_single()
         else:
@@ -304,7 +359,7 @@ def check_grounding_labels(split="nus_single"):
 if __name__ == "__main__":
     rospy.init_node('test')
 
-    gt_labels = check_grounding_labels(split="vmrd_like_single")
+    gt_labels = check_grounding_labels(split="nus_single_3")
     gt_labels = gt_labels[:100]
 
     acc_mattnet = 0.
@@ -328,6 +383,9 @@ if __name__ == "__main__":
     vilbert_n_count = 0
     vmrn_n_count = 0
 
+    collected_scores_vmrn = []
+    collected_scores_vilbert = []
+
     for i, gt in enumerate(gt_labels):
         im_id = gt["file_name"]
         rel_mat = gt["rel_mat"]
@@ -336,8 +394,21 @@ if __name__ == "__main__":
 
         img_cv = cv2.imread(im_path)
 
-        vmrn_rel_mrt, _ = vmrn_client(img_cv, gt_box)
-        vilbert_rel_mrt, _ = vilbert_obr_client(img_cv, gt_box)
+        vmrn_rel_mrt, vmrn_rel_scores = vmrn_client(img_cv, gt_box)
+        for o1 in range(rel_mat.shape[0]):
+            for o2 in range(rel_mat.shape[0]):
+                if o1 == o2:
+                    continue
+                else:
+                    collected_scores_vmrn.append({"gt": rel_mat[o1, o2], "det_score": vmrn_rel_scores[:, o1, o2]})
+
+        vilbert_rel_mrt, vilbert_rel_scores = vilbert_obr_client(img_cv, gt_box)
+        for o1 in range(rel_mat.shape[0]):
+            for o2 in range(rel_mat.shape[0]):
+                if o1 == o2:
+                    continue
+                else:
+                    collected_scores_vilbert.append({"gt": rel_mat[o1, o2], "det_score": vilbert_rel_scores[:, o1, o2]})
 
         num_box = gt_box.shape[0]
         vmrn_count += (vmrn_rel_mrt == rel_mat).sum() - num_box
@@ -359,9 +430,9 @@ if __name__ == "__main__":
         vilbert_n_count += (vilbert_rel_mrt[np.where(rel_mat == 3)] == rel_mat[np.where(rel_mat == 3)]).sum()
         n_count += num_n
 
-        print("ViLBERT correct: {:d}, VMRN correct: {:d}".format(vilbert_count, vmrn_count))
-        print("ViLBERT p correct: {:d}, VMRN p correct: {:d}".format(vilbert_p_count, vmrn_p_count))
-        print("ViLBERT c correct: {:d}, VMRN c correct: {:d}".format(vilbert_c_count, vmrn_c_count))
+        print("ViLBERT correct: {:d}/{:d}, VMRN correct: {:d}/{:d}".format(vilbert_count, count, vmrn_count, count))
+        print("ViLBERT p correct: {:d}/{:d}, VMRN p correct: {:d}/{:d}".format(vilbert_p_count, p_count, vmrn_p_count, p_count))
+        print("ViLBERT c correct: {:d}/{:d}, VMRN c correct: {:d}/{:d}".format(vilbert_c_count, c_count, vmrn_c_count, c_count))
 
         print('!!!!! test {} of {} complete'.format(i + 1, len(gt_labels)))
 
@@ -376,3 +447,9 @@ if __name__ == "__main__":
 
     print("ViLBERT norel acc: {:.3f}, VMRN norel acc: {:.3f}".
           format(float(vilbert_n_count) / float(n_count), float(vmrn_n_count) / float(n_count)))
+
+    with open("rel_dens_vmrn.pkl", "wb") as f:
+        pickle.dump(collected_scores_vmrn, f)
+
+    with open("rel_dens_vilbert.pkl", "wb") as f:
+        pickle.dump(collected_scores_vilbert, f)
