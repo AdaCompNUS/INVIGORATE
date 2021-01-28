@@ -136,7 +136,7 @@ class Invigorate(object):
 
         # object and relationship detection post process
         rel_mat, rel_score_mat = self._rel_score_process(rel_score_mat)
-        ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat)
+        ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat, grasps)
         num_box = bboxes.shape[0]
         logger.info('Perceive_img: post process of object and mrt detection finished')
 
@@ -220,8 +220,9 @@ class Invigorate(object):
         logger.info('target_prob: {}'.format(target_prob))
 
         bbox_id_to_pool_id = {v:k for k,v in obj_inds.items()}
-        self.step_infos["bboxes"] = [self.object_pool[bbox_id_to_pool_id[i]]["bbox"] for i in range(obj_num)]
-        self.step_infos["classes"] = [CLASSES[np.argmax(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"])] for i in range(obj_num)]
+        self.step_infos["bboxes"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["bbox"].tolist() for i in range(obj_num)])
+        self.step_infos["classes"] = np.asarray([np.argmax(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"]) for i in range(obj_num)]).reshape(-1, 1)
+        self.step_infos["grasps"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["grasp"].tolist() for i in range(obj_num)])
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
 
@@ -255,8 +256,8 @@ class Invigorate(object):
         return self.decision_making_pomdp()
 
     def transit_state(self, action):
-        num_box = self.observations['num_box']
-        ind_match_dict = self.observations['ind_match_dict']
+        obj_inds, obj_num = self._get_valid_obj_candidates()
+        bbox_id_to_pool_id = {v: k for k, v in obj_inds.items()}
 
         action_type = self.get_action_type(action)
         if action_type == 'Q1':
@@ -264,7 +265,7 @@ class Invigorate(object):
             return
         else:
             # mark object as being removed
-            self.object_pool[ind_match_dict[action % num_box]]["removed"] = True
+            self.object_pool[bbox_id_to_pool_id[action % obj_num]]["removed"] = True
 
     def get_action_type(self, action, num_box=None):
         if num_box is None:
@@ -499,7 +500,7 @@ class Invigorate(object):
         kde_norel = gaussian_kde(norel, bandwidth=0.2)
         self.rel_kdes = [kde_parents, kde_children, kde_norel]
 
-    def _init_object(self, bbox, score):
+    def _init_object(self, bbox, score, grasp):
         new_box = {}
         new_box["bbox"] = bbox
         new_box["cls_scores"] = score
@@ -514,6 +515,7 @@ class Invigorate(object):
         #     new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
         new_box["is_target"] = -1 # -1 means unknown
         new_box["removed"] = False
+        new_box["grasp"] = grasp
         return new_box
 
     def _init_relation(self, rel_score):
@@ -566,7 +568,7 @@ class Invigorate(object):
         rel_mat = np.argmax(rel_score_mat, axis=0) + 1
         return rel_mat, rel_score_mat
 
-    def _bbox_post_process(self, bboxes, scores, rel_scores):
+    def _bbox_post_process(self, bboxes, scores, rel_scores, grasps):
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
         prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
         det_to_pool = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
@@ -576,9 +578,10 @@ class Invigorate(object):
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"] = scores[k]
+            self.object_pool[v]["grasps"] = grasps[k]
         # initialize newly detected bboxes
         for i in not_matched:
-            new_box = self._init_object(bboxes[i], scores[i])
+            new_box = self._init_object(bboxes[i], scores[i], grasps[i])
             self.object_pool.append(new_box)
             det_to_pool[i] = len(self.object_pool) - 1
             pool_to_det[len(self.object_pool) - 1] = i

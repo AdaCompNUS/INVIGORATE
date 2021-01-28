@@ -473,8 +473,13 @@ class DataViewer(object):
     def relscores_to_visscores(self, rel_score_mat):
         return np.max(rel_score_mat, axis=0)
 
-    def display_img(self, img):
+    def display_img(self, img, mode="matplotlib"):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        im_pil = Image.fromarray(img)
-        im_pil.show()
+        if mode =="matplotlib":
+            plt.axis('off')
+            plt.imshow(img)
+            plt.show()
+        elif mode == "pil":
+            im_pil = Image.fromarray(img)
+            im_pil.show()
 

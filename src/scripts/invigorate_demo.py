@@ -45,7 +45,8 @@ import datetime
 from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import nltk
 import logging
 
@@ -65,7 +66,7 @@ ROBOT = 'Dummy'
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
-DISPLAY_DEBUG_IMG = True
+DISPLAY_DEBUG_IMG = "matplotlib"
 GENERATE_CAPTIONS = True
 DEBUG = True
 
@@ -190,8 +191,9 @@ def main():
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes,
                     classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
-        if DISPLAY_DEBUG_IMG:
-            data_viewer.display_img(imgs['final_img'])
+        if DISPLAY_DEBUG_IMG is not None:
+            plt.clf()
+            data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
         # cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
@@ -243,7 +245,7 @@ def main():
 
         # exec action
         if exec_type == EXEC_GRASP:
-            grasps = observations['grasps']
+            grasps = invigorate_client.step_infos['grasps']
             logger.debug("grasps.shape {}".format(grasps.shape))
             object_name = CLASSES[classes[grasp_target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')
@@ -252,9 +254,14 @@ def main():
             im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             cv2.imwrite("outputs/grasp.png", im)
-            if DISPLAY_DEBUG_IMG:
-                im_pil = Image.fromarray(im)
-                im_pil.show()
+            if DISPLAY_DEBUG_IMG is not None:
+                if DISPLAY_DEBUG_IMG == "matplotlib":
+                    plt.axis('off')
+                    plt.imshow(im)
+                    plt.show()
+                elif DISPLAY_DEBUG_IMG == "pil":
+                    im_pil = Image.fromarray(im)
+                    im_pil.show()
 
             # say
             # TODO generate caption??
