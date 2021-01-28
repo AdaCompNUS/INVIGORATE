@@ -57,11 +57,11 @@ from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
-from libraries.robots.fetch_robot import FetchRobot
+# from libraries.robots.fetch_robot import FetchRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
@@ -138,7 +138,7 @@ def main():
 
     # get user command
     expr = robot.listen()
-    expr = process_user_command(expr)
+    # expr = process_user_command(expr)
 
     all_results = []
     exec_type = EXEC_GRASP
@@ -182,8 +182,8 @@ def main():
 
         # debug
         img = observations['img']
-        bboxes = observations['bboxes']
-        classes = observations['classes']
+        bboxes = invigorate_client.step_infos['bboxes']
+        classes = invigorate_client.step_infos['classes']
         # rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
         rel_mat, _ = invigorate_client._rel_score_process(rel_score_mat)

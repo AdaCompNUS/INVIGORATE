@@ -33,8 +33,8 @@ def vis_relation_density(rel_data_path, upper=1.0, lower=0.0, mode=None):
         relation_data = pickle.load(open(rel_data_path, "rb"))
         relation_pos = np.array([1 - d["det_score"][2] for d in relation_data if d["gt"] in {1, 2}])
         relation_neg = np.array([1 - d["det_score"][2] for d in relation_data if d["gt"] == 3])
-        kde_rel_pos = gaussian_kde(relation_pos[:, None], bandwidth=0.2)
-        kde_rel_neg = gaussian_kde(relation_neg[:, None], bandwidth=0.2)
+        kde_rel_pos = gaussian_kde(relation_pos[:, None], bandwidth=0.1)
+        kde_rel_neg = gaussian_kde(relation_neg[:, None], bandwidth=0.1)
         x = np.arange(1000).astype(np.float32) / 1000 * (upper - lower) + lower
         x_dens_neg = kde_rel_neg.comp_prob(x)
         x_dens_pos = kde_rel_pos.comp_prob(x)

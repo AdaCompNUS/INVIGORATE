@@ -87,6 +87,7 @@ class Invigorate(object):
         self.target_in_pool = None
         self._init_kde()
         self.belief = {}
+        self.step_infos = {}
         self.clue = None
         self.q2_num_asked = 0
         try:
@@ -165,7 +166,7 @@ class Invigorate(object):
         rel_score_mat = observations['rel_score_mat']
         expr = observations['expr']
         ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
+        obj_inds, obj_num = self._get_valid_obj_candidates(renew=True)
 
         # Estimate rel_prob_mat and target_prob according to multi-step observations
         logger.debug("grounding_scores: {}".format(grounding_scores))
@@ -179,12 +180,12 @@ class Invigorate(object):
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for i in range(bboxes.shape[0]):
+        for pool_ind in obj_inds.keys():
             box_score = 0
             for class_str in cls_filter:
-                box_score += det_scores[i][CLASSES_TO_IND[class_str]]
+                box_score += self.object_pool[pool_ind]["cls_scores"][CLASSES_TO_IND[class_str]]
             if box_score < 0.02:
-                target_prob[i] = 0.
+                target_prob[obj_inds[pool_ind]] = 0.
         # TODO. This means candidate belief estimation has problem
         # if after name filter, all prob sum to zero, the object is in background
         if target_prob.sum() == 0.0:
@@ -198,9 +199,9 @@ class Invigorate(object):
         for k, v in ind_match_dict.items():
             if self.object_pool[v]["is_target"] == 1:
                 target_prob[:] = 0.
-                target_prob[k] = 1.
+                target_prob[obj_inds[v]] = 1.
             elif self.object_pool[v]["is_target"] == 0:
-                target_prob[k] = 0.
+                target_prob[obj_inds[v]] = 0.
         # sanity check
         if target_prob.sum() > 0:
             target_prob /= target_prob.sum()
@@ -218,15 +219,19 @@ class Invigorate(object):
         logger.info('Step 3: incorporate QA history completed')
         logger.info('target_prob: {}'.format(target_prob))
 
+        bbox_id_to_pool_id = {v:k for k,v in obj_inds.items()}
+        self.step_infos["bboxes"] = [self.object_pool[bbox_id_to_pool_id[i]]["bbox"] for i in range(obj_num)]
+        self.step_infos["classes"] = [CLASSES[np.argmax(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"])] for i in range(obj_num)]
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
 
     def estimate_state_with_user_answer(self, action, answer):
 
         target_prob = self.belief["target_prob"]
-        num_box = self.observations['num_box']
-        ind_match_dict = self.observations['ind_match_dict']
+        num_box = target_prob.shape[0] - 1
         ans = answer.lower()
+        obj_inds, obj_num = self._get_valid_obj_candidates()
+        bbox_id_to_pool_id = {v: k for k, v in obj_inds.items()}
 
         logger.info("Invigorate: handling answer for Q1")
         target_idx = action - 2 * num_box
@@ -237,11 +242,11 @@ class Invigorate(object):
                 obj["is_target"] = 0
             # set target
             target_prob[target_idx] = 1
-            self.object_pool[ind_match_dict[target_idx]]["is_target"] = 1
+            self.object_pool[bbox_id_to_pool_id[target_idx]]["is_target"] = 1
         elif ans in {"no", "nope", "nah"}:
             target_prob[target_idx] = 0
             target_prob /= np.sum(target_prob)
-            self.object_pool[ind_match_dict[target_idx]]["is_target"] = 0
+            self.object_pool[bbox_id_to_pool_id[target_idx]]["is_target"] = 0
 
         logger.info("estimate_state_with_user_answer completed")
         self.belief["target_prob"] = target_prob
@@ -434,8 +439,8 @@ class Invigorate(object):
 
     def decision_making_pomdp(self):
 
-        num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
+        num_box = target_prob.shape[0] - 1
         rel_prob = self.belief['rel_prob']
         leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
         logger.info("decision_making_pomdp: ")
@@ -480,8 +485,8 @@ class Invigorate(object):
         pos_data = np.sort(pos_data, axis=0)[5:-5]
         neg_data = np.expand_dims(np.array(neg_data), axis=-1)
         neg_data = np.sort(neg_data, axis=0)[5:-5]
-        kde_pos = gaussian_kde(pos_data, bandwidth=1.0)
-        kde_neg = gaussian_kde(neg_data, bandwidth=1.0)
+        kde_pos = gaussian_kde(pos_data, bandwidth=0.05)
+        kde_neg = gaussian_kde(neg_data, bandwidth=0.05)
         self.obj_kdes = [kde_neg, kde_pos]
 
         with open(osp.join(KDE_MODEL_PATH, "relation_density_estimation.pkl"), "rb") as f:
@@ -489,9 +494,9 @@ class Invigorate(object):
         parents = np.array([d["det_score"] for d in rel_data if d["gt"] == 1])
         children = np.array([d["det_score"] for d in rel_data if d["gt"] == 2])
         norel = np.array([d["det_score"] for d in rel_data if d["gt"] == 3])
-        kde_parents = gaussian_kde(parents, bandwidth=0.1)
-        kde_children = gaussian_kde(children, bandwidth=0.1)
-        kde_norel = gaussian_kde(norel, bandwidth=0.1)
+        kde_parents = gaussian_kde(parents, bandwidth=0.2)
+        kde_children = gaussian_kde(children, bandwidth=0.2)
+        kde_norel = gaussian_kde(norel, bandwidth=0.2)
         self.rel_kdes = [kde_parents, kde_children, kde_norel]
 
     def _init_object(self, bbox, score):
@@ -586,13 +591,20 @@ class Invigorate(object):
                 self.rel_pool[(j, det_to_pool[i])] = new_rel
         return det_to_pool, not_matched
 
+    def _get_valid_obj_candidates(self, renew=False):
+        if renew:
+            obj_inds = [i for i, obj in enumerate(self.object_pool) if not obj["removed"]]
+            self.obj_inds = dict(zip(obj_inds, list(range(len(obj_inds)))))
+            self.obj_num = len(self.obj_inds)
+        return self.obj_inds, self.obj_num
+
     def _multi_step_grounding(self, mattnet_score, ind_match_dict):
-        num_box = len(mattnet_score)
+        # num_box = len(mattnet_score)
         for i, score in enumerate(mattnet_score):
             obj_ind = ind_match_dict[i]
             self.object_pool[obj_ind]["cand_belief"].update(score, self.obj_kdes)
             self.object_pool[obj_ind]["ground_scores_history"].append(score)
-        pcand = [self.object_pool[ind_match_dict[i]]["cand_belief"].belief[1] for i in range(num_box)]
+        pcand = [obj["cand_belief"].belief[1] for obj in self.object_pool if not obj['removed']]
         ground_result = self._cal_target_prob_from_p_cand(pcand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
         return ground_result
@@ -600,7 +612,7 @@ class Invigorate(object):
     def _multi_step_mrt_estimation(self, rel_score_mat, ind_match_dict):
         # multi-step observations for relationship probability estimation
         box_inds = ind_match_dict.keys()
-        rel_prob_mat = np.zeros(rel_score_mat.shape)
+        # update the relation pool
         for i in range(len(box_inds)):
             box_ind_i = box_inds[i]
             for j in range(i + 1, len(box_inds)):
@@ -610,17 +622,21 @@ class Invigorate(object):
                 if pool_ind_i < pool_ind_j:
                     rel_score = rel_score_mat[:, box_ind_i, box_ind_j]
                     self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
-                    rel_prob_mat[:, box_ind_j, box_ind_i] = [rel_prob_mat[:, box_ind_i, box_ind_j][1],
-                                                             rel_prob_mat[:, box_ind_i, box_ind_j][0],
-                                                             rel_prob_mat[:, box_ind_i, box_ind_j][2]]
                 else:
                     rel_score = rel_score_mat[:, box_ind_j, box_ind_i]
                     self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_j, box_ind_i] = self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
-                    rel_prob_mat[:, box_ind_i, box_ind_j] = [rel_prob_mat[:, box_ind_j, box_ind_i][1],
-                                                             rel_prob_mat[:, box_ind_j, box_ind_i][0],
-                                                             rel_prob_mat[:, box_ind_j, box_ind_i][2]]
+
+        obj_inds, obj_num = self._get_valid_obj_candidates()
+        rel_prob_mat = np.zeros((3, obj_num, obj_num))
+        # initialize rel_prob_mat
+        for i in range(len(self.object_pool)):
+            if self.object_pool[i]["removed"]:
+                continue
+            for j in range(i + 1, len(self.object_pool)):
+                if self.object_pool[j]["removed"]:
+                    continue
+                rel_prob_mat[:, obj_inds[i], obj_inds[j]] = self.rel_pool[(i, j)]["rel_score"]
+
         return rel_prob_mat
 
     def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000, with_virtual_node=False):
