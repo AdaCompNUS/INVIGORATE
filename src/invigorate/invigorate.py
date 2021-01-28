@@ -207,9 +207,9 @@ class Invigorate(object):
             target_prob /= target_prob.sum()
         else:
             # something wrong with the matching process. roll back
-            for i in observations['not_matched']:
-                target_prob[i] = target_prob_backup[i]
-            target_prob[-1] = target_prob_backup[-1]
+            target_prob = target_prob_backup
+            for k, v in ind_match_dict.items():
+                target_prob[obj_inds[v]] = 0
             target_prob /= target_prob.sum()
 
         # update target_prob
