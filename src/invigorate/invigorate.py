@@ -269,7 +269,7 @@ class Invigorate(object):
 
     def get_action_type(self, action, num_box=None):
         if num_box is None:
-            num_box = self.observations['num_box']
+            _, num_box = self._get_valid_obj_candidates()
 
         if action < num_box:
             return 'GRASP_AND_END'
@@ -645,7 +645,7 @@ class Invigorate(object):
 
         return rel_prob_mat
 
-    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000, with_virtual_node=False):
+    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000, with_virtual_node=True):
 
         with torch.no_grad():
             triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
