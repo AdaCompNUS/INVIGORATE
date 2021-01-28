@@ -516,6 +516,7 @@ class Invigorate(object):
         new_box["is_target"] = -1 # -1 means unknown
         new_box["removed"] = False
         new_box["grasp"] = grasp
+        new_box["num_det_failures"] = 0
         return new_box
 
     def _init_relation(self, rel_score):
@@ -572,6 +573,7 @@ class Invigorate(object):
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
         prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
         det_to_pool = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
+        det_to_pool = {k: v for k, v in det_to_pool.items() if self.object_pool[v]["removed"] == False}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         # updating the information of matched bboxes
@@ -579,6 +581,13 @@ class Invigorate(object):
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"] = scores[k]
             self.object_pool[v]["grasps"] = grasps[k]
+
+        for i in range(len(self.object_pool)):
+            if i not in pool_to_det.keys():
+                self.object_pool[i]["num_det_failures"] += 1
+            if i >= 2:
+                self.object_pool[i]["removed"] = True
+
         # initialize newly detected bboxes
         for i in not_matched:
             new_box = self._init_object(bboxes[i], scores[i], grasps[i])
