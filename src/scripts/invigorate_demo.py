@@ -58,15 +58,14 @@ from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
 from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
-from libraries.robots.fetch_robot import FetchRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
-if ROBOT == 'Dummy':
+if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
 
 # -------- Constants --------
@@ -169,7 +168,6 @@ def main():
             if observations is None:
                 logger.warning("nothing is detected, abort!!!")
                 break
-            num_box = observations['bboxes'].shape[0]
 
             # state_estimation
             invigorate_client.estimate_state_with_observation(observations)
@@ -191,10 +189,11 @@ def main():
         # debug
         img = observations['img']
         bboxes = invigorate_client.step_infos['bboxes']
+        num_box = bboxes.shape[0]
         classes = invigorate_client.step_infos['classes']
         # rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
-        rel_mat, _ = invigorate_client._rel_score_process(rel_score_mat)
+        rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
         if DISPLAY_DEBUG_IMG:
@@ -299,7 +298,7 @@ def main():
         bboxes = invigorate_client.step_infos['bboxes']
         classes = invigorate_client.step_infos['classes']
         rel_score_mat = invigorate_client.belief['rel_prob']
-        rel_mat, _ = invigorate_client._rel_score_process(rel_score_mat)
+        rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
