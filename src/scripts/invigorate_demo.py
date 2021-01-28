@@ -62,7 +62,14 @@ from libraries.robots.fetch_robot import FetchRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
+ROBOT = 'Dummy'
+GENERATE_CAPTIONS = False
+DISPLAY_DEBUG_IMG = True
+
+if ROBOT == 'Dummy':
+    from libraries.robots.fetch_robot import FetchRobot
+
+# -------- Constants --------
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
