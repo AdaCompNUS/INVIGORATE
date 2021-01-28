@@ -639,6 +639,9 @@ class Invigorate(object):
                 if self.object_pool[j]["removed"]:
                     continue
                 rel_prob_mat[:, obj_inds[i], obj_inds[j]] = self.rel_pool[(i, j)]["rel_score"]
+                rel_prob_mat[:, obj_inds[j], obj_inds[i]] = [self.rel_pool[(i, j)]["rel_score"][1],
+                                                             self.rel_pool[(i, j)]["rel_score"][0],
+                                                             self.rel_pool[(i, j)]["rel_score"][2],]
 
         return rel_prob_mat
 
