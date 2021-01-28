@@ -2,6 +2,7 @@
 
 '''
 *. Removed flag not used??
+*. obj_num includes bg?
 '''
 
 '''
@@ -135,7 +136,7 @@ class Invigorate(object):
         logger.info('Perceive_img: grasp detection finished')
 
         # object and relationship detection post process
-        rel_mat, rel_score_mat = self._rel_score_process(rel_score_mat)
+        rel_mat, rel_score_mat = self.rel_score_process(rel_score_mat)
         ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat, grasps)
         num_box = bboxes.shape[0]
         logger.info('Perceive_img: post process of object and mrt detection finished')
@@ -234,6 +235,9 @@ class Invigorate(object):
         obj_inds, obj_num = self._get_valid_obj_candidates()
         bbox_id_to_pool_id = {v: k for k, v in obj_inds.items()}
 
+        action_type, _ = self.get_action_type(action)
+        assert action_type == "Q1"
+
         logger.info("Invigorate: handling answer for Q1")
         target_idx = action - 2 * num_box
         if ans in {"yes", "yeah", "yep", "sure"}:
@@ -253,13 +257,18 @@ class Invigorate(object):
         self.belief["target_prob"] = target_prob
 
     def plan_action(self):
+        '''
+        @return action, int, if 0 < action < num_obj, grasp obj with index action and end
+                             if num_obj < action < 2*num_obj, grasp obj with index action and continue
+                             if 2*num_obj < action < 3*num_obj, ask questions about obj with index action
+        '''
         return self.decision_making_pomdp()
 
     def transit_state(self, action):
         obj_inds, obj_num = self._get_valid_obj_candidates()
         bbox_id_to_pool_id = {v: k for k, v in obj_inds.items()}
 
-        action_type = self.get_action_type(action)
+        action_type, _ = self.get_action_type(action)
         if action_type == 'Q1':
             # asking question does not change state
             return
@@ -267,16 +276,22 @@ class Invigorate(object):
             # mark object as being removed
             self.object_pool[bbox_id_to_pool_id[action % obj_num]]["removed"] = True
 
-    def get_action_type(self, action, num_box=None):
-        if num_box is None:
-            _, num_box = self._get_valid_obj_candidates()
+    def get_action_type(self, action, num_obj=None):
+        '''
+        @num_obj, the number of objects in the state, bg excluded.
+        @return action_type, a readable string indicating action type
+                target_idx, the index of the target.
+        '''
 
-        if action < num_box:
-            return 'GRASP_AND_END'
-        elif action < 2 * num_box:
-            return 'GRASP_AND_CONTINUE'
-        elif action < 3 * num_box:
-            return 'Q1'
+        if num_obj is None:
+            _, num_obj = self._get_valid_obj_candidates()
+
+        if action < num_obj:
+            return 'GRASP_AND_END', action
+        elif action < 2 * num_obj:
+            return 'GRASP_AND_CONTINUE', action - num_obj
+        elif action < 3 * num_obj:
+            return 'Q1', action - 2 * num_obj
 
     def planning_with_macro(self, infos):
         """
@@ -558,7 +573,7 @@ class Invigorate(object):
         logger.info('_object_detection classes: {}'.format(class_names))
         return bboxes, classes, class_scores
 
-    def _rel_score_process(self, rel_score_mat):
+    def rel_score_process(self, rel_score_mat):
         '''
         rel_mat: np.array of size [num_box, num_box]
                  where rel_mat[i, j] is the relationship between obj i and obj j.

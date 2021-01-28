@@ -111,11 +111,11 @@ TEST = 0
 EXPERIMENT = 1
 
 # --------------- Settings ------------------
-MODE = EXPERIMENT # 0 for test, 1 for experiment
+MODE = TEST # 0 for test, 1 for experiment
 # EXP_SETTING = "baseline" # choose from: baseline, no_uncert, no_multistep, invigorate
-# EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
+EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
-EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 1

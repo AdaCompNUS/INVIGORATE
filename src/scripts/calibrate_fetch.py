@@ -63,7 +63,7 @@ imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, re
 data_viewer.display_img(imgs['final_img'])
 
 action = invigorate_client.decision_making_heuristic() # action_idx.
-action_type = invigorate_client.get_action_type(action)
+action_type, _ = invigorate_client.get_action_type(action)
 
 # grasps = observations['grasps']
 # num_box = observations['bboxes'].shape[0]

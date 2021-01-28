@@ -16,9 +16,8 @@ class Greedy(Invigorate):
     '''
     Heuristic, No POMDP
     '''
-
     def estimate_state_with_observation(self, observations):
-        logger.info("TPN: estimate_state_with_observation")
+        logger.info("Greedy: estimate_state_with_observation")
 
         img = observations['img']
         bboxes = observations['bboxes']
@@ -28,12 +27,14 @@ class Greedy(Invigorate):
         expr = observations['expr']
         ind_match_dict = observations['ind_match_dict']
         num_box = observations['num_box']
+        self._get_valid_obj_candidates(renew=True)
 
         # Estimate leaf_and_desc_prob greedily
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = np.zeros(rel_score_mat.shape)
         rel_prob_mat[rel_score_mat - rel_score_mat.max(axis=0) == 0] = 1
+        logger.debug("after greedy: rel_score_mat: {}".format(rel_prob_mat))
         # assert (rel_prob_mat.sum(axis=0) == 1).sum() == rel_prob_mat[0].size
 
         # grounding result postprocess.
@@ -55,6 +56,11 @@ class Greedy(Invigorate):
         target_prob[max_ind] = 1
         logger.info('target_prob: {}'.format(target_prob))
 
+        # copy observation into step_infos
+        self.step_infos["bboxes"] = bboxes
+        self.step_infos["classes"] = observations['classes']
+        self.step_infos["grasps"] = observations['grasps']
+
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
 
@@ -62,11 +68,11 @@ class Greedy(Invigorate):
         return self.decision_making_greedy()
 
     def decision_making_greedy(self):
-        logger.info("TPN: decision_making_greedy")
+        logger.info("Greedy: decision_making_greedy")
 
-        num_box = self.observations['num_box']
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
+        num_box = len(self.step_infos["bboxes"])
         leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
 
         # choose grasp action greedily, ignoring background
@@ -79,8 +85,14 @@ class Greedy(Invigorate):
         if current_tgt == selected_obj:
             # grasp and end program
             action = current_tgt
+            logger.info("Greedy, grasp {} and end".format(current_tgt))
         else:
             # grasp and continue
             action = current_tgt + num_box
+            logger.info("Greedy, grasp {} and continue".format(current_tgt))
 
         return action
+
+    def transit_state(self, action):
+        # clear history
+        self.object_pool = []

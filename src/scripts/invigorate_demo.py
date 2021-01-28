@@ -62,6 +62,7 @@ from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
 ROBOT = 'Fetch'
+# ROBOT = 'Dummy'
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
@@ -189,7 +190,7 @@ def main():
         # debug
         img = observations['img']
         bboxes = invigorate_client.step_infos['bboxes']
-        num_box = bboxes.shape[0]
+        num_obj = bboxes.shape[0]
         classes = invigorate_client.step_infos['classes']
         # rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
@@ -202,20 +203,17 @@ def main():
 
         # plan for optimal actions
         action = invigorate_client.plan_action() # action_idx.
-        action_type = invigorate_client.get_action_type(action)
+        action_type, target_idx = invigorate_client.get_action_type(action, num_obj)
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':
-            grasp_target_idx = action
-            logger.info("Grasping object " + str(grasp_target_idx) + " and ending the program")
+            logger.info("Grasping object " + str(target_idx) + " and ending the program")
             exec_type = EXEC_GRASP
             to_end = True
-        elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
-            grasp_target_idx = action - num_box
-            logger.info("Grasping object " + str(grasp_target_idx) + " and continuing")
+        elif action_type == 'GRASP_AND_CONTINUE':
+            logger.info("Grasping object " + str(target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
-            target_idx = action - 2 * num_box
             logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
@@ -251,11 +249,11 @@ def main():
         if exec_type == EXEC_GRASP:
             grasps = invigorate_client.step_infos['grasps']
             logger.debug("grasps.shape {}".format(grasps.shape))
-            object_name = CLASSES[classes[grasp_target_idx][0]]
+            object_name = CLASSES[classes[target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')
 
             # display grasp
-            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
+            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             cv2.imwrite("outputs/grasp.png", im)
             if DISPLAY_DEBUG_IMG is not None:
@@ -275,7 +273,7 @@ def main():
                 robot.say("now I can grasp the {}".format(object_name))
 
             # execute grasping action
-            grasp = grasps[action % num_box][:8]
+            grasp = grasps[action % num_obj][:8]
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 logger.error('grasp failed!!!')
