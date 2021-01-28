@@ -172,9 +172,10 @@ class Invigorate(object):
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
-        logger.info('Step 1: raw grounding completed')
-        logger.debug('raw target_prob: {}'.format(target_prob))
+        logger.info('after multistep, target_prob: {}'.format(target_prob))
+        logger.info('after multistep, rel_score_mat: {}'.format(rel_prob_mat))
 
+        logger.info('Step 1: raw grounding completed')
         # grounding result postprocess.
         # 1. filter scores belonging to unrelated objects
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
@@ -192,7 +193,7 @@ class Invigorate(object):
         logger.info('Step 2: class name filter completed')
         logger.debug('target_prob : {}'.format(target_prob))
 
-        # 2. incorporate QA history
+        # 2. incorporate QA history TODO
         target_prob_backup = target_prob.copy()
         for k, v in ind_match_dict.items():
             if self.object_pool[v]["is_target"] == 1:

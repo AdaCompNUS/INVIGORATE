@@ -67,6 +67,7 @@ EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 DISPLAY_DEBUG_IMG = True
 GENERATE_CAPTIONS = True
+DEBUG = True
 
 # ------- Statics -----------
 logger = logging.getLogger(LOGGER_NAME)
@@ -183,14 +184,15 @@ def main():
         img = observations['img']
         bboxes = observations['bboxes']
         classes = observations['classes']
-        rel_mat = observations['rel_mat']
+        # rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
+        rel_mat, _ = invigorate_client._rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
         imgs = data_viewer.generate_visualization_imgs(img, bboxes,
                     classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
         if DISPLAY_DEBUG_IMG:
             data_viewer.display_img(imgs['final_img'])
-        cv2.imwrite("outputs/final.png", imgs['final_img'])
+        # cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
         action = invigorate_client.plan_action() # action_idx.
@@ -283,14 +285,15 @@ def main():
         img = observations['img']
         bboxes = observations['bboxes']
         classes = observations['classes']
-        rel_mat = observations['rel_mat']
-        rel_score_mat = observations['rel_score_mat']
+        rel_score_mat = invigorate_client.belief['rel_prob']
+        rel_mat, _ = invigorate_client._rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
-        # to_cont = raw_input('To_continue?')
-        # if to_cont != 'y':
-        #     break
+        if DEBUG:
+            to_cont = raw_input('To_continue?')
+            if to_cont != 'y':
+                break
 
     print("exit!")
     # rospy.sleep(10) # wait 10 second

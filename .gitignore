@@ -4,6 +4,7 @@ devel/
 logs/
 src/experiment
 src/images
+tmp/
 
 .catkin_tools/
 .vscode/
