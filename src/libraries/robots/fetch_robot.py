@@ -41,6 +41,7 @@ BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
+DUMMY_SAY = True
 DUMMY_GRASP = True
 
 # ------- Constants ---------
@@ -424,9 +425,12 @@ class FetchRobot():
         self._arm.move_in_cartesian(dx=dx, dy=dy)
 
     def say(self, text):
-        # print('Dummy execution of say: {}'.format(text))
-        resp = self._fetch_speaker_client(text)
-        return resp.success
+        if DUMMY_SAY:
+            print('Dummy execution of say: {}'.format(text))
+            return True
+        else:
+            resp = self._fetch_speaker_client(text)
+            return resp.success
 
     def listen(self, timeout=None):
         if DUMMY_LISTEN:
