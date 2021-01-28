@@ -71,9 +71,9 @@ def vmrn_client(img, bbox):
         print("Service call failed: %s"%e)
 
 def vilbert_obr_client(img, bbox):
-    rospy.wait_for_service('vilbert_obr_server')
+    rospy.wait_for_service('vilbert_obr_service')
     try:
-        vmr_det = rospy.ServiceProxy('vilbert_obr_server', VmrDetection)
+        vmr_det = rospy.ServiceProxy('vilbert_obr_service', VmrDetection)
         img_msg = br.cv2_to_imgmsg(img)
         num_box = bbox.shape[0]
         bbox = bbox.reshape(-1).tolist()
@@ -355,17 +355,16 @@ def check_grounding_labels(split="nus_single"):
         else:
             raise NotImplementedError
 
-
-if __name__ == "__main__":
+def main_for_test_benchmark():
     rospy.init_node('test')
 
-    gt_labels = check_grounding_labels(split="nus_single_3")
+    gt_labels = check_grounding_labels(split="nus_single")
     gt_labels = gt_labels[:100]
 
     acc_mattnet = 0.
     acc_vilbert = 0.
 
-    vis=True
+    vis = True
 
     vmrn_count = 0
     vilbert_count = 0
@@ -393,6 +392,7 @@ if __name__ == "__main__":
         im_path = gt["file_path"]
 
         img_cv = cv2.imread(im_path)
+        img_cv = img_cv[:, :, ::-1]
 
         vmrn_rel_mrt, vmrn_rel_scores = vmrn_client(img_cv, gt_box)
         for o1 in range(rel_mat.shape[0]):
@@ -431,8 +431,10 @@ if __name__ == "__main__":
         n_count += num_n
 
         print("ViLBERT correct: {:d}/{:d}, VMRN correct: {:d}/{:d}".format(vilbert_count, count, vmrn_count, count))
-        print("ViLBERT p correct: {:d}/{:d}, VMRN p correct: {:d}/{:d}".format(vilbert_p_count, p_count, vmrn_p_count, p_count))
-        print("ViLBERT c correct: {:d}/{:d}, VMRN c correct: {:d}/{:d}".format(vilbert_c_count, c_count, vmrn_c_count, c_count))
+        print("ViLBERT p correct: {:d}/{:d}, VMRN p correct: {:d}/{:d}".format(vilbert_p_count, p_count, vmrn_p_count,
+                                                                               p_count))
+        print("ViLBERT c correct: {:d}/{:d}, VMRN c correct: {:d}/{:d}".format(vilbert_c_count, c_count, vmrn_c_count,
+                                                                               c_count))
 
         print('!!!!! test {} of {} complete'.format(i + 1, len(gt_labels)))
 
@@ -453,3 +455,23 @@ if __name__ == "__main__":
 
     with open("rel_dens_vilbert.pkl", "wb") as f:
         pickle.dump(collected_scores_vilbert, f)
+
+def main_for_test_image():
+    rospy.init_node('test')
+    im_path = "../images/test/10.png"
+    img_cv = cv2.imread(im_path)
+    _, bbox, _ = faster_rcnn_detection(img_cv)
+    vmrn_rel_mrt, vmrn_rel_scores = vmrn_client(img_cv, bbox)
+    img_show = img_cv.copy()
+
+    for i, b in enumerate(bbox):
+        img_show = draw_single_bbox(img_show, b, text_str=str(i))
+
+    plt.axis('off')
+    plt.imshow(img_show)
+    plt.show()
+
+    print(vmrn_rel_scores)
+
+if __name__ == "__main__":
+    main_for_test_benchmark()

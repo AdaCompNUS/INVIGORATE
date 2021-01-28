@@ -15,8 +15,8 @@ def vis_grounding_density(grounding_data_path, upper=10.0, lower=-20.0):
     for d in grounding_data:
         grounding_neg += d["scores"][:int(d["gt"][0])].tolist() + d["scores"][int(d["gt"][0])+1:].tolist()
     grounding_neg = np.array(grounding_neg)
-    kde_grounding_pos = gaussian_kde(grounding_pos[:, None], bandwidth=1.0)
-    kde_grounding_neg = gaussian_kde(grounding_neg[:, None], bandwidth=1.0)
+    kde_grounding_pos = gaussian_kde(grounding_pos[:, None], bandwidth=3)
+    kde_grounding_neg = gaussian_kde(grounding_neg[:, None], bandwidth=3)
     x = np.arange(1000).astype(np.float32) / 1000 * (upper - lower) + lower
     x_dens_neg = kde_grounding_neg.comp_prob(x)
     x_dens_pos = kde_grounding_pos.comp_prob(x)
@@ -33,8 +33,8 @@ def vis_relation_density(rel_data_path, upper=1.0, lower=0.0, mode=None):
         relation_data = pickle.load(open(rel_data_path, "rb"))
         relation_pos = np.array([1 - d["det_score"][2] for d in relation_data if d["gt"] in {1, 2}])
         relation_neg = np.array([1 - d["det_score"][2] for d in relation_data if d["gt"] == 3])
-        kde_rel_pos = gaussian_kde(relation_pos[:, None], bandwidth=0.1)
-        kde_rel_neg = gaussian_kde(relation_neg[:, None], bandwidth=0.1)
+        kde_rel_pos = gaussian_kde(relation_pos[:, None], bandwidth=0.2)
+        kde_rel_neg = gaussian_kde(relation_neg[:, None], bandwidth=0.2)
         x = np.arange(1000).astype(np.float32) / 1000 * (upper - lower) + lower
         x_dens_neg = kde_rel_neg.comp_prob(x)
         x_dens_pos = kde_rel_pos.comp_prob(x)
@@ -44,5 +44,6 @@ def vis_relation_density(rel_data_path, upper=1.0, lower=0.0, mode=None):
         plt.legend()
         plt.show()
 
-# vis_relation_density(rel_data_path, upper=2.0, lower=-1.0)
-vis_grounding_density(grounding_data_path)
+vis_relation_density(rel_data_path, upper=2.0, lower=-1.0)
+# vis_grounding_density(grounding_data_path)
+

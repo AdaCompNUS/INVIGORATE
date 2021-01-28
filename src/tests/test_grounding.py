@@ -98,9 +98,9 @@ def mattnet_client(img, bbox, classes, expr):
         print("Service call failed: %s"%e)
 
 def vilbert_grounding_client(img, bbox, expr):
-    rospy.wait_for_service('vilbert_grounding_server')
+    rospy.wait_for_service('vilbert_grounding_service')
     try:
-        grounding = rospy.ServiceProxy('vilbert_grounding_server', Grounding)
+        grounding = rospy.ServiceProxy('vilbert_grounding_service', Grounding)
         img_msg = br.cv2_to_imgmsg(img)
         res = grounding(img_msg, bbox, expr)
         return res.grounding_scores
@@ -108,9 +108,9 @@ def vilbert_grounding_client(img, bbox, expr):
         print("Service call failed: %s"%e)
 
 def vilbert_obr_client(img, bbox):
-    rospy.wait_for_service('vilbert_obr_server')
+    rospy.wait_for_service('vilbert_obr_service')
     try:
-        vmr_det = rospy.ServiceProxy('vilbert_obr_server', VmrDetection)
+        vmr_det = rospy.ServiceProxy('vilbert_obr_service', VmrDetection)
         img_msg = br.cv2_to_imgmsg(img)
         res = vmr_det(img_msg, bbox)
         return res.rel_mat, res.rel_score_mat
@@ -199,7 +199,7 @@ def parse_pascalvoc_labels(anno_file_path):
 
     return boxes, gt_classes
 
-def test_grounding(img_cv, expr, gt_boxes=None):
+def test_grounding(img_cv, expr, gt_boxes=None, all_box_and_score=False):
     # get object proposals
     if gt_boxes is None:
         num_box, bboxes, classes = faster_rcnn_detection(img_cv)
@@ -274,11 +274,17 @@ def test_grounding(img_cv, expr, gt_boxes=None):
             context_idxs_ingress = filtered_context_idxs_ingress
             dbg_print('filtered top_idxs: {}'.format(top_idx_ingress))
 
-    if TEST_INGRESS_REFEXP:
-        return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)], bboxes[top_idx_ingress[0]]
+    if not all_box_and_score:
+        if TEST_INGRESS_REFEXP:
+            return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)], bboxes[top_idx_ingress[0]]
+        else:
+            return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)], \
+                   ground_scores_mattnet, ground_scores_vilbert
     else:
-        return bboxes[np.argmax(ground_scores_mattnet)], bboxes[np.argmax(ground_scores_vilbert)], \
-               ground_scores_mattnet, ground_scores_vilbert
+        if not TEST_INGRESS_REFEXP:
+            return bboxes, ground_scores_mattnet, ground_scores_vilbert
+        else:
+            raise NotImplementedError
 
 def visualize_for_label_captions(img_path, bbox, cls):
 
@@ -710,23 +716,35 @@ def iou(anchors, gt_boxes):
 
     return overlaps
 
-def visualize_results(img, expr, gt, g_mattnet=None, g_vilbert=None, g_ingress=None):
+def visualize_results(img, expr, gt=None, g_mattnet=None, g_vilbert=None, g_ingress=None, score=None):
     assert not (g_mattnet is None and g_ingress is None and g_vilbert is None)
     draw_single_bbox(img, (1, 1, img.shape[1]-1, img.shape[0]-1), text_str=expr)
 
-    draw_single_bbox(img, gt, text_str="ground truth", bbox_color=(0, 255, 0))
+    if gt is not None:
+        draw_single_bbox(img, gt, text_str="ground truth", bbox_color=(0, 255, 0))
     if g_vilbert is not None:
-        draw_single_bbox(img, g_vilbert, text_str="vilbert", bbox_color=(255, 0, 0))
+        if len(g_vilbert.shape) == 1:
+            g_vilbert = g_vilbert[None, :]
+            score["vilbert"] = [score["vilbert"]]
+        for i, b in enumerate(g_vilbert):
+            txt = "vilbert" if score is None else "vilbert: {:.2f}".format(score["vilbert"][i])
+            draw_single_bbox(img, b, text_str=txt, bbox_color=(255, 0, 0))
     if g_mattnet is not None:
-        draw_single_bbox(img, g_mattnet, text_str="mattnet", bbox_color=(0, 0, 255))
+        if len(g_mattnet.shape) == 1:
+            g_mattnet = g_mattnet[None, :]
+            score["mattnet"] = [score["mattnet"]]
+        for i, b in enumerate(g_mattnet):
+            txt = "mattnet" if score is None else "mattnet: {:.2f}".format(score["mattnet"][i])
+            draw_single_bbox(img, b, text_str=txt, bbox_color=(0, 0, 255))
     if g_ingress is not None:
-        draw_single_bbox(img, g_ingress, text_str="ingress")
+        txt = "ingress" if score is None else "ingress: {:.2f}".format(score["ingress"])
+        draw_single_bbox(img, g_ingress, text_str=txt)
 
     plt.axis('off')
     plt.imshow(img[:, :, ::-1])
     plt.show()
 
-if __name__ == "__main__":
+def main_test_grounding_benchmark():
     rospy.init_node('test')
 
     gt_labels = check_grounding_labels(split="nus_single_3", relabel=True)
@@ -735,8 +753,8 @@ if __name__ == "__main__":
     acc_mattnet = 0.
     acc_vilbert = 0.
 
-    vis=True
-    use_gt_box=True
+    vis = True
+    use_gt_box = True
 
     vis_ground_stat_vilbert = dict(zip(CLASSES, np.zeros((len(CLASSES), 2)).tolist()))
     vis_ground_stat_mattnet = dict(zip(CLASSES, np.zeros((len(CLASSES), 2)).tolist()))
@@ -769,11 +787,13 @@ if __name__ == "__main__":
             print(classes)
             classes = [CLASSES_TO_IND[cls] for cls in classes if cls in CLASSES_TO_IND]
             assert bboxes.shape[0] == len(classes)
-            bboxes = bboxes.astype(np.float32)*scaler
+            bboxes = bboxes.astype(np.float32) * scaler
             bboxes = np.concatenate([bboxes, np.array(classes).reshape(-1, 1)], axis=-1)
-            mattnet_bbox, vilbert_bbox, mattnet_ground_score, vilbert_ground_score = test_grounding(img_cv, expr, gt_boxes=bboxes)
+            mattnet_bbox, vilbert_bbox, mattnet_ground_score, vilbert_ground_score = test_grounding(img_cv, expr,
+                                                                                                    gt_boxes=bboxes)
         else:
-            mattnet_bbox, vilbert_bbox, mattnet_ground_score, vilbert_ground_score = test_grounding(img_cv, expr, gt_boxes=None)
+            mattnet_bbox, vilbert_bbox, mattnet_ground_score, vilbert_ground_score = test_grounding(img_cv, expr,
+                                                                                                    gt_boxes=None)
 
         collected_scores_vilbert.append({
             "gt": [str(gt_ind)],
@@ -813,3 +833,23 @@ if __name__ == "__main__":
     import pickle
     with open("ground_density_estimation.pkl", "wb") as f:
         pickle.dump(collected_scores_vilbert, f)
+
+def main_test_grounding_image():
+    rospy.init_node('test')
+    im_path = "../images/test/10.png"
+    img_cv = cv2.imread(im_path)
+    model="mattnet"
+    expr = "the woman standing to the left of the tree"
+    bbox, mattnet_scores, vilbert_scores = \
+        test_grounding(img_cv, expr, gt_boxes=None, all_box_and_score=True)
+    scores = {
+        "vilbert": vilbert_scores,
+        "mattnet": mattnet_scores
+    }
+    if model =="mattnet":
+        visualize_results(img_cv.copy(), expr, gt=None, g_mattnet=bbox, score=scores)
+    elif model=="vilbert":
+        visualize_results(img_cv.copy(), expr, gt=None, g_vilbert=bbox, score=scores)
+
+if __name__ == "__main__":
+    main_test_grounding_image()

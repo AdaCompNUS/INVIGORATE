@@ -186,7 +186,8 @@ def main():
         rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
         target_prob = invigorate_client.belief['target_prob']
-        imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
+        imgs = data_viewer.generate_visualization_imgs(img, bboxes,
+                    classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
         if DISPLAY_DEBUG_IMG:
             data_viewer.display_img(imgs['final_img'])
         cv2.imwrite("outputs/final.png", imgs['final_img'])

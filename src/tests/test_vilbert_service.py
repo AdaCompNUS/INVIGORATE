@@ -18,7 +18,7 @@ from config.config import *
 from invigorate_msgs.srv import *
 from libraries.data_viewer.data_viewer import DataViewer
 
-from rls_perception_msgs.srv import *
+# from rls_perception_msgs.srv import *
 
 br = CvBridge()
 
@@ -81,11 +81,23 @@ def vilbert_client(img, bboxes, expr, num_box):
         # print("Service call failed: %s"%e)
         pass
 
-def test_obj_manipulation(img_cv, expr, im_id):
+def mattnet_client(img, bbox, classes, expr):
+    rospy.wait_for_service('mattnet_server')
+    try:
+        grounding = rospy.ServiceProxy('mattnet_server', MAttNetGrounding)
+        img_msg = br.cv2_to_imgmsg(img)
+        bbox = bbox.reshape(-1).tolist()
+        classes = classes.reshape(-1).tolist()
+        res = grounding(img_msg, bbox, classes, expr)
+        return res.ground_prob
+    except rospy.ServiceException as e:
+        print("Service call failed: %s"%e)
+
+def test_obj_manipulation(img_cv, expr, im_id, model="vilbert"):
     tb = time.time()
     num_box, bboxes, classes, bbox_feats = faster_rcnn_client(img_cv)
     # num_box, bboxes, classes, bbox_feats = detectron_client(img_cv)
-    bboxes_with_score = np.array(bboxes).reshape(-1, 5)
+    bboxes_with_score = np.array(bboxes).reshape(-1, 4)
     classes = np.array(classes).reshape(-1, 1)
     bboxes = bboxes_with_score[:, :4]
     dbg_print(bboxes)
@@ -94,7 +106,10 @@ def test_obj_manipulation(img_cv, expr, im_id):
 
     data_viewer = DataViewer(CLASSES)
 
-    grounding_scores= vilbert_client(img_cv, bboxes, expr, num_box)
+    if model =="vilbert":
+        grounding_scores= vilbert_client(img_cv, bboxes, expr, num_box)
+    elif model == "mattnet":
+        grounding_scores = mattnet_client(img_cv, bboxes, classes, expr)
     dbg_print(grounding_scores)
 
     # name replacement trick:
@@ -140,7 +155,7 @@ def test_obj_manipulation(img_cv, expr, im_id):
 
     ## save result
     out_dir = "../images/output"
-    save_name = im_id.split(".")[0] + "_result.png"
+    save_name = im_id.split(".")[0] + "_" + model + "_result.png"
     save_path = os.path.join(out_dir, save_name)
     i = 1
     while (os.path.exists(save_path)):
@@ -164,20 +179,41 @@ if __name__ == "__main__":
     # test_obj_manipulation(img_cv, expr, 'test')
 
     # Batch Test with Vis
-    TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
-             ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
-             ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
-             ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
-             ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
-             ['37.png', 'apple under banana'],
-             ['38.png', 'apple under banana'],
-             ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
-             ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
-            ]
+    # TESTS = [['1.png', 'cup under banana'], ['1.png', 'cup under apple'],
+    #          ['13.png', 'remote'], ['13.png', 'cup'], ['13.png', 'white mouse'],
+    #          ['15.png', 'white mouse'], ['15.png', 'black mouse'], ['15.png', 'mouse on the left'],
+    #          ['21.png', 'banana on top'], ['21.png', 'banana below'], ['21.png', 'apple'],
+    #          ['36.png', 'apple under banana'], ['36.png', 'cup under apple'], ['36.png', 'cup under banana'],
+    #          ['37.png', 'apple under banana'],
+    #          ['38.png', 'apple under banana'],
+    #          ['60.jpg', 'apple on the left'], ['60.jpg', 'apple on the right'], ['60.jpg', 'blue cup'], ['60.jpg', 'green cup'],
+    #          ['table.png', 'bottle next to banana'], ['table.png', 'top left bottle']
+    #         ]
 
-    for i, test in enumerate(TESTS):
-        im_id = test[0]
-        expr = test[1]
-        img_cv = cv2.imread("../images/" + im_id)
-        test_obj_manipulation(img_cv, expr, im_id)
-        print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
+    # for i, test in enumerate(TESTS):
+    #     im_id = test[0]
+    #     expr = test[1]
+    #     img_cv = cv2.imread("../images/" + im_id)
+    #     test_obj_manipulation(img_cv, expr, im_id)
+    #     print('!!!!! test {} of {} complete'.format(i + 1, len(TESTS)))
+
+    exprs = ["the box", "the apple", "the box", "the toothbrush", "the box",
+             "the book", "the box", "the box", "the apple"]
+    for model in {"vilbert", "mattnet"}:
+        for i in range(7, 10):
+            im_dir = str(i)
+            im_path = "../images/test/" + im_dir
+            if os.path.isdir(im_path):
+                ims = os.listdir(im_path)
+                for im_id in ims:
+                    if im_id.split(".")[-1] in {"png", "jpg", "jpeg"}:
+                        im_p = os.path.join(im_path, im_id)
+                        img_cv = cv2.imread(im_p)
+                        expr = exprs[i - 1]
+                        test_obj_manipulation(img_cv, expr, im_id, model=model)
+            else:
+                im_id = im_dir + ".png"
+                im_path = "../images/test/" + im_id
+                img_cv = cv2.imread(im_path)
+                expr = exprs[i-1]
+                test_obj_manipulation(img_cv, expr, im_id, model=model)
