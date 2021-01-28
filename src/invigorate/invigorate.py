@@ -926,14 +926,8 @@ class InvigorateMultiSingleStepComparison(Invigorate):
     def estimate_state_with_observation_singlestep(self, observations):
         logger.info("Singlestep: estimate_state_with_observation")
 
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
         grounding_scores = observations['grounding_scores']
         rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
-        ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
         logger.debug("grounding_scores: {}".format(grounding_scores))
@@ -951,14 +945,9 @@ class InvigorateMultiSingleStepComparison(Invigorate):
     def estimate_state_with_observation_multistep(self, observations):
         logger.info("Multistep: estimate_state_with_observation")
 
-        img = observations['img']
-        bboxes = observations['bboxes']
-        det_scores = observations['det_scores']
         grounding_scores = observations['grounding_scores']
         rel_score_mat = observations['rel_score_mat']
-        expr = observations['expr']
         ind_match_dict = observations['ind_match_dict']
-        num_box = observations['num_box']
 
         # Estimate leaf_and_desc_prob and target_prob according to multi-step observations
         logger.debug("grounding_scores: {}".format(grounding_scores))
