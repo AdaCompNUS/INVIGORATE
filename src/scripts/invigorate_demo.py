@@ -61,7 +61,7 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 # ROBOT = 'Dummy'
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
@@ -73,7 +73,8 @@ if ROBOT == 'Fetch':
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
-DISPLAY_DEBUG_IMG = "matplotlib"
+# DISPLAY_DEBUG_IMG = "matplotlib"
+DISPLAY_DEBUG_IMG = 'pil'
 GENERATE_CAPTIONS = True
 DEBUG = True
 
@@ -196,9 +197,9 @@ def main():
         rel_score_mat = invigorate_client.belief['rel_prob']
         rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
-        imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
-        if DISPLAY_DEBUG_IMG:
-            data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
+        # imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
+        # if DISPLAY_DEBUG_IMG:
+        #     data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
         # cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
@@ -244,6 +245,12 @@ def main():
         #     else:
         #         question_str = Q2["type1"]
         #         exec_type = EXEC_ASK
+
+        # debug
+        if DISPLAY_DEBUG_IMG:
+            imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action=action,
+                question_str=question_str, save=False)
+            data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
 
         # exec action
         if exec_type == EXEC_GRASP:
@@ -292,12 +299,12 @@ def main():
         invigorate_client.transit_state(action)
 
         # generate debug images
-        img = observations['img']
-        bboxes = invigorate_client.step_infos['bboxes']
-        classes = invigorate_client.step_infos['classes']
-        rel_score_mat = invigorate_client.belief['rel_prob']
-        rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
-        target_prob = invigorate_client.belief['target_prob']
+        # img = observations['img']
+        # bboxes = invigorate_client.step_infos['bboxes']
+        # classes = invigorate_client.step_infos['classes']
+        # rel_score_mat = invigorate_client.belief['rel_prob']
+        # rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
+        # target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
         if DEBUG:

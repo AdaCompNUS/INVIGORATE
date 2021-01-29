@@ -15,6 +15,7 @@ import os.path as osp
 from PIL import Image
 import time
 import datetime
+import pdb
 
 # from sklearn.manifold import TSNE
 from config.config import *
@@ -333,7 +334,7 @@ class DataViewer(object):
         return im
 
     def vis_action(self, action_str, shape, draw_arrow = False):
-        im = 255. * np.ones(shape)
+        im = 255 * np.ones(shape)
         action_str = action_str.split("\n")
 
         mid_line = im.shape[0] / 2
@@ -379,8 +380,8 @@ class DataViewer(object):
         rel_det_img = self.add_bg_score_to_img(rel_det_img, target_prob.tolist()[-1])
 
         # grounding
-        print("Target Probability: ")
-        print(target_prob.tolist())
+        # print("Target Probability: ")
+        # print(target_prob.tolist())
         ground_img = self.draw_grounding_probs(img_show.copy(), expr, vis_bboxes, target_prob)
         ground_img = self.add_obj_classes_to_img(ground_img, vis_bboxes)
 
@@ -399,18 +400,18 @@ class DataViewer(object):
                 if question_str is not None:
                     action_str = question_str
                 else:
-                    action_str = integrase.Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
+                    action_str = Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
                 question_type = "Q1_TYPE1"
-            else:
-                if target_prob[-1] == 1:
-                    action_str = Q2["type2"]
-                    question_type = "Q2_TYPE2"
-                elif (target_prob[:-1] > 0.02).sum() == 1:
-                    action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
-                    question_type = "Q2_TYPE3"
-                else:
-                    action_str = Q2["type1"]
-                    question_type = "Q2_TYPE1"
+            # else:
+            #     if target_prob[-1] == 1:
+            #         action_str = Q2["type2"]
+            #         question_type = "Q2_TYPE2"
+            #     elif (target_prob[:-1] > 0.02).sum() == 1:
+            #         action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
+            #         question_type = "Q2_TYPE3"
+            #     else:
+            #         action_str = Q2["type1"]
+            #         question_type = "Q2_TYPE1"
             print(action_str)
 
             action_img_shape = list(img_show.shape)
@@ -434,6 +435,7 @@ class DataViewer(object):
             np.concatenate([object_det_img, rel_det_img], axis=1),
             np.concatenate([ground_img, action_img], axis=1),
         ], axis=0)
+        final_img = final_img.astype(np.uint8)
 
         if save:
             if im_id is None:
