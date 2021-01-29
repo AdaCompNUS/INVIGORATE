@@ -61,7 +61,7 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 # ROBOT = 'Dummy'
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
@@ -73,7 +73,7 @@ if ROBOT == 'Fetch':
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
-DISPLAY_DEBUG_IMG = "pil"
+DISPLAY_DEBUG_IMG = "matplotlib"
 GENERATE_CAPTIONS = True
 DEBUG = True
 

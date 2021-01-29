@@ -599,7 +599,7 @@ class Invigorate(object):
         for i in range(len(self.object_pool)):
             if i not in pool_to_det.keys():
                 self.object_pool[i]["num_det_failures"] += 1
-            if i >= 2:
+            if self.object_pool[i]["num_det_failures"] >= 2:
                 self.object_pool[i]["removed"] = True
 
         # initialize newly detected bboxes
