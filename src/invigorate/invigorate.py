@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 '''
-*. Removed flag not used??
-*. obj_num includes bg?
+*. More structural target prob update, there should not be stages
 '''
 
 '''

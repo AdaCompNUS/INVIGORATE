@@ -1,10 +1,21 @@
+import os
 import os.path as osp
+import datetime
 
 # --------------- Constants ----------------
+
+# Directory constants
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
 KDE_MODEL_PATH = osp.join(ROOT_DIR, 'model')
 
+# Log directory
+now = datetime.datetime.now()
+date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
+LOG_DIR = osp.join(ROOT_DIR, "logs/{}".format(date_time))
+print(LOG_DIR)
+
+# Action definiiton
 Q2={
     "type1": "I have not found the target. Where is it?", # COMMON FORMAT
     "type2": "I have not found the target. Where is it?",         # WHEN ALL THINGS WITH PROB 0
@@ -14,6 +25,10 @@ Q2={
 Q1={
     "type1": "Do you mean the {:s}?"
 }
+
+GRASP_AND_END = 0
+GRASP_AND_CONTINUE = 1
+ASK_Q1 = 2
 
 CLASSES = ['__background__',  # always index 0
                'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
@@ -113,9 +128,9 @@ EXPERIMENT = 1
 # --------------- Settings ------------------
 MODE = TEST # 0 for test, 1 for experiment
 # EXP_SETTING = "baseline" # choose from: baseline, no_uncert, no_multistep, invigorate
-EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
-# EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 1
@@ -132,3 +147,10 @@ elif EXP_SETTING == "invigorate":
 
 EXP_DIR = osp.join(ROOT_DIR, "experiment")
 EXP_RES_DIR = osp.join(EXP_DIR, "participant {}".format(PARTICIPANT_NUM), "{}".format(SCENE_NUM), "{}".format(VER_NUM))
+
+# ------------ Further settings -------------
+# create directory is necessary
+if MODE == EXPERIMENT:
+    LOG_DIR = EXP_RES_DIR # override log directory
+if not osp.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)

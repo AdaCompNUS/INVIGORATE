@@ -22,8 +22,8 @@ from paper_fig_generator import gen_paper_fig
 
 def create_mrt(rel_mat, class_names=None, rel_score=None):
     '''
-    rel_mat: np.array of size [num_box, num_box] 
-             where rel_mat[i, j] is the relationship between obj i and obj j. 
+    rel_mat: np.array of size [num_box, num_box]
+             where rel_mat[i, j] is the relationship between obj i and obj j.
              1 means i is the parent of j.
              2 means i is the child of j.
              3 means i has no relation to j.
@@ -429,7 +429,7 @@ class DataViewer(object):
             ground_img = self.add_grasp_to_img(ground_img, np.expand_dims(grasps[target_idx], axis=0))
 
         # save result
-        out_dir = osp.join(ROOT_DIR, "images/output")
+        out_dir = LOG_DIR
         final_img = np.concatenate([
             np.concatenate([object_det_img, rel_det_img], axis=1),
             np.concatenate([ground_img, action_img], axis=1),

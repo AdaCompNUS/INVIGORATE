@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+import datetime
 import os.path as osp
 import sys
 import os
@@ -9,17 +9,14 @@ import os
 
 from config.config import *
 
-LOGGER_NAME = 'invigorate_logger'
-
-now = datetime.now()
-date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
-if MODE == EXPERIMENT:
-    LOG_FILE = osp.join(EXP_RES_DIR, "demo_{}.log".format(date_time))
-else:
-    LOG_FILE = osp.join(ROOT_DIR, "logs/demo_{}.log".format(date_time))
-if not osp.exists(osp.dirname(LOG_FILE)):
-    os.makedirs(osp.dirname(LOG_FILE))
+# --------- Settings -----------
 LOG_LEVEL = logging.DEBUG
+
+# --------- Constants ---------
+LOGGER_NAME = 'invigorate_logger'
+now = datetime.datetime.now()
+date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
+LOG_FILE = osp.join(LOG_DIR, "demo_{}.log".format(date_time))
 
 logger = logging.getLogger(LOGGER_NAME)
 logger.setLevel(LOG_LEVEL)
