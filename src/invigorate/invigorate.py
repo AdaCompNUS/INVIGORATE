@@ -654,24 +654,37 @@ class Invigorate(object):
 
     def _multi_step_grounding(self, mattnet_score, det_to_pool, expr):
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        cand_prior = []
-        cand_posterior = []
+        cand_neg_prior = []
+        cand_neg_llh = []
+        cand_pos_prior = []
+        cand_pos_llh = []
         for i, score in enumerate(mattnet_score):
             pool_ind = det_to_pool[i]
             self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
             self.object_pool[pool_ind]["ground_scores_history"].append(score)
 
-            # posterior prob
-            cand_posterior.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
+            # likelihood
+            cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
+            cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
 
             # prior prob
-            p_prior = 0
+            p_pos_prior = 0
+            p_neg_prior = 0
             cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
-            for class_str in cls_filter:
-                p_prior += cls_scores[CLASSES_TO_IND[class_str]]
-            cand_prior.append(p_prior)
+            for cls in CLASSES:
+                if cls in cls_filter:
+                    p_pos_prior += cls_scores[CLASSES_TO_IND[cls]]
+                else:
+                    p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
+            cand_pos_prior.append(p_pos_prior)
+            cand_neg_prior.append(p_neg_prior)
 
-        p_cand = (np.array(cand_prior) * np.array(cand_posterior)).tolist()
+        p_cand_pos = (np.array(cand_pos_prior) * np.array(cand_pos_llh)).tolist()
+        p_cand_neg = (np.array(cand_neg_prior) * np.array(cand_neg_llh)).tolist()
+
+        # normalize the distribution
+        p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
+
         ground_result = self._cal_target_prob_from_p_cand(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
         return ground_result
