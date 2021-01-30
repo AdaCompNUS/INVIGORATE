@@ -311,7 +311,7 @@ class Invigorate(object):
             return
         else:
             # mark object as being removed
-            # self.object_pool[bbox_id_to_pool_id[action % obj_num]]["removed"] = True
+            self.object_pool[bbox_id_to_pool_id[action % obj_num]]["removed"] = True
             return
 
     def get_action_type(self, action, num_obj=None):
