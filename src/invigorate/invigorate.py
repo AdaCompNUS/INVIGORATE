@@ -679,8 +679,8 @@ class Invigorate(object):
             cand_pos_prior.append(p_pos_prior)
             cand_neg_prior.append(p_neg_prior)
 
-        p_cand_pos = (np.array(cand_pos_prior) * np.array(cand_pos_llh)).tolist()
-        p_cand_neg = (np.array(cand_neg_prior) * np.array(cand_neg_llh)).tolist()
+        p_cand_pos = np.array(cand_pos_prior) * np.array(cand_pos_llh)
+        p_cand_neg = np.array(cand_neg_prior) * np.array(cand_neg_llh)
 
         # normalize the distribution
         p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
