@@ -245,7 +245,7 @@ class Invigorate(object):
         bbox_id_to_pool_id = {v:k for k,v in obj_inds.items()}
         self.step_infos["bboxes"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["bbox"].tolist() for i in range(obj_num)])
         self.step_infos["classes"] = \
-            np.asarray([np.argmax(np.array(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"]).mean(axis=0))
+            np.asarray([np.argmax(np.array(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"]).mean(axis=0)[1:]) + 1
                         for i in range(obj_num)]).reshape(-1, 1)
         self.step_infos["grasps"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["grasp"].tolist() for i in range(obj_num)])
         self.belief['target_prob'] = target_prob
