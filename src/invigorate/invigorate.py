@@ -756,7 +756,7 @@ class Invigorate(object):
             # not affect the relationships among other nodes
             v_column[0] = 0
             v_column[1] = 1. / 3.
-            v_column[2] = 2. / 3. # incorporate the prob of having parent into the prob of not having relationship
+            v_column[2] = 2. / 3. # add the prob of "parent" onto the prob of "no rel"
             v_column[1, removed] = 0.
             v_column[2, removed] = 1.
             rel_prob_mat = torch.cat(
