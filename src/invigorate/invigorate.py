@@ -131,7 +131,7 @@ class Invigorate(object):
         print('--------------------------------------------------------')
         logger.info('Perceive_img: _object_detection finished')
         # double check the rois in our object pool
-        rois = [o["bbox"][None, :] for o in self.object_pool]
+        rois = [o["bbox"][None, :] for o in self.object_pool if not o["removed"]]
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
