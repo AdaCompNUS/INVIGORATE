@@ -201,30 +201,16 @@ class Invigorate(object):
         obj_inds, obj_num = self._get_valid_obj_candidates(renew=True)
 
         # Estimate rel_prob_mat and target_prob according to multi-step observations
+        logger.info('Step 1: raw grounding completed')
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
-        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict)
+        target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict, expr)
+        logger.info('Step 2: candidate prior probability from object detector incorporated.')
+        logger.debug('target_prob : {}'.format(target_prob))
+        logger.info('after multistep, the results:')
         logger.info('after multistep, target_prob: {}'.format(target_prob))
         logger.info('after multistep, rel_score_mat: {}'.format(rel_prob_mat))
-
-        logger.info('Step 1: raw grounding completed')
-        # grounding result postprocess.
-        # 1. filter scores belonging to unrelated objects
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
-        for pool_ind in obj_inds.keys():
-            box_score = 0
-            for class_str in cls_filter:
-                box_score += self.object_pool[pool_ind]["cls_scores"][CLASSES_TO_IND[class_str]]
-            if box_score < 0.02:
-                target_prob[obj_inds[pool_ind]] = 0.
-        # TODO. This means candidate belief estimation has problem
-        # if after name filter, all prob sum to zero, the object is in background
-        if target_prob.sum() == 0.0:
-            target_prob[-1] = 1.0
-        target_prob /= target_prob.sum()
-        logger.info('Step 2: class name filter completed')
-        logger.debug('target_prob : {}'.format(target_prob))
 
         # 2. incorporate QA history TODO
         target_prob_backup = target_prob.copy()
@@ -658,14 +644,25 @@ class Invigorate(object):
             self.obj_num = len(self.obj_inds)
         return self.obj_inds, self.obj_num
 
-    def _multi_step_grounding(self, mattnet_score, ind_match_dict):
+    def _multi_step_grounding(self, mattnet_score, ind_match_dict, expr):
         # num_box = len(mattnet_score)
         for i, score in enumerate(mattnet_score):
             obj_ind = ind_match_dict[i]
             self.object_pool[obj_ind]["cand_belief"].update(score, self.obj_kdes)
             self.object_pool[obj_ind]["ground_scores_history"].append(score)
-        pcand = [obj["cand_belief"].belief[1] for obj in self.object_pool if not obj['removed']]
-        ground_result = self._cal_target_prob_from_p_cand(pcand)
+        cand_posterior = [obj["cand_belief"].belief[1] for obj in self.object_pool if not obj['removed']]
+        # incorporate prior from the object detector
+        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        cand_prior = []
+        for obj in self.object_pool:
+            if obj["removed"]:
+                continue
+            p_prior = 0
+            for class_str in cls_filter:
+                p_prior += obj["cls_scores"][CLASSES_TO_IND[class_str]]
+            cand_prior.append(p_prior)
+        p_cand = (np.array(cand_prior) * np.array(cand_posterior)).tolist()
+        ground_result = self._cal_target_prob_from_p_cand(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
         return ground_result
 
