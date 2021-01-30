@@ -100,6 +100,12 @@ class Invigorate(object):
                           "please update your python version and run 'pip install stanza'")
 
     def _merge_bboxes(self, bboxes, classes, scores, bboxes_his, classes_his, scores_his):
+        curr_to_his = self._bbox_match(bboxes, bboxes_his, scores, scores_his)
+        for i in range(bboxes_his.shape[0]):
+            if i not in curr_to_his.values():
+                bboxes = np.concatenate([bboxes, bboxes_his[i][None, :]], axis=0)
+                classes = np.concatenate([classes, classes_his[i][None, :]], axis=0)
+                scores = np.concatenate([scores, scores_his[i][None, :]], axis=0)
         return bboxes, classes, scores
 
     def perceive_img(self, img, expr):
