@@ -201,16 +201,25 @@ class Invigorate(object):
         obj_inds, obj_num = self._get_valid_obj_candidates(renew=True)
 
         # Estimate rel_prob_mat and target_prob according to multi-step observations
+        logger.info('--------------------------------------------------------')
         logger.info('Step 1: raw grounding completed')
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
+        logger.info('--------------------------------------------------------')
+        
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict, expr)
-        logger.info('Step 2: candidate prior probability from object detector incorporated.')
+
+        logger.info('--------------------------------------------------------')
+        logger.info('Step 2: candidate prior probability from object detector incorporated')
         logger.debug('target_prob : {}'.format(target_prob))
-        logger.info('after multistep, the results:')
+        logger.info('--------------------------------------------------------')
+
+        logger.info('--------------------------------------------------------')
+        logger.info('After multistep, the results:')
         logger.info('after multistep, target_prob: {}'.format(target_prob))
         logger.info('after multistep, rel_score_mat: {}'.format(rel_prob_mat))
+        logger.info('--------------------------------------------------------')
 
         # 2. incorporate QA history TODO
         target_prob_backup = target_prob.copy()
