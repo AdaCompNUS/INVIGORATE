@@ -127,7 +127,6 @@ class Invigorate(object):
         '''
 
         tb = time.time()
-
         # object detection
         bboxes, classes, scores = self._object_detection(img)
         if bboxes is None:
@@ -627,9 +626,6 @@ class Invigorate(object):
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"].append(scores[k].tolist())
-        for i in range(len(self.object_pool)):
-            if i not in det_to_pool.values():
-                self.object_pool[i]["removed"] = True
         # initialize newly detected bboxes
         for i in not_matched:
             new_box = self._init_object(bboxes[i], scores[i])
