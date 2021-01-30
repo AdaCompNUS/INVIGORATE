@@ -128,6 +128,7 @@ class Invigorate(object):
         if bboxes is None:
             logger.warning("WARNING: nothing is detected")
             return None
+        print('--------------------------------------------------------')
         logger.info('Perceive_img: _object_detection finished')
         # double check the rois in our object pool
         rois = [o["bbox"][None, :] for o in self.object_pool]
@@ -171,6 +172,7 @@ class Invigorate(object):
 
         num_box = bboxes.shape[0]
         logger.info('Perceive_img: post process of object and mrt detection finished')
+        print('--------------------------------------------------------')
 
         # combine into a dictionary
         observations = {}
@@ -201,25 +203,25 @@ class Invigorate(object):
         obj_inds, obj_num = self._get_valid_obj_candidates(renew=True)
 
         # Estimate rel_prob_mat and target_prob according to multi-step observations
-        logger.info('--------------------------------------------------------')
+        print('--------------------------------------------------------')
         logger.info('Step 1: raw grounding completed')
         logger.debug("grounding_scores: {}".format(grounding_scores))
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
-        logger.info('--------------------------------------------------------')
-        
+        print('--------------------------------------------------------')
+
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, ind_match_dict)
         target_prob = self._multi_step_grounding(grounding_scores, ind_match_dict, expr)
 
-        logger.info('--------------------------------------------------------')
+        print('--------------------------------------------------------')
         logger.info('Step 2: candidate prior probability from object detector incorporated')
         logger.debug('target_prob : {}'.format(target_prob))
-        logger.info('--------------------------------------------------------')
+        print('--------------------------------------------------------')
 
-        logger.info('--------------------------------------------------------')
+        print('--------------------------------------------------------')
         logger.info('After multistep, the results:')
         logger.info('after multistep, target_prob: {}'.format(target_prob))
         logger.info('after multistep, rel_score_mat: {}'.format(rel_prob_mat))
-        logger.info('--------------------------------------------------------')
+        print('--------------------------------------------------------')
 
         # 2. incorporate QA history TODO
         target_prob_backup = target_prob.copy()
@@ -243,8 +245,10 @@ class Invigorate(object):
         for k, v in ind_match_dict.items():
             self.object_pool[v]["target_prob"] = target_prob[k]
 
+        print('--------------------------------------------------------')
         logger.info('Step 3: incorporate QA history completed')
         logger.info('target_prob: {}'.format(target_prob))
+        print('--------------------------------------------------------')
 
         bbox_id_to_pool_id = {v:k for k,v in obj_inds.items()}
         self.step_infos["bboxes"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["bbox"].tolist() for i in range(obj_num)])
@@ -264,6 +268,7 @@ class Invigorate(object):
         action_type, _ = self.get_action_type(action)
         assert action_type == "Q1"
 
+        print('--------------------------------------------------------')
         logger.info("Invigorate: handling answer for Q1")
         target_idx = action - 2 * num_box
         if ans in {"yes", "yeah", "yep", "sure"}:
@@ -280,6 +285,8 @@ class Invigorate(object):
             self.object_pool[bbox_id_to_pool_id[target_idx]]["is_target"] = 0
 
         logger.info("estimate_state_with_user_answer completed")
+        print('--------------------------------------------------------')
+
         self.belief["target_prob"] = target_prob
 
     def plan_action(self):
@@ -481,7 +488,7 @@ class Invigorate(object):
         return torch.argmax(q_vec).item(), grasp_macros
 
     def decision_making_pomdp(self):
-
+        print('--------------------------------------------------------')
         target_prob = self.belief['target_prob']
         num_box = target_prob.shape[0] - 1
         rel_prob = self.belief['rel_prob']
@@ -508,7 +515,7 @@ class Invigorate(object):
 
         else:
             action = a_macro - 1 + 2 * num_box
-
+        print('--------------------------------------------------------')
         return action
 
     def _init_kde(self):
