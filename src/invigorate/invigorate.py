@@ -49,6 +49,7 @@ from libraries.ros_clients.mattnet_client import MAttNetClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 from collections import OrderedDict
+import nltk
 
 try:
     import stanza
@@ -652,8 +653,21 @@ class Invigorate(object):
             self.obj_num = len(self.pool_to_det)
         return self.pool_to_det, self.det_to_pool, self.obj_num
 
+    def _initialize_cls_filter(self, expr):
+        subj_str = ''.join(self._find_subject(expr))
+        cls_filter = []
+        for cls in CLASSES:
+            if cls in subj_str:
+                cls_filter.append(cls)
+        assert len(cls_filter) <= 1
+        return cls_filter
+
     def _multi_step_grounding(self, mattnet_score, det_to_pool, expr):
-        cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
+        cls_filter = self._initialize_cls_filter(expr)
+        disable_cls_filter= False
+        if len(cls_filter) == 0:
+            # no filter is available
+            disable_cls_filter = True
         cand_neg_prior = []
         cand_neg_llh = []
         cand_pos_prior = []
@@ -667,17 +681,20 @@ class Invigorate(object):
             cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
             cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
 
-            # prior prob
-            p_pos_prior = 0
-            p_neg_prior = 0
-            cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
-            for cls in CLASSES:
-                if cls in cls_filter:
-                    p_pos_prior += cls_scores[CLASSES_TO_IND[cls]]
-                else:
-                    p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
-            cand_pos_prior.append(p_pos_prior)
-            cand_neg_prior.append(p_neg_prior)
+            if not disable_cls_filter:
+                # prior prob
+                p_pos_prior = 0
+                p_neg_prior = 0
+                cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
+                for cls in CLASSES:
+                    if cls in cls_filter:
+                        p_pos_prior += cls_scores[CLASSES_TO_IND[cls]]
+                    else:
+                        p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
+                cand_pos_prior.append(p_pos_prior)
+                cand_neg_prior.append(p_neg_prior)
+            else:
+                cand_pos_llh = cand_neg_llh = 1.
 
         p_cand_pos = np.array(cand_pos_prior) * np.array(cand_pos_llh)
         p_cand_neg = np.array(cand_neg_prior) * np.array(cand_neg_llh)
@@ -911,6 +928,48 @@ class Invigorate(object):
         cls = cls[keep]
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
+
+    def _process_user_command(self, command, nlp_server="nltk"):
+        if nlp_server == "nltk":
+            text = nltk.word_tokenize(command)
+            pos_tags = nltk.pos_tag(text)
+        else:
+            doc = self.stanford_nlp_server(command)
+            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+
+        particle_ind = -1
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"RP"}:
+                particle_ind = i
+
+        ind = max(verb_ind, particle_ind)
+        clue_tokens = [token for (token, _) in pos_tags[ind + 1:]]
+        clue = ' '.join(clue_tokens)
+        logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
+
+        return clue
+
+    def _find_subject(self, expr, nlp_server="nltk"):
+        if nlp_server == "nltk":
+            text = nltk.word_tokenize(expr)
+            pos_tags = nltk.pos_tag(text)
+        else:
+            doc = self.stanford_nlp_server(expr)
+            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+
+        subj_tokens = []
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"NN"}:
+                subj_tokens.append(token)
+                for j in range(i + 1, len(pos_tags)):
+                    token, postag = pos_tags[j]
+                    if postag in {"NN"}:
+                        subj_tokens.append(token)
+                    else:
+                        break
+                return subj_tokens
+
+        return subj_tokens
 
     def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):
         # match bboxes between two steps.
