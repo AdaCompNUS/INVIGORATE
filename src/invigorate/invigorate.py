@@ -135,6 +135,10 @@ class Invigorate(object):
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
+            keep_mask = (classes_his > 0).reshape(-1)
+            bboxes_his = bboxes_his[keep_mask]
+            classes_his = classes_his[keep_mask]
+            scores_his = scores_his[keep_mask]
             bboxes, classes, scores = self._merge_bboxes(bboxes, classes, scores, bboxes_his, classes_his, scores_his)
 
         im1 = img.copy()

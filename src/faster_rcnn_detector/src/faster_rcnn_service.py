@@ -71,6 +71,7 @@ class FasterRCNNService(object):
             rois = np.array(rois).reshape(-1, 4)
             data_batch = prepare_data_batch_from_cvimage(img, rois=rois, is_cuda=True)
             dets = self.fasterRCNN_forward_process(img, data_batch, save_res=True, refine_box=False)
+
         obj_box = dets[0]
         print(obj_box.shape)
         obj_cls = dets[1]
@@ -98,14 +99,21 @@ class FasterRCNNService(object):
         rois = result[0][0][:,1:5].data
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data
+        if refine_box:
+            obj_boxes, obj_cls_scores = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
+                class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True, refine_box=refine_box)
+            obj_classes = obj_boxes[:, -1]
+            obj_boxes = obj_boxes[:, :-1]
+        else:
+            rois[:, 0::2] /= data_batch[1][0][3]
+            rois[:, 1::2] /= data_batch[1][0][2]
+            obj_boxes = rois.cpu().numpy()
+            obj_cls_scores = cls_prob.cpu().numpy()
+            obj_classes = np.argmax(obj_cls_scores, axis=-1)
 
-        obj_boxes, obj_cls_scores = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
-            class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True, refine_box=refine_box)
         if save_res:
             np.save(ROOT_DIR + "/images/output/" + id + "_bbox.npy", obj_boxes)
 
-        obj_classes = obj_boxes[:, -1]
-        obj_boxes = obj_boxes[:, :-1]
         num_box = obj_boxes.shape[0]
         obj_cls_name = []
         for cls in obj_classes:
