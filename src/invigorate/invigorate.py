@@ -102,7 +102,7 @@ class Invigorate(object):
 
     def _merge_bboxes(self, bboxes, classes, scores, bboxes_his, classes_his, scores_his):
         curr_to_his = self._bbox_match(bboxes, bboxes_his, scores, scores_his)
-        his_to_curr = {v: k for v, k in curr_to_his.items()}
+        his_to_curr = {v: k for k, v in curr_to_his.items()}
         for i in range(bboxes_his.shape[0]):
             if i not in curr_to_his.values():
                 bboxes = np.concatenate([bboxes, bboxes_his[i][None, :]], axis=0)
