@@ -699,6 +699,8 @@ class Invigorate(object):
         # initialize rel_prob_mat
         for i in obj_inds.keys():
             for j in obj_inds.keys():
+                if i >= j:
+                    continue
                 rel_prob_mat[:, obj_inds[i], obj_inds[j]] = self.rel_pool[(i, j)]["rel_belief"].belief
                 rel_prob_mat[:, obj_inds[j], obj_inds[i]] = [self.rel_pool[(i, j)]["rel_belief"].belief[1],
                                                              self.rel_pool[(i, j)]["rel_belief"].belief[0],
