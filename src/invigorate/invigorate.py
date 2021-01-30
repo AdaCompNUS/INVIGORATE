@@ -617,9 +617,12 @@ class Invigorate(object):
             self.object_pool[v]["grasps"] = grasps[k]
 
     def _bbox_post_process(self, bboxes, scores):
+        not_removed = [i for i, o in enumerate(self.object_pool) if not o["removed"]]
+        no_rmv_to_pool = OrderedDict(zip(range(len(not_removed)), not_removed))
         prev_boxes = np.array([b["bbox"] for b in self.object_pool if not b["removed"]])
         prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool if not b["removed"]])
-        det_to_pool = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
+        det_to_no_rmv = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
+        det_to_pool = {i: no_rmv_to_pool[v] for i, v in det_to_no_rmv.items()}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         # updating the information of matched bboxes
