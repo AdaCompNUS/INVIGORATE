@@ -305,7 +305,8 @@ class Invigorate(object):
             return
         else:
             # mark object as being removed
-            self.object_pool[bbox_id_to_pool_id[action % obj_num]]["removed"] = True
+            # self.object_pool[bbox_id_to_pool_id[action % obj_num]]["removed"] = True
+            return
 
     def get_action_type(self, action, num_obj=None):
         '''
@@ -631,8 +632,8 @@ class Invigorate(object):
 
         for i in range(len(self.object_pool)):
             if i not in pool_to_det.keys():
-                self.object_pool[i]["num_det_failures"] += 1
-            if self.object_pool[i]["num_det_failures"] >= 2:
+            #     self.object_pool[i]["num_det_failures"] += 1
+            # if self.object_pool[i]["num_det_failures"] >= 2:
                 self.object_pool[i]["removed"] = True
 
         # initialize newly detected bboxes
