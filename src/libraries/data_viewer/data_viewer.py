@@ -176,7 +176,7 @@ class DataViewer(object):
             im = self.draw_single_grasp(im, dets[i], str(g_inds[i]) if g_inds is not None else None)
         return im
 
-    def draw_objdet(self, im, dets, o_inds = None):
+    def draw_objdet(self, im, dets, o_inds = None, scores = None):
         """
         :param im: original image
         :param dets: detections. size N x 5 with 4-d bbox and 1-d class
@@ -192,6 +192,8 @@ class DataViewer(object):
 
         for i in range(num_box):
             cls = self.ind_to_class[dets[i, -1]]
+            if scores is not None:
+                cls = "{}:{:.2f}".format(cls, scores[i])
             if o_inds is None:
                 im = self.draw_single_bbox(im, dets[i][:4], self.color_dict[cls], cls)
             else:

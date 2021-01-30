@@ -37,7 +37,8 @@ from sklearn.cluster import KMeans
 from scipy import optimize
 import nltk
 import logging
-
+import matplotlib.pyplot as plt
+from libraries.data_viewer.data_viewer import DataViewer
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from invigorate_msgs.srv import ObjectDetection, VmrDetection, VLBert
 # from libraries.ros_clients.detectron2_client import Detectron2Client
@@ -90,11 +91,16 @@ class Invigorate(object):
         self.step_infos = {}
         self.clue = None
         self.q2_num_asked = 0
+
+        self.data_viewer = DataViewer(CLASSES)
         try:
             self.stanford_nlp_server = stanza.Pipeline("en")
         except:
             warnings.warn("stanza needs python 3.6 or higher. "
                           "please update your python version and run 'pip install stanza'")
+
+    def _merge_bboxes(self, bboxes, classes, scores, bboxes_his, classes_his, scores_his):
+        return bboxes, classes, scores
 
     def perceive_img(self, img, expr):
         '''
@@ -117,6 +123,25 @@ class Invigorate(object):
             logger.warning("WARNING: nothing is detected")
             return None
         logger.info('Perceive_img: _object_detection finished')
+        # double check the rois in our object pool
+        rois = [o["bbox"][None, :] for o in self.object_pool]
+        if len(rois) > 0:
+            rois = np.concatenate(rois, axis=0)
+            bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
+            bboxes, classes, scores = self._merge_bboxes(bboxes, classes, scores, bboxes_his, classes_his, scores_his)
+
+        im1 = img.copy()
+        im1 = self.data_viewer.draw_objdet(im1, np.concatenate([bboxes, classes], axis=1))
+        plt.axis('off')
+        plt.imshow(im1)
+        plt.show()
+
+        if len(rois) > 0:
+            im2 = img.copy()
+            im2 = self.data_viewer.draw_objdet(im2, np.concatenate([bboxes_his, classes_his], axis=1))
+            plt.axis('off')
+            plt.imshow(im2)
+            plt.show()
 
         # relationship
         rel_mat, rel_score_mat = self._rel_det_client.detect_obr(img, bboxes)
@@ -137,6 +162,7 @@ class Invigorate(object):
         # object and relationship detection post process
         rel_mat, rel_score_mat = self.rel_score_process(rel_score_mat)
         ind_match_dict, not_matched = self._bbox_post_process(bboxes, scores, rel_score_mat, grasps)
+
         num_box = bboxes.shape[0]
         logger.info('Perceive_img: post process of object and mrt detection finished')
 
@@ -540,9 +566,10 @@ class Invigorate(object):
         new_rel["rel_belief"] = relation_belief()
         return new_rel
 
-    def _faster_rcnn_client(self, img):
+    def _faster_rcnn_client(self, img, rois=None):
         img_msg = self._br.cv2_to_imgmsg(img)
-        res = self._obj_det(img_msg, False)
+        rois = [] if rois is None else rois.reshape(-1).tolist()
+        res = self._obj_det(img_msg, False, rois)
         return res.num_box, res.bbox, res.cls, res.cls_scores
 
     def _grasp_client(self, img, bbox):
@@ -555,8 +582,8 @@ class Invigorate(object):
         res = self._tpn(img_msg, bbox, expr)
         return res.grounding_scores, res.rel_score_mat
 
-    def _object_detection(self, img):
-        obj_result = self._faster_rcnn_client(img)
+    def _object_detection(self, img, rois=None):
+        obj_result = self._faster_rcnn_client(img, rois)
         num_box = obj_result[0]
         if num_box == 0:
             return None, None, None
@@ -639,6 +666,7 @@ class Invigorate(object):
         # multi-step observations for relationship probability estimation
         box_inds = ind_match_dict.keys()
         # update the relation pool
+        rel_prob_mat = np.zeros(rel_score_mat.shape)
         for i in range(len(box_inds)):
             box_ind_i = box_inds[i]
             for j in range(i + 1, len(box_inds)):
@@ -648,23 +676,17 @@ class Invigorate(object):
                 if pool_ind_i < pool_ind_j:
                     rel_score = rel_score_mat[:, box_ind_i, box_ind_j]
                     self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
+                    rel_prob_mat[:, box_ind_j, box_ind_i] = [self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[1],
+                                                             self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[0],
+                                                             self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[2],]
                 else:
                     rel_score = rel_score_mat[:, box_ind_j, box_ind_i]
                     self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(rel_score, self.rel_kdes)
-
-        obj_inds, obj_num = self._get_valid_obj_candidates()
-        rel_prob_mat = np.zeros((3, obj_num, obj_num))
-        # initialize rel_prob_mat
-        for i in range(len(self.object_pool)):
-            if self.object_pool[i]["removed"]:
-                continue
-            for j in range(i + 1, len(self.object_pool)):
-                if self.object_pool[j]["removed"]:
-                    continue
-                rel_prob_mat[:, obj_inds[i], obj_inds[j]] = self.rel_pool[(i, j)]["rel_belief"].belief
-                rel_prob_mat[:, obj_inds[j], obj_inds[i]] = [self.rel_pool[(i, j)]["rel_belief"].belief[1],
-                                                             self.rel_pool[(i, j)]["rel_belief"].belief[0],
-                                                             self.rel_pool[(i, j)]["rel_belief"].belief[2],]
+                    rel_prob_mat[:, box_ind_j, box_ind_i] = self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = [self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[1],
+                                                             self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[0],
+                                                             self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[2], ]
 
         return rel_prob_mat
 

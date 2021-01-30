@@ -6,23 +6,28 @@ import json
 import cv2
 from cv_bridge import CvBridge
 import sys
-sys.path.append("..")
+sys.path.append("../vmrn")
 import os.path as osp
 
 cur_dir = osp.dirname(osp.abspath(__file__))
 VMRN_ROOT_DIR = osp.join(cur_dir, '../vmrn')
 ROOT_DIR = osp.join(cur_dir, '../..')
 
-import vmrn._init_path
-from vmrn.model.FasterRCNN import fasterRCNN
-from vmrn.model.utils.config import read_cfgs, cfg
-from vmrn.model.utils.blob import prepare_data_batch_from_cvimage
-from vmrn.model.utils.net_utils import rel_prob_to_mat, find_all_paths, create_mrt, objdet_inference
-from vmrn.roi_data_layer.roidb import combined_roidb
-from vmrn.model.utils.data_viewer import dataViewer
-from vmrn.model.rpn.bbox_transform import bbox_xy_to_xywh
-
+import pdb
+import _init_path
+import model
+print("model path: {}".format(model.__file__))
+from model.FasterRCNN import fasterRCNN
+from model.utils.config import read_cfgs, cfg
+from model.utils.blob import prepare_data_batch_from_cvimage
+from model.utils.net_utils import rel_prob_to_mat, find_all_paths, create_mrt, objdet_inference
+from roi_data_layer.roidb import combined_roidb
+from model.utils.data_viewer import dataViewer
+from model.rpn.bbox_transform import bbox_xy_to_xywh
 from invigorate_msgs.srv import ObjectDetection, ObjectDetectionResponse
+
+# check the python paths
+for p in sys.path: print(p)
 
 class FasterRCNNService(object):
     def __init__(self, args, model_path):
@@ -48,14 +53,22 @@ class FasterRCNNService(object):
         # init data viewer
         self.data_viewer = dataViewer(self.classes)
         s = rospy.Service('faster_rcnn_server', ObjectDetection, self.det_serv_callback)
+
         print("Ready to detect object.")
 
     def det_serv_callback(self, req):
+
         img_msg = req.img
+        rois = req.rois
 
         # detect objects
         img = self.br.imgmsg_to_cv2(img_msg)
-        data_batch = prepare_data_batch_from_cvimage(img, is_cuda = True)
+        if len(rois) == 0:
+            # no rois
+            data_batch = prepare_data_batch_from_cvimage(img, is_cuda = True)
+        else:
+            rois = np.array(rois).reshape(-1, 4)
+            data_batch = prepare_data_batch_from_cvimage(img, rois=rois, is_cuda=True)
         dets = self.fasterRCNN_forward_process(img, data_batch, save_res=True)
         obj_box = dets[0]
         print(obj_box.shape)
@@ -84,6 +97,7 @@ class FasterRCNNService(object):
         rois = result[0][0][:,1:5].data
         cls_prob = result[1][0].data
         bbox_pred = result[2][0].data
+
         obj_boxes, obj_cls_scores = objdet_inference(cls_prob, bbox_pred, data_batch[1][0], rois,
             class_agnostic=False, for_vis=True, recover_imscale=True, with_cls_score=True)
         if save_res:
