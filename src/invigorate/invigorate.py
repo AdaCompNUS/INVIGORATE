@@ -48,6 +48,7 @@ from libraries.ros_clients.vilbert_client import VilbertClient
 from libraries.ros_clients.mattnet_client import MAttNetClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
+from collections import OrderedDict
 
 try:
     import stanza
@@ -101,11 +102,15 @@ class Invigorate(object):
 
     def _merge_bboxes(self, bboxes, classes, scores, bboxes_his, classes_his, scores_his):
         curr_to_his = self._bbox_match(bboxes, bboxes_his, scores, scores_his)
+        his_to_curr = {v: k for v, k in curr_to_his.items()}
         for i in range(bboxes_his.shape[0]):
             if i not in curr_to_his.values():
                 bboxes = np.concatenate([bboxes, bboxes_his[i][None, :]], axis=0)
                 classes = np.concatenate([classes, classes_his[i][None, :]], axis=0)
                 scores = np.concatenate([scores, scores_his[i][None, :]], axis=0)
+            else:
+                scores[his_to_curr[i]] = (scores[his_to_curr[i]] + scores_his[i]) / 2
+                classes[his_to_curr[i]] = scores[his_to_curr[i]][1:].argmax() + 1
         return bboxes, classes, scores
 
     def perceive_img(self, img, expr):
@@ -135,24 +140,7 @@ class Invigorate(object):
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
-            keep_mask = (classes_his > 0).reshape(-1)
-            bboxes_his = bboxes_his[keep_mask]
-            classes_his = classes_his[keep_mask]
-            scores_his = scores_his[keep_mask]
             bboxes, classes, scores = self._merge_bboxes(bboxes, classes, scores, bboxes_his, classes_his, scores_his)
-
-        im1 = img.copy()
-        im1 = self.data_viewer.draw_objdet(im1, np.concatenate([bboxes, classes], axis=1))
-        plt.axis('off')
-        plt.imshow(im1)
-        plt.show()
-
-        if len(rois) > 0:
-            im2 = img.copy()
-            im2 = self.data_viewer.draw_objdet(im2, np.concatenate([bboxes_his, classes_his], axis=1))
-            plt.axis('off')
-            plt.imshow(im2)
-            plt.show()
 
         # relationship
         rel_mat, rel_score_mat = self._rel_det_client.detect_obr(img, bboxes)
@@ -256,7 +244,9 @@ class Invigorate(object):
 
         bbox_id_to_pool_id = {v:k for k,v in obj_inds.items()}
         self.step_infos["bboxes"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["bbox"].tolist() for i in range(obj_num)])
-        self.step_infos["classes"] = np.asarray([np.argmax(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"]) for i in range(obj_num)]).reshape(-1, 1)
+        self.step_infos["classes"] = \
+            np.asarray([np.argmax(np.array(self.object_pool[bbox_id_to_pool_id[i]]["cls_scores"]).mean(axis=0))
+                        for i in range(obj_num)]).reshape(-1, 1)
         self.step_infos["grasps"] = np.asarray([self.object_pool[bbox_id_to_pool_id[i]]["grasp"].tolist() for i in range(obj_num)])
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
@@ -556,7 +546,7 @@ class Invigorate(object):
     def _init_object(self, bbox, score, grasp):
         new_box = {}
         new_box["bbox"] = bbox
-        new_box["cls_scores"] = score
+        new_box["cls_scores"] = [score.tolist()]
         new_box["cand_belief"] = object_belief()
         new_box["target_prob"] = 0.
         new_box["ground_scores_history"] = []
@@ -624,16 +614,15 @@ class Invigorate(object):
         return rel_mat, rel_score_mat
 
     def _bbox_post_process(self, bboxes, scores, rel_scores, grasps):
-        prev_boxes = np.array([b["bbox"] for b in self.object_pool])
-        prev_scores = np.array([b["cls_scores"] for b in self.object_pool])
+        prev_boxes = np.array([b["bbox"] for b in self.object_pool if not b["removed"]])
+        prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool if not b["removed"]])
         det_to_pool = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
-        det_to_pool = {k: v for k, v in det_to_pool.items() if self.object_pool[v]["removed"] == False}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
-            self.object_pool[v]["cls_scores"] = scores[k]
+            self.object_pool[v]["cls_scores"].append(scores[k].tolist())
             self.object_pool[v]["grasps"] = grasps[k]
 
         for i in range(len(self.object_pool)):
@@ -659,27 +648,29 @@ class Invigorate(object):
 
     def _get_valid_obj_candidates(self, renew=False):
         if renew:
-            obj_inds = [i for i, obj in enumerate(self.object_pool) if not obj["removed"]]
-            self.obj_inds = dict(zip(obj_inds, list(range(len(obj_inds)))))
+            obj_inds = [i for i, obj in enumerate(self.object_pool)
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[0] < 0.5]
+            self.obj_inds = OrderedDict(zip(obj_inds, list(range(len(obj_inds)))))
             self.obj_num = len(self.obj_inds)
         return self.obj_inds, self.obj_num
 
     def _multi_step_grounding(self, mattnet_score, ind_match_dict, expr):
         # num_box = len(mattnet_score)
         for i, score in enumerate(mattnet_score):
-            obj_ind = ind_match_dict[i]
-            self.object_pool[obj_ind]["cand_belief"].update(score, self.obj_kdes)
-            self.object_pool[obj_ind]["ground_scores_history"].append(score)
-        cand_posterior = [obj["cand_belief"].belief[1] for obj in self.object_pool if not obj['removed']]
+            pool_ind = ind_match_dict[i]
+            self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
+            self.object_pool[pool_ind]["ground_scores_history"].append(score)
+        obj_inds, obj_nums = self._get_valid_obj_candidates()
+        cand_posterior = [self.object_pool[i]["cand_belief"].belief[1] for i in obj_inds.keys()]
         # incorporate prior from the object detector
         cls_filter = [cls for cls in CLASSES if cls in expr or expr in cls]
         cand_prior = []
-        for obj in self.object_pool:
-            if obj["removed"]:
-                continue
+        for i in obj_inds.keys():
+            obj = self.object_pool[i]
             p_prior = 0
             for class_str in cls_filter:
-                p_prior += obj["cls_scores"][CLASSES_TO_IND[class_str]]
+                obj_scores = np.array(obj["cls_scores"]).mean(axis=0)
+                p_prior += obj_scores[CLASSES_TO_IND[class_str]]
             cand_prior.append(p_prior)
         p_cand = (np.array(cand_prior) * np.array(cand_posterior)).tolist()
         ground_result = self._cal_target_prob_from_p_cand(p_cand)
@@ -690,7 +681,6 @@ class Invigorate(object):
         # multi-step observations for relationship probability estimation
         box_inds = ind_match_dict.keys()
         # update the relation pool
-        rel_prob_mat = np.zeros(rel_score_mat.shape)
         for i in range(len(box_inds)):
             box_ind_i = box_inds[i]
             for j in range(i + 1, len(box_inds)):
@@ -700,17 +690,19 @@ class Invigorate(object):
                 if pool_ind_i < pool_ind_j:
                     rel_score = rel_score_mat[:, box_ind_i, box_ind_j]
                     self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
-                    rel_prob_mat[:, box_ind_j, box_ind_i] = [self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[1],
-                                                             self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[0],
-                                                             self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[2],]
                 else:
                     rel_score = rel_score_mat[:, box_ind_j, box_ind_i]
                     self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_j, box_ind_i] = self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
-                    rel_prob_mat[:, box_ind_i, box_ind_j] = [self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[1],
-                                                             self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[0],
-                                                             self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[2], ]
+
+        obj_inds, obj_num = self._get_valid_obj_candidates()
+        rel_prob_mat = np.zeros((3, obj_num, obj_num))
+        # initialize rel_prob_mat
+        for i in obj_inds.keys():
+            for j in obj_inds.keys():
+                rel_prob_mat[:, obj_inds[i], obj_inds[j]] = self.rel_pool[(i, j)]["rel_belief"].belief
+                rel_prob_mat[:, obj_inds[j], obj_inds[i]] = [self.rel_pool[(i, j)]["rel_belief"].belief[1],
+                                                             self.rel_pool[(i, j)]["rel_belief"].belief[0],
+                                                             self.rel_pool[(i, j)]["rel_belief"].belief[2], ]
 
         return rel_prob_mat
 
