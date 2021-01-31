@@ -969,11 +969,11 @@ class Invigorate(object):
             # replace the pronoun in the answer with the subject given by the user
             for pronoun in PRONOUNS:
                 if pronoun in answer:
-                    answer.replace(pronoun, subject)
+                    answer = answer.replace(pronoun, subject)
 
-        answer.replace(",", " ") # delete all , in the answer
-        answer.replace(".", " ")  # delete all . in the answer
-        answer.replace("!", " ")  # delete all . in the answer
+        answer = answer.replace(",", " ")  # delete all , in the answer
+        answer = answer.replace(".", " ")  # delete all . in the answer
+        answer = answer.replace("!", " ")  # delete all . in the answer
         answer = ' '.join(answer.split()).strip().split(' ')
 
         response = None
