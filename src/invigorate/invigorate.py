@@ -130,7 +130,7 @@ class Invigorate(object):
         logger.info('multistep_object_detection: new object_detection finished')
 
         # double check the rois in our object pool
-        rois = [o["bbox"] for o in self.object_pool if not o["removed"]]
+        rois = [o["bbox"] for o in self.object_pool]
         logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
@@ -262,7 +262,7 @@ class Invigorate(object):
 
         if action_type == 'GRASP_AND_END' or action_type == 'GRASP_AND_CONTINUE':
             # mark object as being removed
-            self.object_pool[target_idx]["removed"] = True
+            self.object_pool.pop(target_idx)
         elif action_type == 'Q1':
             # asking question does not change state
             pass
@@ -808,10 +808,10 @@ class Invigorate(object):
         return bboxes, classes, scores
 
     def _bbox_post_process(self, bboxes, scores):
-        not_removed = [i for i, o in enumerate(self.object_pool) if not o["removed"]]
+        not_removed = [i for i, o in enumerate(self.object_pool)]
         no_rmv_to_pool = OrderedDict(zip(range(len(not_removed)), not_removed))
-        prev_boxes = np.array([b["bbox"] for b in self.object_pool if not b["removed"]])
-        prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool if not b["removed"]])
+        prev_boxes = np.array([b["bbox"] for b in self.object_pool])
+        prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool])
         det_to_no_rmv = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
         det_to_pool = {i: no_rmv_to_pool[v] for i, v in det_to_no_rmv.items()}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
