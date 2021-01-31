@@ -127,18 +127,43 @@ class Invigorate(object):
             logger.warning("WARNING: nothing is detected")
             return None
         print('--------------------------------------------------------')
-        logger.info('multistep_object_detection: new object_detection finished')
-
+        logger.info('Perceive_img: _object_detection finished, all current detections: ')
+        for i in range(bboxes.shape[0]):
+            sc = scores[i].max()
+            cls = CLASSES[int(classes[i].item())]
+            logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
         # double check the rois in our object pool
         rois = [o["bbox"] for o in self.object_pool]
         logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
+            logger.info('Perceive_img: _his_object_re-classification finished, all historic detections: ')
+            for i in range(bboxes_his.shape[0]):
+                sc = scores_his[i].max()
+                cls = CLASSES[int(classes_his[i].item())]
+                logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes_his[i]))
             bboxes, classes, scores = self._merge_bboxes(bboxes, classes, scores, bboxes_his, classes_his, scores_his)
+            logger.info('Perceive_img: detection merging finished, '
+                        'the final results that will be further merged into the object pool: ')
+            for i in range(bboxes.shape[0]):
+                sc = scores[i].max()
+                cls = CLASSES[int(classes[i].item())]
+                logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
         # Match bbox
         self._bbox_post_process(bboxes, scores)
+        logger.info('Perceive_img: Object pool updated, the remaining objects: ')
+        for i, obj in enumerate(self.object_pool):
+            if not obj["removed"]:
+                sc = np.array(obj["cls_scores"]).mean(axis=0).max()
+                cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
+                logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates(renew=True)
+        logger.info('Perceive_img: Object selected for latter process: {}'.format(pool_to_det.keys()))
+        bboxes = np.asarray([self.object_pool[v]["bbox"].tolist() for k, v in det_to_pool.items()])
+        classes = np.asarray([np.argmax(np.array(self.object_pool[v]["cls_scores"]).mean(axis=0)[1:]) + 1
+                              for k, v in det_to_pool.items()]).reshape(-1, 1)
 
         self.belief["num_obj"] = len(bboxes)
         self.belief["bboxes"] = bboxes
