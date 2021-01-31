@@ -127,11 +127,12 @@ class Invigorate(object):
             logger.warning("WARNING: nothing is detected")
             return None
         print('--------------------------------------------------------')
-        logger.info('Perceive_img: _object_detection finished, all current detections: ')
+        logger.info('multistep_object_detection: _object_detection finished, all current detections: ')
         for i in range(bboxes.shape[0]):
             sc = scores[i].max()
             cls = CLASSES[int(classes[i].item())]
             logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
+
         # double check the rois in our object pool
         rois = [o["bbox"] for o in self.object_pool]
         logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
@@ -143,31 +144,47 @@ class Invigorate(object):
                 sc = scores_his[i].max()
                 cls = CLASSES[int(classes_his[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes_his[i]))
+
             bboxes, classes, scores = self._merge_bboxes(bboxes, classes, scores, bboxes_his, classes_his, scores_his)
-            logger.info('Perceive_img: detection merging finished, '
+            logger.info('multistep_object_detection: detection merging finished, '
                         'the final results that will be further merged into the object pool: ')
             for i in range(bboxes.shape[0]):
                 sc = scores[i].max()
                 cls = CLASSES[int(classes[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
-        # Match bbox
+        # Match bbox and update cl;ass scores
         self._bbox_post_process(bboxes, scores)
-        logger.info('Perceive_img: Object pool updated, the remaining objects: ')
+        logger.info('multistep_object_detection, after post process, object pool:')
         for i, obj in enumerate(self.object_pool):
-            if not obj["removed"]:
-                sc = np.array(obj["cls_scores"]).mean(axis=0).max()
-                cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
-                logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
-        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates(renew=True)
-        logger.info('Perceive_img: Object selected for latter process: {}'.format(pool_to_det.keys()))
-        bboxes = np.asarray([self.object_pool[v]["bbox"].tolist() for k, v in det_to_pool.items()])
-        classes = np.asarray([np.argmax(np.array(self.object_pool[v]["cls_scores"]).mean(axis=0)[1:]) + 1
-                              for k, v in det_to_pool.items()]).reshape(-1, 1)
+            sc = np.array(obj["cls_scores"]).mean(axis=0).max()
+            cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
+            logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
+
+        # TODO test here
+        class_scores = np.asarray([np.array(object["cls_scores"]).mean(axis=0) for object in self.object_pool]) # N x 32
+        valid_obj_indexes = class_scores[:, 1:].max(axis=1) > 0.5
+        invalid_obj_indexes = class_scores[:, 1:].max(axis=1) < 0.5
+        new_object_pool = [obj for i, obj in enumerate(self.object_pool) if i in valid_obj_indexes] # put valid objects in front of object pool
+        new_object_pool += [obj for i, obj in enumerate(self.object_pool) if i in invalid_obj_indexes]
+        self.object_pool = new_object_pool
+        logger.info('Perceive_img: Object pool updated, the remaining objects: ')
+        for i in range(valid_obj_indexes):
+            obj = self.object_pool[i]
+            sc = np.array(obj["cls_scores"]).mean(axis=0).max()
+            cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
+            logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
+
+        bboxes = np.asarray([self.object_pool[i]["bbox"].tolist() for i in range(valid_obj_indexes)])
+        class_scores = np.asarray([np.array(self.object_pool[i]["cls_scores"]).mean(axis=0) for i in range(valid_obj_indexes)])
+        classes = np.argmax(class_scores, axis=1).reshape(-1, 1)
 
         self.belief["num_obj"] = len(bboxes)
         self.belief["bboxes"] = bboxes
         self.belief["classes"] = classes
+        logger.info("multistep_object_detection finished:")
+        logger.info("bboxes: {}".format(self.belief["bboxes"]))
+        logger.info("classes: {}".format(self.belief["classes"]))
 
     def multistep_grounding(self, img, expr):
         bboxes = self.belief["bboxes"]
@@ -837,10 +854,13 @@ class Invigorate(object):
         no_rmv_to_pool = OrderedDict(zip(range(len(not_removed)), not_removed))
         prev_boxes = np.array([b["bbox"] for b in self.object_pool])
         prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool])
+
+        # match bboxes
         det_to_no_rmv = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
         det_to_pool = {i: no_rmv_to_pool[v] for i, v in det_to_no_rmv.items()}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
+        logger.info('_bbox_post_process: Object selected for latter process: {}'.format(pool_to_det.keys()))
 
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
