@@ -15,6 +15,10 @@ date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
 LOG_DIR = osp.join(ROOT_DIR, "logs/{}".format(date_time))
 print(LOG_DIR)
 
+PAPER_FIGURE_ID=1
+MRT_FIGURE_ID=2
+DISPLAY_FIGURE_ID=3
+
 # Action definiiton
 Q2={
     "type1": "I have not found the target. Where is it?", # COMMON FORMAT

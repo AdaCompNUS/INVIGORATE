@@ -18,7 +18,7 @@ class paperFig(object):
         self.data = data
         self.size = size
 
-        self.fig = plt.figure(figsize=self.size, facecolor='white')
+        self.fig = plt.figure(PAPER_FIGURE_ID, figsize=self.size, facecolor='white')
 
     def color_transfer(self, color):
         assert len(color) == 3
@@ -184,6 +184,7 @@ def gen_paper_fig(expr, results):
                                     time.strftime("%H:%M:%S"))
 
     plt.savefig(LOG_DIR + "/" + image_id + ".png")
+    plt.clf()
 
 if __name__=="__main__":
     img = cv2.imread("../../images/1.png")

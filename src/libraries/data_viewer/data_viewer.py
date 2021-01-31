@@ -228,7 +228,7 @@ class DataViewer(object):
         # for e in mrt.edges():
         #     print(e)
 
-        fig = plt.figure(0, figsize=(5, 5))
+        fig = plt.figure(MRT_FIGURE_ID, figsize=(5, 5))
         pos = nx.circular_layout(mrt)
         nx.draw(mrt, pos, with_labels=True, font_size=16,
                 node_color='#FFF68F', node_shape='s', node_size=1500, labels={node:node for node in mrt.nodes()})
@@ -247,7 +247,7 @@ class DataViewer(object):
         else:
             img = rel_img
 
-        plt.close(0)
+        plt.close(MRT_FIGURE_ID)
         return img
 
     def draw_caption(self, im, dets, captions):
@@ -480,6 +480,7 @@ class DataViewer(object):
     def display_img(self, img, mode="matplotlib"):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if mode =="matplotlib":
+            plt.figure(DISPLAY_FIGURE_ID)
             plt.axis('off')
             plt.imshow(img)
             plt.show()

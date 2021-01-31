@@ -75,7 +75,7 @@ EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 # DISPLAY_DEBUG_IMG = "matplotlib"
 DISPLAY_DEBUG_IMG = 'matplotlib'
-GENERATE_CAPTIONS = True
+GENERATE_CAPTIONS = False
 DEBUG = True
 
 # ------- Statics -----------
@@ -265,6 +265,7 @@ def main():
             cv2.imwrite("outputs/grasp.png", im)
             if DISPLAY_DEBUG_IMG is not None:
                 if DISPLAY_DEBUG_IMG == "matplotlib":
+                    plt.figure(DISPLAY_FIGURE_ID)
                     plt.axis('off')
                     plt.imshow(im)
                     plt.show()
