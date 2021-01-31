@@ -165,14 +165,8 @@ def main():
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
 
-            # perception
-            observations = invigorate_client.perceive_img(img, expr)
-            if observations is None:
-                logger.warning("nothing is detected, abort!!!")
-                break
-
             # state_estimation
-            invigorate_client.estimate_state_with_observation(observations)
+            invigorate_client.estimate_state_with_img(img)
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
