@@ -93,6 +93,7 @@ class Invigorate(object):
         self.step_infos = {}
         self.clue = None
         self.q2_num_asked = 0
+        self.subject = ""
 
         self.data_viewer = DataViewer(CLASSES)
         try:
@@ -128,6 +129,9 @@ class Invigorate(object):
         '''
 
         tb = time.time()
+        # get the subject of the expression
+        self.subject = self._find_subject(expr)
+
         # object detection
         bboxes, classes, scores = self._object_detection(img)
         if bboxes is None:
@@ -229,7 +233,7 @@ class Invigorate(object):
         print('--------------------------------------------------------')
 
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, det_to_pool)
-        target_prob = self._multi_step_grounding(grounding_scores, det_to_pool, expr)
+        target_prob = self._multi_step_grounding(grounding_scores, det_to_pool)
 
         print('--------------------------------------------------------')
         logger.info('Step 2: candidate prior probability from object detector incorporated')
@@ -279,7 +283,7 @@ class Invigorate(object):
 
         target_prob = self.belief["target_prob"]
         num_box = target_prob.shape[0] - 1
-        ans = answer.lower()
+        response, ans = self._process_user_answer(answer)
         pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
         action_type, _ = self.get_action_type(action)
@@ -288,18 +292,21 @@ class Invigorate(object):
         print('--------------------------------------------------------')
         logger.info("Invigorate: handling answer for Q1")
         target_idx = action - 2 * num_box
-        if ans in {"yes", "yeah", "yep", "sure"}:
-            # set non-target
-            target_prob[:] = 0
-            for obj in self.object_pool:
-                obj["is_target"] = 0
-            # set target
-            target_prob[target_idx] = 1
-            self.object_pool[det_to_pool[target_idx]]["is_target"] = 1
-        elif ans in {"no", "nope", "nah"}:
-            target_prob[target_idx] = 0
-            target_prob /= np.sum(target_prob)
-            self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
+        if response is not None:
+            if response is True:
+                # set non-target
+                target_prob[:] = 0
+                for obj in self.object_pool:
+                    obj["is_target"] = 0
+                # set target
+                target_prob[target_idx] = 1
+                self.object_pool[det_to_pool[target_idx]]["is_target"] = 1
+            else:
+                target_prob[target_idx] = 0
+                target_prob /= np.sum(target_prob)
+                self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
+
+        # TODO: write re-grounding code here
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -675,8 +682,8 @@ class Invigorate(object):
             self.obj_num = len(self.pool_to_det)
         return self.pool_to_det, self.det_to_pool, self.obj_num
 
-    def _initialize_cls_filter(self, expr):
-        subj_str = ''.join(self._find_subject(expr))
+    def _initialize_cls_filter(self):
+        subj_str = ''.join(self.subject)
         cls_filter = []
         for cls in CLASSES:
             if cls in subj_str:
@@ -684,8 +691,8 @@ class Invigorate(object):
         assert len(cls_filter) <= 1
         return cls_filter
 
-    def _multi_step_grounding(self, mattnet_score, det_to_pool, expr):
-        cls_filter = self._initialize_cls_filter(expr)
+    def _multi_step_grounding(self, mattnet_score, det_to_pool):
+        cls_filter = self._initialize_cls_filter()
         disable_cls_filter= False
         if len(cls_filter) == 0:
             # no filter is available
@@ -716,7 +723,8 @@ class Invigorate(object):
                 cand_pos_prior.append(p_pos_prior)
                 cand_neg_prior.append(p_neg_prior)
             else:
-                cand_pos_llh = cand_neg_llh = 1.
+                cand_pos_prior.append(1.)
+                cand_neg_prior.append(1.)
 
         p_cand_pos = np.array(cand_pos_prior) * np.array(cand_pos_llh)
         p_cand_neg = np.array(cand_neg_prior) * np.array(cand_neg_llh)
@@ -951,25 +959,38 @@ class Invigorate(object):
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
 
-    def _process_user_command(self, command, nlp_server="nltk"):
-        if nlp_server == "nltk":
-            text = nltk.word_tokenize(command)
-            pos_tags = nltk.pos_tag(text)
-        else:
-            doc = self.stanford_nlp_server(command)
-            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+    def _process_user_answer(self, answer):
+        answer = answer.lower()
 
-        particle_ind = -1
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag in {"RP"}:
-                particle_ind = i
+        subject = self.subject
+        is_subject_informative = len(self._initialize_cls_filter()) > 0
+        if is_subject_informative:
+            subject = " ".join(subject)
+            # replace the pronoun in the answer with the subject given by the user
+            for pronoun in PRONOUNS:
+                if pronoun in answer:
+                    answer.replace(pronoun, subject)
 
-        ind = max(verb_ind, particle_ind)
-        clue_tokens = [token for (token, _) in pos_tags[ind + 1:]]
-        clue = ' '.join(clue_tokens)
-        logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
+        answer.replace(",", " ") # delete all , in the answer
+        answer.replace(".", " ")  # delete all . in the answer
+        answer.replace("!", " ")  # delete all . in the answer
+        answer = ' '.join(answer.split()).strip().split(' ')
 
-        return clue
+        response = None
+        for neg_ans in NEGATIVE_ANS:
+            if neg_ans in answer:
+                response = False
+                answer.remove(neg_ans)
+
+        for pos_ans in POSITIVE_ANS:
+            if pos_ans in answer:
+                assert response is None, "A positive answer should not appear with a negative answer"
+                response = True
+                answer.remove(pos_ans)
+
+        answer = ' '.join(answer)
+
+        return response, answer
 
     def _find_subject(self, expr, nlp_server="nltk"):
         if nlp_server == "nltk":

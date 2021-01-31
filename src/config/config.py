@@ -19,6 +19,10 @@ PAPER_FIGURE_ID=1
 MRT_FIGURE_ID=2
 DISPLAY_FIGURE_ID=3
 
+POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK"}
+NEGATIVE_ANS = {"no", "nope", "nah"}
+PRONOUNS = {"it's", "it is", "one"}
+
 # Action definiiton
 Q2={
     "type1": "I have not found the target. Where is it?", # COMMON FORMAT
