@@ -65,7 +65,7 @@ def _process_user_answer(answer, subject):
 
     return response, answer
 
-expr = "the red apple"
+expr = "the apple"
 subject = _find_subject(expr)
-answer = "no, the one beside the banana"
+answer = "yes"
 print(_process_user_answer(answer, subject))

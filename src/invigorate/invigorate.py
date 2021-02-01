@@ -91,9 +91,10 @@ class Invigorate(object):
         self._init_kde()
         self.belief = {}
         self.step_infos = {}
-        self.clue = None
         self.q2_num_asked = 0
-        self.subject = ""
+        self.expr = []
+        self.clue = ""
+        self.subject = []
 
         self.data_viewer = DataViewer(CLASSES)
         try:
@@ -130,6 +131,8 @@ class Invigorate(object):
 
         tb = time.time()
         # get the subject of the expression
+        if expr not in self.expr:
+            self.expr.append(expr)
         self.subject = self._find_subject(expr)
 
         # object detection
@@ -179,7 +182,7 @@ class Invigorate(object):
         logger.info('Perceive_img: mrt detection finished')
 
         # grounding
-        grounding_scores = self._vis_ground_client.ground(img, bboxes, expr, classes)
+        grounding_scores = [self._vis_ground_client.ground(img, bboxes, e, classes) for e in self.expr]
         logger.info('Perceive_img: mattnet grounding finished')
 
         # relationship
@@ -214,6 +217,26 @@ class Invigorate(object):
         self.observations = observations
         return observations
 
+    def _integrate_historic_answer(self, target_prob, det_to_pool):
+        # incorporate QA history TODO
+        target_prob_backup = target_prob.copy()
+        for k, v in det_to_pool.items():
+            if self.object_pool[v]["is_target"] == 1:
+                target_prob[:] = 0.
+                target_prob[k] = 1.
+            elif self.object_pool[v]["is_target"] == 0:
+                target_prob[k] = 0.
+        # sanity check
+        if target_prob.sum() > 0:
+            target_prob /= target_prob.sum()
+        else:
+            # something wrong with the matching process. roll back
+            target_prob = target_prob_backup
+            for k, v in det_to_pool.items():
+                target_prob[k] = 0
+            target_prob /= target_prob.sum()
+        return target_prob
+
     def estimate_state_with_observation(self, observations):
         img = observations['img']
         bboxes = observations['bboxes']
@@ -232,8 +255,10 @@ class Invigorate(object):
         logger.debug("rel_score_mat: {}".format(rel_score_mat))
         print('--------------------------------------------------------')
 
+        # 1. multi-step visual grounding and obr detection
         rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, det_to_pool)
-        target_prob = self._multi_step_grounding(grounding_scores, det_to_pool)
+        for g_score in grounding_scores:
+            target_prob = self._multi_step_grounding(g_score, det_to_pool)
 
         print('--------------------------------------------------------')
         logger.info('Step 2: candidate prior probability from object detector incorporated')
@@ -246,23 +271,8 @@ class Invigorate(object):
         logger.info('after multistep, rel_score_mat: {}'.format(rel_prob_mat))
         print('--------------------------------------------------------')
 
-        # 2. incorporate QA history TODO
-        target_prob_backup = target_prob.copy()
-        for k, v in det_to_pool.items():
-            if self.object_pool[v]["is_target"] == 1:
-                target_prob[:] = 0.
-                target_prob[k] = 1.
-            elif self.object_pool[v]["is_target"] == 0:
-                target_prob[k] = 0.
-        # sanity check
-        if target_prob.sum() > 0:
-            target_prob /= target_prob.sum()
-        else:
-            # something wrong with the matching process. roll back
-            target_prob = target_prob_backup
-            for k, v in det_to_pool.items():
-                target_prob[k] = 0
-            target_prob /= target_prob.sum()
+        # 2. integrate historic answer
+        target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
 
         # update target_prob
         for k, v in det_to_pool.items():
@@ -279,11 +289,10 @@ class Invigorate(object):
         self.belief['target_prob'] = target_prob
         self.belief['rel_prob'] = rel_prob_mat
 
-    def estimate_state_with_user_answer(self, action, answer):
+    def estimate_state_with_user_answer(self, action, answer, observations):
 
-        target_prob = self.belief["target_prob"]
-        num_box = target_prob.shape[0] - 1
-        response, ans = self._process_user_answer(answer)
+        num_box = observations["num_box"]
+        response, clue = self._process_user_answer(answer)
         pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
         action_type, _ = self.get_action_type(action)
@@ -291,6 +300,21 @@ class Invigorate(object):
 
         print('--------------------------------------------------------')
         logger.info("Invigorate: handling answer for Q1")
+
+        # Firstly, regrounding the target according to the answer if possible.
+        if clue != "":
+            # if there is a clue, regrounding the target with the clue and update the object belief
+            img = observations['img']
+            bboxes = observations['bboxes']
+            classes = observations['classes']
+            expr = observations['expr']
+            regrounding_scores = self._vis_ground_client.ground(img, bboxes, expr, classes)
+            target_prob = self._multi_step_grounding(regrounding_scores, det_to_pool)
+            target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
+            self.expr.append(clue)
+        else:
+            target_prob = self.belief["target_prob"]
+
         target_idx = action - 2 * num_box
         if response is not None:
             if response is True:
@@ -305,8 +329,6 @@ class Invigorate(object):
                 target_prob[target_idx] = 0
                 target_prob /= np.sum(target_prob)
                 self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
-
-        # TODO: write re-grounding code here
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -686,7 +708,8 @@ class Invigorate(object):
         subj_str = ''.join(self.subject)
         cls_filter = []
         for cls in CLASSES:
-            if cls in subj_str:
+            cls_str = ''.join(cls.split(" "))
+            if cls_str in subj_str or subj_str in cls_str:
                 cls_filter.append(cls)
         assert len(cls_filter) <= 1
         return cls_filter

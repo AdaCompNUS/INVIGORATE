@@ -178,13 +178,13 @@ def main():
             answer = robot.listen()
 
             # state_estimation
-            invigorate_client.estimate_state_with_user_answer(action, answer)
+            invigorate_client.estimate_state_with_user_answer(action, answer, observations)
         elif exec_type == EXEC_DUMMY_ASK:
             # get user answer
             answer = dummy_question_answer
 
             # state_estimation
-            invigorate_client.estimate_state_with_user_answer(action, answer)
+            invigorate_client.estimate_state_with_user_answer(action, answer, observations)
         else:
             raise RuntimeError('Invalid exec_type')
 
