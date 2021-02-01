@@ -10,6 +10,12 @@ class VMRNClient():
         self._vmr_det = rospy.ServiceProxy('vmrn_server', VmrDetection)
 
     def detect_obr(self, img, bboxes):
+        '''
+        @return rel_score_mat, [3, num_box, num_box], [0, i, j] is the prob of i being parent of j
+                                                      [1, i, j] is the prob of i being children of j
+                                                      [2, i, j] is the prob of i having no relationship with j
+        '''
+
         img_msg = self._br.cv2_to_imgmsg(img)
         num_box = bboxes.shape[0]
         bboxes = bboxes.flatten().tolist()
