@@ -92,14 +92,14 @@ def _process_user_answer(answer, subject_tokens):
             response = True
             answer.remove(pos_ans)
 
-    answer = ' '.join(answer)
-
     # postprocess the sentence
     subject = " ".join(subject_tokens)
     # replace the pronoun in the answer with the subject given by the user
     for pronoun in PRONOUNS:
         if pronoun in answer:
-            answer = answer.replace(pronoun, subject)
+            answer = [w if w != pronoun else subject for w in answer]
+
+    answer = ' '.join(answer)
 
     # if the answer starts without any subject, add the subject
     subj_cand = []
