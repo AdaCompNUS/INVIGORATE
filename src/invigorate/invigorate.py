@@ -310,8 +310,7 @@ class Invigorate(object):
             img = observations['img']
             bboxes = observations['bboxes']
             classes = observations['classes']
-            expr = observations['expr']
-            regrounding_scores = self._vis_ground_client.ground(img, bboxes, expr, classes)
+            regrounding_scores = self._vis_ground_client.ground(img, bboxes, clue, classes)
             target_prob = self._multi_step_grounding(regrounding_scores, det_to_pool)
             target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
             self.expr.append(clue)
