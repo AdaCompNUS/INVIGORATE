@@ -18,6 +18,7 @@ vn  N.A.              N.A.              N.A.
 
 Assume p(x1) = 0, p(x2) = 1
 '''
+
 import warnings
 import rospy
 import cv2
@@ -35,7 +36,6 @@ import os.path as osp
 import copy
 from sklearn.cluster import KMeans
 from scipy import optimize
-import nltk
 import logging
 import matplotlib.pyplot as plt
 from libraries.data_viewer.data_viewer import DataViewer
@@ -50,6 +50,7 @@ from config.config import *
 from libraries.utils.log import LOGGER_NAME
 from collections import OrderedDict
 import nltk
+import pdb
 
 try:
     import stanza
@@ -97,11 +98,12 @@ class Invigorate(object):
         self.subject = []
 
         self.data_viewer = DataViewer(CLASSES)
-        try:
-            self.stanford_nlp_server = stanza.Pipeline("en")
-        except:
-            warnings.warn("stanza needs python 3.6 or higher. "
-                          "please update your python version and run 'pip install stanza'")
+        if NLP_SERVER == "stanza":
+            try:
+                self.stanford_nlp_server = stanza.Pipeline("en")
+            except:
+                warnings.warn("stanza needs python 3.6 or higher. "
+                              "please update your python version and run 'pip install stanza'")
 
     def _merge_bboxes(self, bboxes, classes, scores, bboxes_his, classes_his, scores_his):
         curr_to_his = self._bbox_match(bboxes, bboxes_his, scores, scores_his)
@@ -565,8 +567,13 @@ class Invigorate(object):
 
     def _init_kde(self):
         # with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_vilbert.pkl')) as f:
-        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_mattnet.pkl')) as f:
-            data = pkl.load(f)
+        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_mattnet.pkl'), "rb") as f:
+            if PYTHON_VERSION == "3":
+                data = pkl.load(f, encoding='latin1')
+            elif PYTHON_VERSION == "2":
+                data = pkl.load(f)
+            else:
+                raise ValueError
         data = data["ground"]
         pos_data = []
         neg_data = []
@@ -585,7 +592,12 @@ class Invigorate(object):
         self.obj_kdes = [kde_neg, kde_pos]
 
         with open(osp.join(KDE_MODEL_PATH, "relation_density_estimation.pkl"), "rb") as f:
-            rel_data = pkl.load(f)
+            if PYTHON_VERSION == "3":
+                rel_data = pkl.load(f, encoding='latin1')
+            elif PYTHON_VERSION == "2":
+                rel_data = pkl.load(f)
+            else:
+                raise ValueError
         parents = np.array([d["det_score"] for d in rel_data if d["gt"] == 1])
         children = np.array([d["det_score"] for d in rel_data if d["gt"] == 2])
         norel = np.array([d["det_score"] for d in rel_data if d["gt"] == 3])

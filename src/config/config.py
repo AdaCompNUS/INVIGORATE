@@ -1,7 +1,13 @@
 import os
 import os.path as osp
 import datetime
+import sys
 
+PYTHON_VERSION = sys.version.split(".")[0]
+if PYTHON_VERSION == "3":
+    # overwrite the built-in methods of python 2.x
+    raw_input = input
+    xrange = range
 # --------------- Constants ----------------
 
 # Directory constants
@@ -22,6 +28,7 @@ DISPLAY_FIGURE_ID=3
 POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK"}
 NEGATIVE_ANS = {"no", "nope", "nah"}
 PRONOUNS = {"it's", "it is", "one"}
+NLP_SERVER = "nltk"
 
 # Action definiiton
 Q2={

@@ -5,8 +5,10 @@ import logging
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-from config.config import ROOT_DIR
+from config.config import *
 from libraries.utils.log import LOGGER_NAME
+
+
 
 USE_REALSENSE = False
 

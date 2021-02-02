@@ -53,10 +53,9 @@ import logging
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import Invigorate
-from invigorate.baseline import Baseline
+# from invigorate.baseline import Baseline
 from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
-from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
@@ -65,6 +64,9 @@ ROBOT = 'Dummy'
 # ROBOT = 'Dummy'
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
+
+if GENERATE_CAPTIONS:
+    from libraries.caption_generator import caption_generator
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -124,8 +126,8 @@ def main():
 
     if EXP_SETTING == "invigorate":
         invigorate_client = Invigorate()
-    elif EXP_SETTING == "baseline":
-        invigorate_client = Baseline()
+    # elif EXP_SETTING == "baseline":
+    #     invigorate_client = Baseline()
     elif EXP_SETTING == 'greedy':
         invigorate_client = Greedy()
     elif EXP_SETTING == 'heuristic':
