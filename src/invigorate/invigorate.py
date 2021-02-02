@@ -96,6 +96,7 @@ class Invigorate(object):
         self.expr = []
         self.clue = ""
         self.subject = []
+        self.nlp_server = NLP_SERVER
 
         self.data_viewer = DataViewer(CLASSES)
         if NLP_SERVER == "stanza":
@@ -994,23 +995,31 @@ class Invigorate(object):
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
 
+    def _postag_analysis(self, sent, nlp_server="nltk"):
+        if nlp_server == "nltk":
+            text = nltk.word_tokenize(sent)
+            pos_tags = nltk.pos_tag(text)
+        elif nlp_server == "stanza":
+            doc = self.stanford_nlp_server(sent)
+            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+        else:
+            raise NotImplementedError
+        return pos_tags
+
     def _process_user_answer(self, answer):
+        subject_tokens = self.subject
+
+        # preprocess the sentence
+        # 1. make all letters lowercase
         answer = answer.lower()
-
-        subject = self.subject
-        is_subject_informative = len(self._initialize_cls_filter()) > 0
-        if is_subject_informative:
-            subject = " ".join(subject)
-            # replace the pronoun in the answer with the subject given by the user
-            for pronoun in PRONOUNS:
-                if pronoun in answer:
-                    answer = answer.replace(pronoun, subject)
-
-        answer = answer.replace(",", " ")  # delete all , in the answer
-        answer = answer.replace(".", " ")  # delete all . in the answer
-        answer = answer.replace("!", " ")  # delete all . in the answer
+        # 2. delete all ",", "." and "!" in the answer
+        answer = answer.replace(",", " ")
+        answer = answer.replace(".", " ")
+        answer = answer.replace("!", " ")
+        # 3. delete redundant spaces
         answer = ' '.join(answer.split()).strip().split(' ')
 
+        # extract the response utterence
         response = None
         for neg_ans in NEGATIVE_ANS:
             if neg_ans in answer:
@@ -1025,17 +1034,32 @@ class Invigorate(object):
 
         answer = ' '.join(answer)
 
+        # postprocess the sentence
+        subject = " ".join(subject_tokens)
+        # replace the pronoun in the answer with the subject given by the user
+        for pronoun in PRONOUNS:
+            if pronoun in answer:
+                answer = answer.replace(pronoun, subject)
+        # if the answer starts without any subject, add the subject
+        subj_cand = []
+        for token, postag in self._postag_analysis(answer, self.nlp_server):
+            if postag in {"IN", "TO", "RP"}:
+                break
+            if postag in {"DT"}:
+                continue
+            subj_cand.append(token)
+        subj_cand = set(subj_cand)
+        if len(subj_cand.intersection(set(subject_tokens))) == 0:
+            answer = " ".join(subject_tokens + answer.split(" "))
+
         return response, answer
 
-    def _find_subject(self, expr, nlp_server="nltk"):
-        if nlp_server == "nltk":
-            text = nltk.word_tokenize(expr)
-            pos_tags = nltk.pos_tag(text)
-        else:
-            doc = self.stanford_nlp_server(expr)
-            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+    def _find_subject(self, expr):
+        pos_tags = self._postag_analysis(expr, self.nlp_server)
 
         subj_tokens = []
+
+        # 1. Try to find the first noun phrase before any preposition
         for i, (token, postag) in enumerate(pos_tags):
             if postag in {"NN"}:
                 subj_tokens.append(token)
@@ -1046,6 +1070,17 @@ class Invigorate(object):
                     else:
                         break
                 return subj_tokens
+            elif postag in {"IN", "TO", "RP"}:
+                break
+
+        # 2. Otherwise, return all words before the first preposition
+        assert subj_tokens == []
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"IN", "TO", "RP"}:
+                break
+            if postag in {"DT"}:
+                continue
+            subj_tokens.append(token)
 
         return subj_tokens
 

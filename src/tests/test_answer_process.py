@@ -52,6 +52,8 @@ def _find_subject(expr):
     for i, (token, postag) in enumerate(pos_tags):
         if postag in {"IN", "TO", "RP"}:
             break
+        if postag in {"DT"}:
+            continue
         subj_tokens.append(token)
 
     return subj_tokens
@@ -104,6 +106,8 @@ def _process_user_answer(answer, subject_tokens):
     for token, postag in postag_analysis(answer):
         if postag in {"IN", "TO", "RP"}:
             break
+        if postag in {"DT"}:
+            continue
         subj_cand.append(token)
     subj_cand = set(subj_cand)
     if len(subj_cand.intersection(set(subject_tokens))) == 0:
@@ -112,9 +116,10 @@ def _process_user_answer(answer, subject_tokens):
     return response, answer
 
 mode = "nltk"
-expr = "the remote"
-# print(postag_analysis(expr, mode))
+expr = "the green bottle"
+print(postag_analysis(expr, mode))
 subject = _find_subject(expr)
+print("Parsed subject: {}".format(" ".join(subject)))
 while(True):
     answer = raw_input("input a sentence: ")
     response, answer = _process_user_answer(answer, subject)
