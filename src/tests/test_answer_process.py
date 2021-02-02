@@ -32,6 +32,8 @@ def _find_subject(expr):
     pos_tags = postag_analysis(expr)
 
     subj_tokens = []
+
+    # 1. Try to find the first noun phrase before any preposition
     for i, (token, postag) in enumerate(pos_tags):
         if postag in {"NN"}:
             subj_tokens.append(token)
@@ -42,6 +44,15 @@ def _find_subject(expr):
                 else:
                     break
             return subj_tokens
+        elif postag in {"IN", "TO", "RP"}:
+            break
+
+    # 2. Otherwise, return all words before the first prepostion
+    assert subj_tokens == []
+    for i, (token, postag) in enumerate(pos_tags):
+        if postag in {"IN", "TO", "RP"}:
+            break
+        subj_tokens.append(token)
 
     return subj_tokens
 
@@ -55,20 +66,18 @@ def _initialize_cls_filter(subject):
     assert len(cls_filter) <= 1
     return cls_filter
 
-def _process_user_answer(answer, subject):
+def _process_user_answer(answer, subject_tokens):
+    # preprocess the sentence
+    # 1. make all letters lowercase
     answer = answer.lower()
-
-    subject = " ".join(subject)
-    # replace the pronoun in the answer with the subject given by the user
-    for pronoun in PRONOUNS:
-        if pronoun in answer:
-            answer = answer.replace(pronoun, subject)
-
-    answer = answer.replace(",", " ")  # delete all , in the answer
-    answer = answer.replace(".", " ")  # delete all . in the answer
-    answer = answer.replace("!", " ")  # delete all . in the answer
+    # 2. delete all ",", "." and "!" in the answer
+    answer = answer.replace(",", " ")
+    answer = answer.replace(".", " ")
+    answer = answer.replace("!", " ")
+    # 3. delete redundant spaces
     answer = ' '.join(answer.split()).strip().split(' ')
 
+    # extract the response utterence
     response = None
     for neg_ans in NEGATIVE_ANS:
         if neg_ans in answer:
@@ -83,17 +92,34 @@ def _process_user_answer(answer, subject):
 
     answer = ' '.join(answer)
 
+    # postprocess the sentence
+    subject = " ".join(subject_tokens)
+    # replace the pronoun in the answer with the subject given by the user
+    for pronoun in PRONOUNS:
+        if pronoun in answer:
+            answer = answer.replace(pronoun, subject)
+
+    # if the answer starts without any subject, add the subject
+    subj_cand = []
+    for token, postag in postag_analysis(answer):
+        if postag in {"IN", "TO", "RP"}:
+            break
+        subj_cand.append(token)
+    subj_cand = set(subj_cand)
+    if len(subj_cand.intersection(set(subject_tokens))) == 0:
+        answer = " ".join(subject_tokens + answer.split(" "))
+
     return response, answer
 
 mode = "nltk"
 expr = "the remote"
-print(postag_analysis(expr, mode))
+# print(postag_analysis(expr, mode))
 subject = _find_subject(expr)
 while(True):
     answer = raw_input("input a sentence: ")
     response, answer = _process_user_answer(answer, subject)
-    print(answer)
-    print(postag_analysis(answer, mode))
+    print("Processed Answer: {}".format(answer))
+    # print(postag_analysis(answer, mode))
 
 # subject = _find_subject(expr)
 # answer = "yes"
