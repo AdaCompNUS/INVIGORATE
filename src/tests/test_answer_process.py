@@ -116,7 +116,7 @@ def _process_user_answer(answer, subject_tokens):
     return response, answer
 
 mode = "nltk"
-expr = "the green bottle"
+expr = raw_input("input an expression: ")
 print(postag_analysis(expr, mode))
 subject = _find_subject(expr)
 print("Parsed subject: {}".format(" ".join(subject)))

@@ -27,7 +27,7 @@ DISPLAY_FIGURE_ID=3
 
 POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK"}
 NEGATIVE_ANS = {"no", "nope", "nah"}
-PRONOUNS = {"it's", "it is", "one"}
+PRONOUNS = {"it", "one", "that"}
 NLP_SERVER = "nltk"
 
 # Action definiiton
