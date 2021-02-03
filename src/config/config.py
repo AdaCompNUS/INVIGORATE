@@ -14,6 +14,7 @@ if PYTHON_VERSION == "3":
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
 KDE_MODEL_PATH = osp.join(ROOT_DIR, 'model')
+NN_MODEL_PATH = osp.join(ROOT_DIR, 'model')
 
 # Log directory
 now = datetime.datetime.now()
