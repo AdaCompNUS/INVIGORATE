@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 grounding_data_path = "../tests/ground_density_estimation.pkl"
 rel_data_path = "../tests/rel_dens_vmrn.pkl"
 rel_data_path_vilbert = "../tests/rel_dens_vilbert.pkl"
+detection_data_path = "../model/object_density_estimtion.pkl"
 
 def vis_grounding_density(grounding_data_path, upper=10.0, lower=-20.0):
     # vis grounding scores
@@ -44,5 +45,22 @@ def vis_relation_density(rel_data_path, upper=1.0, lower=0.0, mode=None):
         plt.legend()
         plt.show()
 
+def vis_detection_density(detection_data_path, upper=2.0, lower=-1.0):
+    # vis grounding scores
+    detection_data = pickle.load(open(detection_data_path, "rb"))
+    detection_pos = np.array(detection_data["pos"])
+    detection_neg = np.array(detection_data["neg"])
+    kde_detection_pos = gaussian_kde(detection_pos[:, None], bandwidth=0.01)
+    kde_detection_neg = gaussian_kde(detection_neg[:, None], bandwidth=0.01)
+    x = np.arange(1000).astype(np.float32) / 1000 * (upper - lower) + lower
+    x_dens_neg = kde_detection_neg.comp_prob(x)
+    x_dens_pos = kde_detection_pos.comp_prob(x)
+    plt.figure(figsize=[20,9])
+    plt.plot(x, x_dens_pos, label="pos",color="#F08080")
+    plt.plot(x, x_dens_neg, label="neg",color="#0B7093")
+    plt.legend()
+    plt.show()
+
 # vis_relation_density(rel_data_path, upper=2.0, lower=-1.0)
-vis_grounding_density(grounding_data_path)
+# vis_grounding_density(grounding_data_path)
+vis_detection_density(detection_data_path)

@@ -121,7 +121,7 @@ print(postag_analysis(expr, mode))
 subject = _find_subject(expr)
 print("Parsed subject: {}".format(" ".join(subject)))
 while(True):
-    answer = raw_input("input a sentence: ")
+    answer = raw_input("input an answer: ")
     response, answer = _process_user_answer(answer, subject)
     print("Processed Answer: {}".format(answer))
     # print(postag_analysis(answer, mode))
