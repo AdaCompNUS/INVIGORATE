@@ -62,7 +62,7 @@ from libraries.utils.log import LOGGER_NAME
 # -------- Settings --------
 ROBOT = 'Fetch'
 # ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
+GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -77,7 +77,6 @@ EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 # DISPLAY_DEBUG_IMG = "matplotlib"
 DISPLAY_DEBUG_IMG = 'pil'
-GENERATE_CAPTIONS = True
 DEBUG = True
 
 # ------- Statics -----------
@@ -253,20 +252,6 @@ def main():
             imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action=action,
                 question_str=question_str, save=False)
             data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
-
-        # debug object pool
-        object_pool = invigorate_client.object_pool
-        object_pool = [o for o in object_pool if not o['removed']]
-        logger.debug("++++++++++++++++++++++++++++++++++++++++++++++++++")
-        logger.debug("Object pool has {} objects".format(len(object_pool)))
-        for i, object in enumerate(object_pool):
-            assert not object['removed']
-            class_score = object['cls_scores']
-            class_ind = np.argmax(class_score)
-            # print(class_ind)
-            class_names = CLASSES[class_ind]
-            logger.debug("object {}, class = {}".format(i, class_names))
-        logger.debug("++++++++++++++++++++++++++++++++++++++++++++++++++")
 
         # exec action
         if exec_type == EXEC_GRASP:
