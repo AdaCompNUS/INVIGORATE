@@ -199,7 +199,7 @@ def main():
 
         # plan for optimal actions
         action = invigorate_client.plan_action() # action_idx.
-        action_type, target_idx = invigorate_client.get_action_type(action, num_obj)
+        action_type, target_idx = invigorate_client.parse_action(action, num_obj)
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':

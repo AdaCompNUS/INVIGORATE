@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys 
+import sys
 sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
 sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
 
@@ -47,7 +47,7 @@ class ObjectDetectionService():
         # init ros service
         self._service = rospy.Service('object_detection_srv', ObjectDetection, self._detect_objects)
         rospy.loginfo("object_detection_srv inited")
-    
+
     def _imgmsg_to_cv2(self, img_msg):
         dtype, n_channels = np.uint8, 3 # hard code
         dtype = np.dtype(dtype)
@@ -59,7 +59,7 @@ class ObjectDetectionService():
     def _detect_objects(self, req):
         if req.image.encoding != '8UC3':
             rospy.logerr("object_detection_srv, image encoding not supported!!")
-            res = DetectObjectsResponse()
+            res = ObjectDetectionResponse()
             return res
 
         img_cv2 = self._imgmsg_to_cv2(req.image)
@@ -69,7 +69,7 @@ class ObjectDetectionService():
         print(outputs["instances"].pred_boxes)
         self._visualize(img_cv2, outputs)
 
-        res = DetectObjectsResponse()
+        res = ObjectDetectionResponse()
         pred_classes = outputs["instances"].pred_classes.cpu().numpy().tolist()
         pred_bboxes = outputs["instances"].pred_boxes.tensor
         pred_bboxes =  pred_bboxes.cpu().numpy().tolist()

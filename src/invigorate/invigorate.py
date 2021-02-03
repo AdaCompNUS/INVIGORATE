@@ -119,6 +119,9 @@ class Invigorate(object):
         """
 
         self.img = img
+        if expr not in self.expr:
+            self.expr.append(expr)
+        self.subject = self._find_subject(expr)
 
         # multistep object detection
         self.multistep_object_detection(img)
@@ -212,28 +215,12 @@ class Invigorate(object):
         # grounding
         grounding_scores = [self._vis_ground_client.ground(img, bboxes, e, classes) for e in self.expr]
         logger.info('Perceive_img: mattnet grounding finished')
+        for g_score in grounding_scores:
+            # multistep state estimation
+            target_prob = self._cal_target_prob_from_grounding_score(g_score)
 
-        # multistep state estimation
-        target_prob = self._cal_target_prob_from_grounding_score(grounding_scores, expr)
-
-        # 2. incorporate QA history TODO
-        target_prob_backup = target_prob.copy()
-        for i, obj in enumerate(self.object_pool):
-            if obj["is_target"] == 1:
-                target_prob[:] = 0.
-                target_prob[i] = 1.
-            elif obj["is_target"] == 0:
-                target_prob[i] = 0.
-        # sanity check
-        if target_prob.sum() > 0:
-            target_prob /= target_prob.sum()
-        else:
-            # something wrong with the matching process. roll back
-            target_prob = target_prob_backup
-            # TODO can delete??
-            # for k, v in det_to_pool.items():
-            #     target_prob[k] = 0
-            # target_prob /= target_prob.sum()
+        # 2. integrate historic answer
+        target_prob = self._integrate_historic_answer(target_prob)
 
         # copy back to object pool
         for i in range(len(self.object_pool)):
@@ -279,31 +266,44 @@ class Invigorate(object):
         self.belief["grasps"] = grasps
 
     def estimate_state_with_user_answer(self, action, answer):
-        '''
-        Estimate state using user answer
-        '''
+
         num_box = self.belief["num_box"]
-        target_prob = self.belief["target_prob"]
-        ans = answer.lower()
-        # pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
+        response, clue = self._process_user_answer(answer)
 
         action_type, target_idx = self.parse_action(action)
         assert action_type == "Q1"
 
         print('--------------------------------------------------------')
         logger.info("Invigorate: handling answer for Q1")
-        if ans in {"yes", "yeah", "yep", "sure"}:
-            # set non-target
-            target_prob[:] = 0
-            # set target
-            target_prob[target_idx] = 1
-        elif ans in {"no", "nope", "nah"}:
-            target_prob[target_idx] = 0
-            target_prob /= np.sum(target_prob)
 
-        # copy to object pool
-        for i in range(len(self.object_pool)):
-            self.object_pool[i]["target_prob"] = target_prob[i]
+        # Firstly, regrounding the target according to the answer if possible.
+        if clue != "":
+            # if there is a clue, regrounding the target with the clue and update the object belief
+            img = self.belief['img']
+            bboxes = self.belief['bboxes']
+            classes = self.belief['classes']
+            regrounding_scores = self._vis_ground_client.ground(img, bboxes, clue, classes)
+            target_prob = self._multi_step_grounding(regrounding_scores)
+            target_prob = self._integrate_historic_answer(target_prob)
+            self.expr.append(clue) # append clue to expression list
+        else:
+            target_prob = self.belief["target_prob"]
+
+        if response is not None:
+            if response is True:
+                # user answer "yes"
+                # set non-target
+                target_prob[:] = 0
+                for obj in self.object_pool:
+                    obj["is_target"] = 0
+                # set target
+                target_prob[target_idx] = 1
+                self.object_pool[target_idx]["is_target"] = 1
+            else:
+                # user answer "no"
+                target_prob[target_idx] = 0
+                target_prob /= np.sum(target_prob)
+                self.object_pool[target_idx]["is_target"] = 0
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -777,96 +777,6 @@ class Invigorate(object):
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
 
-    def _postag_analysis(self, sent, nlp_server="nltk"):
-        if nlp_server == "nltk":
-            text = nltk.word_tokenize(sent)
-            pos_tags = nltk.pos_tag(text)
-        elif nlp_server == "stanza":
-            doc = self.stanford_nlp_server(sent)
-            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
-        else:
-            raise NotImplementedError
-        return pos_tags
-
-    def _process_user_answer(self, answer):
-        subject_tokens = self.subject
-
-        # preprocess the sentence
-        # 1. make all letters lowercase
-        answer = answer.lower()
-        # 2. delete all ",", "." and "!" in the answer
-        answer = answer.replace(",", " ")
-        answer = answer.replace(".", " ")
-        answer = answer.replace("!", " ")
-        # 3. delete redundant spaces
-        answer = ' '.join(answer.split()).strip().split(' ')
-
-        # extract the response utterence
-        response = None
-        for neg_ans in NEGATIVE_ANS:
-            if neg_ans in answer:
-                response = False
-                answer.remove(neg_ans)
-
-        for pos_ans in POSITIVE_ANS:
-            if pos_ans in answer:
-                assert response is None, "A positive answer should not appear with a negative answer"
-                response = True
-                answer.remove(pos_ans)
-
-        # postprocess the sentence
-        subject = " ".join(subject_tokens)
-        # replace the pronoun in the answer with the subject given by the user
-        for pronoun in PRONOUNS:
-            if pronoun in answer:
-                answer = [w if w != pronoun else subject for w in answer]
-
-        answer = ' '.join(answer)
-
-        # if the answer starts without any subject, add the subject
-        subj_cand = []
-        for token, postag in self._postag_analysis(answer, self.nlp_server):
-            if postag in {"IN", "TO", "RP"}:
-                break
-            if postag in {"DT"}:
-                continue
-            subj_cand.append(token)
-        subj_cand = set(subj_cand)
-        if len(subj_cand.intersection(set(subject_tokens))) == 0:
-            answer = " ".join(subject_tokens + answer.split(" "))
-
-        return response, answer
-
-    def _find_subject(self, expr):
-        pos_tags = self._postag_analysis(expr, self.nlp_server)
-
-        subj_tokens = []
-
-        # 1. Try to find the first noun phrase before any preposition
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag in {"NN"}:
-                subj_tokens.append(token)
-                for j in range(i + 1, len(pos_tags)):
-                    token, postag = pos_tags[j]
-                    if postag in {"NN"}:
-                        subj_tokens.append(token)
-                    else:
-                        break
-                return subj_tokens
-            elif postag in {"IN", "TO", "RP"}:
-                break
-
-        # 2. Otherwise, return all words before the first preposition
-        assert subj_tokens == []
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag in {"IN", "TO", "RP"}:
-                break
-            if postag in {"DT"}:
-                continue
-            subj_tokens.append(token)
-
-        return subj_tokens
-
     def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):
         # match bboxes between two steps.
         def bbox_overlaps(anchors, gt_boxes):
@@ -994,20 +904,41 @@ class Invigorate(object):
 
     # ---------- grounding helpers ------------
 
-    def _initialize_cls_filter(self, expr):
-        subj_str = ''.join(self._find_subject(expr))
+    def _integrate_historic_answer(self, target_prob):
+        # incorporate QA history TODO
+        target_prob_backup = target_prob.copy()
+        for i in range(len(self.object_pool)):
+            if self.object_pool[i]["is_target"] == 1:
+                target_prob[:] = 0.
+                target_prob[i] = 1.
+            elif self.object_pool[i]["is_target"] == 0:
+                target_prob[i] = 0.
+        # sanity check
+        if target_prob.sum() > 0:
+            target_prob /= target_prob.sum()
+        else:
+            # something wrong with the matching process. roll back
+            target_prob = target_prob_backup
+            # for k, v in det_to_pool.items():
+            #     target_prob[k] = 0
+            # target_prob /= target_prob.sum()
+        return target_prob
+
+    def _initialize_cls_filter(self):
+        subj_str = ''.join(self.subject)
         cls_filter = []
         for cls in CLASSES:
-            if cls in subj_str:
+            cls_str = ''.join(cls.split(" "))
+            if cls_str in subj_str or subj_str in cls_str:
                 cls_filter.append(cls)
         assert len(cls_filter) <= 1
         return cls_filter
 
-    def _cal_target_prob_from_grounding_score(self, mattnet_score, expr):
+    def _cal_target_prob_from_grounding_score(self, mattnet_score):
         '''
         Ground objects
         '''
-        cls_filter = self._initialize_cls_filter(expr)
+        cls_filter = self._initialize_cls_filter()
         disable_cls_filter= False
         if len(cls_filter) == 0:
             # no filter is available
@@ -1122,35 +1053,72 @@ class Invigorate(object):
                 keep_g.append(g[selected])
         return np.array(keep_g)
 
-    def _process_user_command(self, command, nlp_server="nltk"):
+    def _postag_analysis(self, sent, nlp_server="nltk"):
         if nlp_server == "nltk":
-            text = nltk.word_tokenize(command)
+            text = nltk.word_tokenize(sent)
             pos_tags = nltk.pos_tag(text)
-        else:
-            doc = self.stanford_nlp_server(command)
+        elif nlp_server == "stanza":
+            doc = self.stanford_nlp_server(sent)
             pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
-
-        particle_ind = -1
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag in {"RP"}:
-                particle_ind = i
-
-        ind = max(verb_ind, particle_ind)
-        clue_tokens = [token for (token, _) in pos_tags[ind + 1:]]
-        clue = ' '.join(clue_tokens)
-        logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
-
-        return clue
-
-    def _find_subject(self, expr, nlp_server="nltk"):
-        if nlp_server == "nltk":
-            text = nltk.word_tokenize(expr)
-            pos_tags = nltk.pos_tag(text)
         else:
-            doc = self.stanford_nlp_server(expr)
-            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+            raise NotImplementedError
+        return pos_tags
+
+    def _process_user_answer(self, answer):
+        subject_tokens = self.subject
+
+        # preprocess the sentence
+        # 1. make all letters lowercase
+        answer = answer.lower()
+        # 2. delete all ",", "." and "!" in the answer
+        answer = answer.replace(",", " ")
+        answer = answer.replace(".", " ")
+        answer = answer.replace("!", " ")
+        # 3. delete redundant spaces
+        answer = ' '.join(answer.split()).strip().split(' ')
+
+        # extract the response utterence
+        response = None
+        for neg_ans in NEGATIVE_ANS:
+            if neg_ans in answer:
+                response = False
+                answer.remove(neg_ans)
+
+        for pos_ans in POSITIVE_ANS:
+            if pos_ans in answer:
+                assert response is None, "A positive answer should not appear with a negative answer"
+                response = True
+                answer.remove(pos_ans)
+
+        # postprocess the sentence
+        subject = " ".join(subject_tokens)
+        # replace the pronoun in the answer with the subject given by the user
+        for pronoun in PRONOUNS:
+            if pronoun in answer:
+                answer = [w if w != pronoun else subject for w in answer]
+
+        answer = ' '.join(answer)
+
+        # if the answer starts without any subject, add the subject
+        subj_cand = []
+        for token, postag in self._postag_analysis(answer, self.nlp_server):
+            if postag in {"IN", "TO", "RP"}:
+                break
+            if postag in {"DT"}:
+                continue
+            subj_cand.append(token)
+        subj_cand = set(subj_cand)
+        if len(subj_cand.intersection(set(subject_tokens))) == 0:
+            answer = " ".join(subject_tokens + answer.split(" "))
+
+        return response, answer
+
+    def _find_subject(self, expr):
+        pos_tags = self._postag_analysis(expr, self.nlp_server)
 
         subj_tokens = []
+
+        # 1. Try to find the first noun phrase before any preposition
         for i, (token, postag) in enumerate(pos_tags):
             if postag in {"NN"}:
                 subj_tokens.append(token)
@@ -1161,5 +1129,16 @@ class Invigorate(object):
                     else:
                         break
                 return subj_tokens
+            elif postag in {"IN", "TO", "RP"}:
+                break
+
+        # 2. Otherwise, return all words before the first preposition
+        assert subj_tokens == []
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"IN", "TO", "RP"}:
+                break
+            if postag in {"DT"}:
+                continue
+            subj_tokens.append(token)
 
         return subj_tokens
