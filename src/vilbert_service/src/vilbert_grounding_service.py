@@ -393,6 +393,7 @@ class VilbertServer(object):
         expr = req.expr
         grounding_scores = self.grounding(img, bbox, expr)
         grounding_scores = grounding_scores.reshape(-1).tolist()
+        print("grounding_scores: {}".format(grounding_scores))
         res = GroundingResponse()
         res.grounding_scores = grounding_scores
         return res

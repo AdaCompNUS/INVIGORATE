@@ -5,7 +5,7 @@ import logging
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
-from invigorate import Invigorate
+from .invigorate import Invigorate
 
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)

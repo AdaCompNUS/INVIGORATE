@@ -1,13 +1,20 @@
 import os
 import os.path as osp
 import datetime
+import sys
 
+PYTHON_VERSION = sys.version.split(".")[0]
+if PYTHON_VERSION == "3":
+    # overwrite the built-in methods of python 2.x
+    raw_input = input
+    xrange = range
 # --------------- Constants ----------------
 
 # Directory constants
 this_dir = osp.dirname(osp.abspath(__file__))
 ROOT_DIR = osp.join(this_dir, '../')
 KDE_MODEL_PATH = osp.join(ROOT_DIR, 'model')
+NN_MODEL_PATH = osp.join(ROOT_DIR, 'model')
 
 # Log directory
 now = datetime.datetime.now()
@@ -18,6 +25,11 @@ print(LOG_DIR)
 PAPER_FIGURE_ID=1
 MRT_FIGURE_ID=2
 DISPLAY_FIGURE_ID=3
+
+POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK"}
+NEGATIVE_ANS = {"no", "nope", "nah"}
+PRONOUNS = {"it", "it's", "one", "that", "that's"}
+NLP_SERVER = "nltk"
 
 # Action definiiton
 Q2={

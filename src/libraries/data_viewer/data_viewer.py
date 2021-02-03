@@ -19,7 +19,7 @@ import pdb
 
 # from sklearn.manifold import TSNE
 from config.config import *
-from paper_fig_generator import gen_paper_fig
+from .paper_fig_generator import gen_paper_fig
 
 def create_mrt(rel_mat, class_names=None, rel_score=None):
     '''
@@ -56,9 +56,9 @@ def create_mrt(rel_mat, class_names=None, rel_score=None):
     if rel_score is None:
         rel_score = np.zeros(rel_mat.shape, dtype=np.float32)
 
-    for obj1 in xrange(node_num):
+    for obj1 in range(node_num):
         mrt.add_node(class_names[obj1])
-        for obj2 in xrange(obj1):
+        for obj2 in range(obj1):
             if rel_mat[obj1, obj2].item() == 1:
                 # OBJ1 is the father of OBJ2
                 mrt.add_edge(class_names[obj2], class_names[obj1],
@@ -117,9 +117,9 @@ class DataViewer(object):
         self.classes = classes
         self.num_classes = len(self.classes)
         # Extend color_pool so that it is longer than classes
-        self.color_pool = (self.num_classes / len(self.color_pool) + 1) * self.color_pool
-        self.class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
-        self.ind_to_class = dict(zip(xrange(self.num_classes), self.classes))
+        self.color_pool = int(self.num_classes / len(self.color_pool) + 1) * self.color_pool
+        self.class_to_ind = dict(zip(self.classes, range(self.num_classes)))
+        self.ind_to_class = dict(zip(range(self.num_classes), self.classes))
         self.color_dict = dict(zip(self.classes, self.color_pool[:self.num_classes]))
 
     def draw_single_bbox(self, img, bbox, bbox_color=(163, 68, 187), text_str="", test_bg_color = None):

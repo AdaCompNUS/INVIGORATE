@@ -53,18 +53,20 @@ import logging
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
 from invigorate.invigorate import Invigorate
-from invigorate.baseline import Baseline
+# from invigorate.baseline import Baseline
 from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
-from libraries.caption_generator import caption_generator
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 # ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
+GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
+
+if GENERATE_CAPTIONS:
+    from libraries.caption_generator import caption_generator
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -74,8 +76,7 @@ EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 # DISPLAY_DEBUG_IMG = "matplotlib"
-DISPLAY_DEBUG_IMG = 'matplotlib'
-GENERATE_CAPTIONS = False
+DISPLAY_DEBUG_IMG = 'pil'
 DEBUG = True
 
 # ------- Statics -----------
@@ -124,8 +125,8 @@ def main():
 
     if EXP_SETTING == "invigorate":
         invigorate_client = Invigorate()
-    elif EXP_SETTING == "baseline":
-        invigorate_client = Baseline()
+    # elif EXP_SETTING == "baseline":
+    #     invigorate_client = Baseline()
     elif EXP_SETTING == 'greedy':
         invigorate_client = Greedy()
     elif EXP_SETTING == 'heuristic':
@@ -166,7 +167,7 @@ def main():
             img, _ = robot.read_imgs()
 
             # state_estimation
-            invigorate_client.estimate_state_with_img(img)
+            invigorate_client.estimate_state_with_img(img, expr)
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
@@ -183,10 +184,10 @@ def main():
             raise RuntimeError('Invalid exec_type')
 
         # debug
-        img = observations['img']
-        bboxes = invigorate_client.step_infos['bboxes']
+        img = invigorate_client.img
+        bboxes = invigorate_client.belief['bboxes']
         num_obj = bboxes.shape[0]
-        classes = invigorate_client.step_infos['classes']
+        classes = invigorate_client.belief['classes']
         # rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
         rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
@@ -248,7 +249,7 @@ def main():
 
         # exec action
         if exec_type == EXEC_GRASP:
-            grasps = invigorate_client.step_infos['grasps']
+            grasps = invigorate_client.belief['grasps']
             logger.debug("grasps.shape {}".format(grasps.shape))
             object_name = CLASSES[classes[target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')

@@ -18,6 +18,11 @@ x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
 x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
 vn  N.A.              N.A.              N.A.
 
+rel_score_mat, [3, num_box, num_box],
+[0, i, j] is the prob of i being parent of j
+[1, i, j] is the prob of i being children of j
+[2, i, j] is the prob of i having no relationship with j
+
 Assume p(x1) = 0, p(x2) = 1
 '''
 
@@ -36,11 +41,10 @@ import os.path as osp
 import copy
 from sklearn.cluster import KMeans
 from scipy import optimize
-import nltk
 import logging
 import matplotlib.pyplot as plt
-from collections import OrderedDict
 
+from libraries.data_viewer.data_viewer import DataViewer
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from invigorate_msgs.srv import ObjectDetection, VmrDetection, VLBert
 # from libraries.ros_clients.detectron2_client import Detectron2Client
@@ -51,6 +55,9 @@ from libraries.ros_clients.mattnet_client import MAttNetClient
 from libraries.ros_clients.faster_rcnn_client import FasterRCNNClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
+from collections import OrderedDict
+import nltk
+import pdb
 
 try:
     import stanza
@@ -86,14 +93,19 @@ class Invigorate(object):
         self._init_kde()
         self.belief = {}
         self.step_infos = {}
-        self.clue = None
         self.q2_num_asked = 0
+        self.expr = []
+        self.clue = ""
+        self.subject = []
+        self.nlp_server = NLP_SERVER
 
-        try:
-            self.stanford_nlp_server = stanza.Pipeline("en")
-        except:
-            warnings.warn("stanza needs python 3.6 or higher. "
-                          "please update your python version and run 'pip install stanza'")
+        self.data_viewer = DataViewer(CLASSES)
+        if NLP_SERVER == "stanza":
+            try:
+                self.stanford_nlp_server = stanza.Pipeline("en")
+            except:
+                warnings.warn("stanza needs python 3.6 or higher. "
+                              "please update your python version and run 'pip install stanza'")
 
     # --------------- Public -------------------
     def estimate_state_with_img(self, img, expr):
@@ -105,23 +117,28 @@ class Invigorate(object):
         @      belief["target_prob"], target probability of each objects in the scene. This includes bg and therefore has size num_obj + 1
         @      belief["rel_prob"], [3, num_obj + 1, num_obj + 1], relationship probability between objects in the scene.
         """
+
+        self.img = img
+
         # multistep object detection
         self.multistep_object_detection(img)
 
         # multistep grounding
         self.multistep_grounding(img, expr)
 
-        # multistep obr estimation
+        # multistep obr detection
         self.multistep_obr_detection(img)
 
         # grasp detection
-        ## This is not multistep
+        # Note, this is not multistep
         self.grasp_detection(img)
 
         return True
 
     def multistep_object_detection(self, img):
+        tb = time.time()
         # object detection
+        ## detect object normally
         bboxes, classes, scores = self._object_detection(img)
         if bboxes is None:
             logger.warning("WARNING: nothing is detected")
@@ -138,6 +155,7 @@ class Invigorate(object):
         logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
+            logger.info('num_of history objects: {}'.format(rois.shape[0]))
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
             logger.info('Perceive_img: _his_object_re-classification finished, all historic detections: ')
             for i in range(bboxes_his.shape[0]):
@@ -153,7 +171,7 @@ class Invigorate(object):
                 cls = CLASSES[int(classes[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
-        # Match bbox and update cl;ass scores
+        # Match bbox and update class scores
         self._bbox_post_process(bboxes, scores)
         logger.info('multistep_object_detection, after post process, object pool:')
         for i, obj in enumerate(self.object_pool):
@@ -163,20 +181,21 @@ class Invigorate(object):
 
         # TODO test here
         class_scores = np.asarray([np.array(object["cls_scores"]).mean(axis=0) for object in self.object_pool]) # N x 32
-        valid_obj_indexes = class_scores[:, 1:].max(axis=1) > 0.5
-        invalid_obj_indexes = class_scores[:, 1:].max(axis=1) < 0.5
+        valid_obj_indexes = np.flatnonzero(class_scores[:, 1:].max(axis=1) > 0.5)
+        invalid_obj_indexes = np.flatnonzero(class_scores[:, 1:].max(axis=1) < 0.5)
         new_object_pool = [obj for i, obj in enumerate(self.object_pool) if i in valid_obj_indexes] # put valid objects in front of object pool
         new_object_pool += [obj for i, obj in enumerate(self.object_pool) if i in invalid_obj_indexes]
         self.object_pool = new_object_pool
+
         logger.info('Perceive_img: Object pool updated, the remaining objects: ')
-        for i in range(valid_obj_indexes):
+        for i in range(len(valid_obj_indexes)):
             obj = self.object_pool[i]
             sc = np.array(obj["cls_scores"]).mean(axis=0).max()
             cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
             logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
 
-        bboxes = np.asarray([self.object_pool[i]["bbox"].tolist() for i in range(valid_obj_indexes)])
-        class_scores = np.asarray([np.array(self.object_pool[i]["cls_scores"]).mean(axis=0) for i in range(valid_obj_indexes)])
+        bboxes = np.asarray([self.object_pool[i]["bbox"].tolist() for i in range(len(valid_obj_indexes))])
+        class_scores = np.asarray([np.array(self.object_pool[i]["cls_scores"]).mean(axis=0) for i in range(len(valid_obj_indexes))])
         classes = np.argmax(class_scores, axis=1).reshape(-1, 1)
 
         self.belief["num_obj"] = len(bboxes)
@@ -191,7 +210,7 @@ class Invigorate(object):
         classes = self.belief["classes"]
 
         # grounding
-        grounding_scores = self._vis_ground_client.ground(img, bboxes, expr, classes)
+        grounding_scores = [self._vis_ground_client.ground(img, bboxes, e, classes) for e in self.expr]
         logger.info('Perceive_img: mattnet grounding finished')
 
         # multistep state estimation
@@ -199,7 +218,7 @@ class Invigorate(object):
 
         # 2. incorporate QA history TODO
         target_prob_backup = target_prob.copy()
-        for i, obj in enumerate(self.object_pools):
+        for i, obj in enumerate(self.object_pool):
             if obj["is_target"] == 1:
                 target_prob[:] = 0.
                 target_prob[i] = 1.
@@ -734,10 +753,10 @@ class Invigorate(object):
         if num_box == 0:
             return None, None, None
 
-        bboxes = bboxes.reshape(num_box, -1)
+        bboxes = np.array(bboxes).reshape(num_box, -1)
         bboxes = bboxes[:, :4]
-        classes = classes.reshape(num_box, 1)
-        class_scores = class_scores.reshape(num_box, -1)
+        classes = np.array(classes).reshape(num_box, 1)
+        class_scores = np.array(class_scores).reshape(num_box, -1)
         bboxes, classes, class_scores = self._bbox_filter(bboxes, classes, class_scores)
 
         class_names = [CLASSES[i[0]] for i in classes]
@@ -757,6 +776,96 @@ class Invigorate(object):
         cls = cls[keep]
         cls_scores = cls_scores[keep]
         return bbox, cls, cls_scores
+
+    def _postag_analysis(self, sent, nlp_server="nltk"):
+        if nlp_server == "nltk":
+            text = nltk.word_tokenize(sent)
+            pos_tags = nltk.pos_tag(text)
+        elif nlp_server == "stanza":
+            doc = self.stanford_nlp_server(sent)
+            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
+        else:
+            raise NotImplementedError
+        return pos_tags
+
+    def _process_user_answer(self, answer):
+        subject_tokens = self.subject
+
+        # preprocess the sentence
+        # 1. make all letters lowercase
+        answer = answer.lower()
+        # 2. delete all ",", "." and "!" in the answer
+        answer = answer.replace(",", " ")
+        answer = answer.replace(".", " ")
+        answer = answer.replace("!", " ")
+        # 3. delete redundant spaces
+        answer = ' '.join(answer.split()).strip().split(' ')
+
+        # extract the response utterence
+        response = None
+        for neg_ans in NEGATIVE_ANS:
+            if neg_ans in answer:
+                response = False
+                answer.remove(neg_ans)
+
+        for pos_ans in POSITIVE_ANS:
+            if pos_ans in answer:
+                assert response is None, "A positive answer should not appear with a negative answer"
+                response = True
+                answer.remove(pos_ans)
+
+        # postprocess the sentence
+        subject = " ".join(subject_tokens)
+        # replace the pronoun in the answer with the subject given by the user
+        for pronoun in PRONOUNS:
+            if pronoun in answer:
+                answer = [w if w != pronoun else subject for w in answer]
+
+        answer = ' '.join(answer)
+
+        # if the answer starts without any subject, add the subject
+        subj_cand = []
+        for token, postag in self._postag_analysis(answer, self.nlp_server):
+            if postag in {"IN", "TO", "RP"}:
+                break
+            if postag in {"DT"}:
+                continue
+            subj_cand.append(token)
+        subj_cand = set(subj_cand)
+        if len(subj_cand.intersection(set(subject_tokens))) == 0:
+            answer = " ".join(subject_tokens + answer.split(" "))
+
+        return response, answer
+
+    def _find_subject(self, expr):
+        pos_tags = self._postag_analysis(expr, self.nlp_server)
+
+        subj_tokens = []
+
+        # 1. Try to find the first noun phrase before any preposition
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"NN"}:
+                subj_tokens.append(token)
+                for j in range(i + 1, len(pos_tags)):
+                    token, postag = pos_tags[j]
+                    if postag in {"NN"}:
+                        subj_tokens.append(token)
+                    else:
+                        break
+                return subj_tokens
+            elif postag in {"IN", "TO", "RP"}:
+                break
+
+        # 2. Otherwise, return all words before the first preposition
+        assert subj_tokens == []
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"IN", "TO", "RP"}:
+                break
+            if postag in {"DT"}:
+                continue
+            subj_tokens.append(token)
+
+        return subj_tokens
 
     def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):
         # match bboxes between two steps.
@@ -898,8 +1007,7 @@ class Invigorate(object):
         '''
         Ground objects
         '''
-
-        cls_filter = self._initialize_cls_filter(expr) # TODO what does this do???
+        cls_filter = self._initialize_cls_filter(expr)
         disable_cls_filter= False
         if len(cls_filter) == 0:
             # no filter is available
@@ -923,19 +1031,25 @@ class Invigorate(object):
                 cls_scores = np.array(self.object_pool[i]["cls_scores"]).mean(axis=0)
                 for cls in CLASSES:
                     if cls in cls_filter:
-                        p_pos_prior += cls_scores[i[cls]]
+                        p_pos_prior += cls_scores[CLASSES_TO_IND[cls]]
                     else:
-                        p_neg_prior += cls_scores[i[cls]]
+                        p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
                 cand_pos_prior.append(p_pos_prior)
                 cand_neg_prior.append(p_neg_prior)
             else:
-                cand_pos_llh = cand_neg_llh = 1.
+                cand_pos_prior.append(1.)
+                cand_neg_prior.append(1.)
+
+        logger.info("cand_pos_prior: {}".format(cand_pos_prior))
+        logger.info("cand_pos_llh: {}".format(cand_pos_llh))
 
         p_cand_pos = np.array(cand_pos_prior) * np.array(cand_pos_llh)
         p_cand_neg = np.array(cand_neg_prior) * np.array(cand_neg_llh)
 
         # normalize the distribution
         p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
+
+        logger.info("p_cand: {}".format(p_cand))
 
         ground_result = self._cal_target_prob_from_p_cand(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))

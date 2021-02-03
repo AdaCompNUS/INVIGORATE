@@ -3,6 +3,10 @@ import sys
 sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
 sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
 
+import os.path as osp
+this_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, osp.join(this_dir, '../../'))
+
 import rospy
 
 # Some basic setup:
@@ -23,6 +27,7 @@ from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog, DatasetCatalog
 
 from invigorate_msgs.srv import *
+from config.config import *
 
 # --------- SETTINGS ------------
 VISUALIZE = False
@@ -32,10 +37,9 @@ class ObjectDetectionService():
         # init Detectron2
         self._cfg = get_cfg()
         # add project-specific config (e.g., TensorMask) here if you're not running a model in detectron2's core library
-        self._cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_101_FPN_3x.yaml"))
+        self._cfg.merge_from_file(model_zoo.get_config_file("Misc/cascade_rcnn_X_152_32x8d_FPN_IN5k_gn_dconv.yaml"))
         self._cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
-        # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
-        self._cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_101_FPN_3x.yaml")
+        self._cfg.MODEL.WEIGHTS = os.path.join(NN_MODEL_PATH, 'model_final_cascade.pth')
         self._predictor = DefaultPredictor(self._cfg)
 
         self._class_names = MetadataCatalog.get(self._cfg.DATASETS.TRAIN[0]).get("thing_classes", None)
@@ -53,30 +57,34 @@ class ObjectDetectionService():
         return im
 
     def _detect_objects(self, req):
-        if req.img.encoding != '8UC3':
+        if req.image.encoding != '8UC3':
             rospy.logerr("object_detection_srv, image encoding not supported!!")
-            res = ObjectDetectionResponse()
+            res = DetectObjectsResponse()
             return res
 
-        img_cv2 = self._imgmsg_to_cv2(req.img)
+        img_cv2 = self._imgmsg_to_cv2(req.image)
         outputs = self._predictor(img_cv2)
         # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
         print(outputs["instances"].pred_classes)
         print(outputs["instances"].pred_boxes)
         self._visualize(img_cv2, outputs)
 
+        res = DetectObjectsResponse()
         pred_classes = outputs["instances"].pred_classes.cpu().numpy().tolist()
-        num_box = len(pred_classes)
-        pred_bboxes = outputs["instances"].pred_boxes.tensor.cpu().numpy().reshape(-1).tolist()
-        cls_scores = outputs["instances"].scores.cpu().numpy().tolist()
-        # pred_bboxes =  pred_bboxes.cpu().numpy().tolist()
-
-        res = ObjectDetectionResponse()
-        res.num_box = num_box
-        res.bbox = pred_bboxes
-        res.cls = pred_classes
-        res.cls_scores = cls_scores
-        res.box_feats = json.dumps("")
+        pred_bboxes = outputs["instances"].pred_boxes.tensor
+        pred_bboxes =  pred_bboxes.cpu().numpy().tolist()
+        #pred_masks = outputs["instances"].pred_masks.cpu()
+        #pred_masks = pred_masks.view(pred_masks.size()[0], -1)
+        #pred_masks =  pred_masks.numpy().tolist()
+        object_list = []
+        for i in range(len(pred_classes)):
+            object2d = Object2D()
+            object2d.class_name = self._class_names[pred_classes[i]]
+            object2d.prob = outputs["instances"].scores[i].item()
+            object2d.bbox = pred_bboxes[i]
+            #object2d.mask = pred_masks[i]
+            object_list.append(object2d)
+        res.objects = object_list
 
         return res
 
