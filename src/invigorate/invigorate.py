@@ -999,6 +999,9 @@ class Invigorate(object):
                         # p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
                         pass
 
+                if p_det_pos_llh < 0.05:
+                    p_det_pos_llh = 0.0
+
                 p_det_neg_llh = 1 # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
                                   # probability of getting that observation
 
