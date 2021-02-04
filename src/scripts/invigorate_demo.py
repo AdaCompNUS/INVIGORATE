@@ -60,9 +60,9 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 # ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
+GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -76,8 +76,7 @@ EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
 # DISPLAY_DEBUG_IMG = "matplotlib"
-DISPLAY_DEBUG_IMG = 'matplotlib'
-GENERATE_CAPTIONS = False
+DISPLAY_DEBUG_IMG = 'pil'
 DEBUG = True
 
 # ------- Statics -----------

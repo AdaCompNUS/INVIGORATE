@@ -16,6 +16,11 @@ x1 p(x1=l)          p(x1=x2's l&d)    p(x1=vn's l&d)
 x2 p(x2=x1's l&d)   p(x2=l)           p(x2=nv's l&d)
 vn  N.A.              N.A.              N.A.
 
+rel_score_mat, [3, num_box, num_box],
+[0, i, j] is the prob of i being parent of j
+[1, i, j] is the prob of i being children of j
+[2, i, j] is the prob of i having no relationship with j
+
 Assume p(x1) = 0, p(x2) = 1
 '''
 
@@ -38,6 +43,7 @@ from sklearn.cluster import KMeans
 from scipy import optimize
 import logging
 import matplotlib.pyplot as plt
+
 from libraries.data_viewer.data_viewer import DataViewer
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from invigorate_msgs.srv import ObjectDetection, VmrDetection, VLBert
@@ -139,6 +145,7 @@ class Invigorate(object):
         self.subject = self._find_subject(expr)
 
         # object detection
+        ## detect object normally
         bboxes, classes, scores = self._object_detection(img)
         if bboxes is None:
             logger.warning("WARNING: nothing is detected")
@@ -153,6 +160,7 @@ class Invigorate(object):
         rois = [o["bbox"][None, :] for o in self.object_pool if not o["removed"]]
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
+            logger.info('num_of history objects: {}'.format(rois.shape[0]))
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
             logger.info('Perceive_img: _his_object_re-classification finished, all historic detections: ')
             for i in range(bboxes_his.shape[0]):
@@ -167,6 +175,7 @@ class Invigorate(object):
                 cls = CLASSES[int(classes[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
+        # Match newly detected bbox to history bboxes. Form new object pool
         self._bbox_post_process(bboxes, scores)
         logger.info('Perceive_img: Object pool updated, the remaining objects: ')
         for i, obj in enumerate(self.object_pool):
@@ -179,17 +188,17 @@ class Invigorate(object):
         bboxes = np.asarray([self.object_pool[v]["bbox"].tolist() for k, v in det_to_pool.items()])
         classes = np.asarray([np.argmax(np.array(self.object_pool[v]["cls_scores"]).mean(axis=0)[1:]) + 1
                               for k, v in det_to_pool.items()]).reshape(-1, 1)
+        logger.info("after multistep, num of objects :  {}".format(obj_num))
+        class_names = [CLASSES[i[0]] for i in classes]
+        logger.info("after multistep, classes :  {}".format(class_names))
 
-        # relationship
+        # detect relationship
         rel_mat, rel_score_mat = self._rel_det_client.detect_obr(img, bboxes)
         logger.info('Perceive_img: mrt detection finished')
 
         # grounding
         grounding_scores = [self._vis_ground_client.ground(img, bboxes, e, classes) for e in self.expr]
         logger.info('Perceive_img: mattnet grounding finished')
-
-        # relationship
-        # rel_score_mat = self._vis_ground_client.ground(img, bboxes, expr)
 
         # grasp
         grasps = self._grasp_det_client.detect_grasps(img, bboxes)
@@ -694,14 +703,18 @@ class Invigorate(object):
             self.object_pool[v]["grasps"] = grasps[k]
 
     def _bbox_post_process(self, bboxes, scores):
+        # history objects information
         not_removed = [i for i, o in enumerate(self.object_pool) if not o["removed"]]
         no_rmv_to_pool = OrderedDict(zip(range(len(not_removed)), not_removed))
         prev_boxes = np.array([b["bbox"] for b in self.object_pool if not b["removed"]])
         prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool if not b["removed"]])
+
+        # match newly detected bbox to the history objects
         det_to_no_rmv = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
         det_to_pool = {i: no_rmv_to_pool[v] for i, v in det_to_no_rmv.items()}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
+
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
@@ -709,7 +722,8 @@ class Invigorate(object):
         for i in range(len(self.object_pool)):
             if i not in det_to_pool.values():
                 self.object_pool[i]["removed"] = True
-        # initialize newly detected bboxes
+
+        # initialize newly detected bboxes, add to object pool
         for i in not_matched:
             new_box = self._init_object(bboxes[i], scores[i])
             self.object_pool.append(new_box)
@@ -722,6 +736,7 @@ class Invigorate(object):
 
     def _get_valid_obj_candidates(self, renew=False):
         if renew:
+            # any objects cls must > 0.5
             obj_inds = [i for i, obj in enumerate(self.object_pool)
                         if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > 0.5]
             self.pool_to_det = OrderedDict(zip(obj_inds, list(range(len(obj_inds)))))
@@ -769,11 +784,16 @@ class Invigorate(object):
                 cand_pos_prior.append(1.)
                 cand_neg_prior.append(1.)
 
+        logger.info("cand_pos_prior: {}".format(cand_pos_prior))
+        logger.info("cand_pos_llh: {}".format(cand_pos_llh))
+
         p_cand_pos = np.array(cand_pos_prior) * np.array(cand_pos_llh)
         p_cand_neg = np.array(cand_neg_prior) * np.array(cand_neg_llh)
 
         # normalize the distribution
         p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
+
+        logger.info("p_cand: {}".format(p_cand))
 
         ground_result = self._cal_target_prob_from_p_cand(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
