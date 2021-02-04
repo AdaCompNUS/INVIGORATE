@@ -110,7 +110,7 @@ def _process_user_answer(answer, subject_tokens):
             continue
         subj_cand.append(token)
     subj_cand = set(subj_cand)
-    if len(subj_cand.intersection(set(subject_tokens))) == 0:
+    if len(subj_cand.intersection(set(subject_tokens))) == 0 and len(answer) > 0:
         answer = " ".join(subject_tokens + answer.split(" "))
 
     return response, answer

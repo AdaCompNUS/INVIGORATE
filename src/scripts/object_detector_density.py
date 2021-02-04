@@ -35,6 +35,19 @@ def dbg_print(string):
     if DBG_PRINT:
         print(string)
 
+def draw_single_bbox(img, bbox, bbox_color=(163, 68, 187), text_str="", test_bg_color = None):
+    if test_bg_color is None:
+        test_bg_color = bbox_color
+    bbox = tuple(bbox)
+    bbox = tuple([int(i) for i in bbox])
+    text_rd = (bbox[2], bbox[1] + 25)
+    cv2.rectangle(img, bbox[0:2], bbox[2:4], bbox_color, 2)
+    cv2.rectangle(img, bbox[0:2], text_rd, test_bg_color, -1)
+    cv2.putText(img, text_str, (bbox[0], bbox[1] + 20),
+                cv2.FONT_HERSHEY_PLAIN,
+                2, (255, 255, 255), thickness=2)
+    return img
+
 def faster_rcnn_detection(img, bbox):
     rospy.wait_for_service('faster_rcnn_server')
     try:
@@ -164,6 +177,9 @@ def collect_density_data(datasets="nus_single_2+nus_single_3"):
     datasets = datasets.split("+")
     all_scores_pos = []
     all_scores_neg = []
+
+    morbid_cls = []
+    morbit_counter = {}
     for dataset in datasets:
         grounding_label_path = osp.join(ROOT_DIR, "images", dataset, "grounding_gt.npy")
         labeled = np.load(grounding_label_path, allow_pickle=True, encoding="latin1")
@@ -180,15 +196,33 @@ def collect_density_data(datasets="nus_single_2+nus_single_3"):
             label_dir = osp.join("/".join(im_path.split("/")[:-2]), "labels")
             label_file = osp.join(label_dir, img_id + ".xml")
             bboxes, classes = parse_pascalvoc_labels(label_file)
-            gt_ind = iou(torch.as_tensor(label["bbox"][None]).float(), torch.as_tensor(bboxes).float()).reshape(-1).argmax().item()
 
             if img_name in det_res:
                 det_boxes, det_classes, det_scores = det_res[img_name]
             else:
                 img = cv2.imread(im_path)
                 det_boxes, det_classes, det_scores = faster_rcnn_detection(img, bboxes)
+                keep_mask = det_scores[:, 1:].max(axis=1) > 0.6
+                det_boxes = det_boxes[keep_mask]
+                det_classes = det_classes[keep_mask]
+                det_scores = det_scores[keep_mask]
                 det_res[img_name] = (det_boxes, det_classes, det_scores)
 
+                scale_factor = 600. / img.shape[1]
+                img_show = cv2.resize(img.copy(), (int(img.shape[1] * scale_factor), int(img.shape[0] * scale_factor)))
+                bbox_show = det_boxes * scale_factor
+                for i, bbox in enumerate(bbox_show):
+                    bbox = bbox.astype(np.int32).tolist()
+                    cls = CLASSES[det_classes[i].item()]
+                    print(i, cls, bbox)
+                    draw_single_bbox(img_show, bbox, text_str=cls + "-" + str(i))
+
+                plt.axis('off')
+                plt.imshow(img_show)
+                plt.show()
+
+            gt_ind = iou(torch.as_tensor(label["bbox"][None]).float(), torch.as_tensor(det_boxes).float()).reshape(
+                -1).argmax().item()
             # extract cls_filter
             subject = find_subject(label["expr"])
             cls_filter = initialize_cls_filter(subject)
@@ -198,14 +232,22 @@ def collect_density_data(datasets="nus_single_2+nus_single_3"):
             gt_cls = cls_filter[0][0]
             gt_cls_scores = det_scores[:, gt_cls].tolist()
             pos_score = gt_cls_scores[gt_ind]
+            if pos_score < 0.1:
+                if CLASSES[gt_cls] in morbit_counter:
+                    morbit_counter[CLASSES[gt_cls]].append(CLASSES[det_scores[gt_ind].argmax()])
+                else:
+                    morbit_counter[CLASSES[gt_cls]] = [CLASSES[det_scores[gt_ind].argmax()]]
             neg_scores = gt_cls_scores[:gt_ind] + gt_cls_scores[gt_ind+1:]
             all_scores_pos.append(pos_score)
             all_scores_neg += neg_scores
 
+
+    print(morbit_counter)
+
     return all_scores_pos, all_scores_neg
 
 all_scores_pos, all_scores_neg = collect_density_data()
-with open("object_density_estimtion.pkl", "wb") as f:
+with open("object_density_estimation.pkl", "wb") as f:
     pickle.dump({
         "pos": all_scores_pos,
         "neg": all_scores_neg

@@ -606,6 +606,19 @@ class Invigorate(object):
         kde_norel = gaussian_kde(norel, bandwidth=0.2)
         self.rel_kdes = [kde_parents, kde_children, kde_norel]
 
+        with open(osp.join(KDE_MODEL_PATH, "object_density_estimation.pkl"), "rb") as f:
+            if PYTHON_VERSION == "3":
+                obj_data = pkl.load(f, encoding='latin1')
+            elif PYTHON_VERSION == "2":
+                obj_data = pkl.load(f)
+            else:
+                raise ValueError
+        pos_obj_data = np.expand_dims(np.array(obj_data["pos"]), axis=-1)
+        neg_obj_data = np.expand_dims(np.array(obj_data["neg"]), axis=-1)
+        kde_obj_pos = gaussian_kde(pos_obj_data, bandwidth=0.5)
+        kde_obj_neg = gaussian_kde(neg_obj_data, bandwidth=0.5)
+        self.obj_det_kdes = [kde_obj_neg, kde_obj_pos]
+
     def _init_object(self, bbox, score):
         new_box = {}
         new_box["bbox"] = bbox
@@ -747,16 +760,11 @@ class Invigorate(object):
 
             if not disable_cls_filter:
                 # prior prob
-                p_pos_prior = 0
-                p_neg_prior = 0
-                cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
-                for cls in CLASSES:
-                    if cls in cls_filter:
-                        p_pos_prior += cls_scores[CLASSES_TO_IND[cls]]
-                    else:
-                        p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
-                cand_pos_prior.append(p_pos_prior)
-                cand_neg_prior.append(p_neg_prior)
+                cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"])[:, CLASSES_TO_IND[cls_filter[0]]]
+                neg_prior = np.exp(np.sum(self.obj_det_kdes[0].comp_prob(cls_scores)))
+                pos_prior = np.exp(np.sum(self.obj_det_kdes[1].comp_prob(cls_scores)))
+                cand_pos_prior.append(pos_prior)
+                cand_neg_prior.append(neg_prior)
             else:
                 cand_pos_prior.append(1.)
                 cand_neg_prior.append(1.)
@@ -1049,7 +1057,7 @@ class Invigorate(object):
                 continue
             subj_cand.append(token)
         subj_cand = set(subj_cand)
-        if len(subj_cand.intersection(set(subject_tokens))) == 0:
+        if len(subj_cand.intersection(set(subject_tokens))) == 0  and len(answer) > 0:
             answer = " ".join(subject_tokens + answer.split(" "))
 
         return response, answer

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-import sys 
-sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
-sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
+import sys
 
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
@@ -25,8 +23,7 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog, DatasetCatalog
-
-from invigorate_msgs.srv import *
+from invigorate_msgs.srv import ObjectDetection, ObjectDetectionResponse
 from config.config import *
 
 # --------- SETTINGS ------------
@@ -59,7 +56,7 @@ class ObjectDetectionService():
     def _detect_objects(self, req):
         if req.image.encoding != '8UC3':
             rospy.logerr("object_detection_srv, image encoding not supported!!")
-            res = DetectObjectsResponse()
+            res = ObjectDetectionResponse()
             return res
 
         img_cv2 = self._imgmsg_to_cv2(req.image)
@@ -69,7 +66,7 @@ class ObjectDetectionService():
         print(outputs["instances"].pred_boxes)
         self._visualize(img_cv2, outputs)
 
-        res = DetectObjectsResponse()
+        res = ObjectDetectionResponse()
         pred_classes = outputs["instances"].pred_classes.cpu().numpy().tolist()
         pred_bboxes = outputs["instances"].pred_boxes.tensor
         pred_bboxes =  pred_bboxes.cpu().numpy().tolist()

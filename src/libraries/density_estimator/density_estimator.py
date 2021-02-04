@@ -31,7 +31,7 @@ class gaussian_kde(object):
             assert x.shape[-1] == self.data_dim and x.ndim == 2
         else:
             raise RuntimeError("Unsupported data type. The input should be a float, a list or a numpy array.")
-        x = np.exp(self.kde.score_samples(x))
+        x = self.kde.score_samples(x)
         return x.squeeze()
 
 class object_belief(object):
@@ -39,8 +39,8 @@ class object_belief(object):
         self.belief = np.array([0.5, 0.5])
 
     def update(self, score, kde):
-        neg_prob = kde[0].comp_prob(score)
-        pos_prob = kde[1].comp_prob(score)
+        neg_prob = np.exp(kde[0].comp_prob(score))
+        pos_prob = np.exp(kde[1].comp_prob(score))
         self.belief *= [neg_prob, pos_prob]
         self.belief /= self.belief.sum()
         self.belief = np.clip(self.belief, 0.01, 0.99)
@@ -56,9 +56,9 @@ class relation_belief(object):
     def update(self, score, kde):
         MIN_PROB = 0.05
 
-        parent_llh = kde[0].comp_prob(score)
-        child_llh = kde[1].comp_prob(score)
-        norel_llh = kde[2].comp_prob(score)
+        parent_llh = np.exp(kde[0].comp_prob(score))
+        child_llh = np.exp(kde[1].comp_prob(score))
+        norel_llh = np.exp(kde[2].comp_prob(score))
         # posterior
         self.belief *= [parent_llh, child_llh, norel_llh]
         self.belief /= self.belief.sum()
