@@ -63,7 +63,7 @@ class ObjectDetectionService():
             return res
 
         img_cv2 = self._imgmsg_to_cv2(req.image)
-        outputs = self._predictor(img_cv2)
+        outputs = self._predictor([img_cv2, detected_instances=blahblahs])
         # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
         print(outputs["instances"].pred_classes)
         print(outputs["instances"].pred_boxes)

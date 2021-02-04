@@ -71,7 +71,7 @@ class Greedy(Invigorate):
         max_ind = np.argmax(target_prob)
         target_prob = np.zeros(len(target_prob) + 1)
         target_prob[max_ind] = 1
-        logger.info('After greedy：target_prob: {}'.format(target_prob))
+        logger.info('After greedy: target_prob: {}'.format(target_prob))
 
         self.belief['target_prob'] = target_prob
 

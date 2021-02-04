@@ -87,7 +87,7 @@ class Invigorate(object):
         self._penalty_for_asking = -2
         self._penalty_for_fail = -10
         self.history_scores = []
-        self.object_pool = []
+        self.object_pool = {}
         self.rel_pool = {}
         self.target_in_pool = None
         self._init_kde()
@@ -154,7 +154,7 @@ class Invigorate(object):
             logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
         # double check the rois in our object pool
-        rois = [o["bbox"] for o in self.object_pool]
+        rois = [o["bbox"] for o in self.object_pool.items()]
         logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
@@ -177,13 +177,14 @@ class Invigorate(object):
         # Match bbox and update class scores
         self._bbox_post_process(bboxes, scores)
         logger.info('multistep_object_detection, after post process, object pool:')
-        for i, obj in enumerate(self.object_pool):
+        for i, obj in self.object_pool:
             sc = np.array(obj["cls_scores"]).mean(axis=0).max()
             cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
             logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
 
+        logger.info('Perceive_img: updating object pool, filtering background objects')
         # TODO test here
-        class_scores = np.asarray([np.array(object["cls_scores"]).mean(axis=0) for object in self.object_pool]) # N x 32
+        class_scores = np.asarray([np.array(object["cls_scores"]).mean(axis=0) for object in self.object_pool.items()]) # N x 32
         valid_obj_indexes = np.flatnonzero(class_scores[:, 1:].max(axis=1) > 0.5)
         invalid_obj_indexes = np.flatnonzero(class_scores[:, 1:].max(axis=1) < 0.5)
         new_object_pool = [obj for i, obj in enumerate(self.object_pool) if i in valid_obj_indexes] # put valid objects in front of object pool
@@ -223,7 +224,8 @@ class Invigorate(object):
         target_prob = self._integrate_historic_answer(target_prob)
 
         # copy back to object pool
-        for i in range(len(self.object_pool)):
+        num_obj = self.belief["num_obj"]
+        for i in range(num_obj):
             self.object_pool[i]["target_prob"] = target_prob[i]
 
         print('--------------------------------------------------------')
@@ -260,15 +262,15 @@ class Invigorate(object):
         logger.info('Perceive_img: grasp detection finished')
 
         # update target_prob
-        for i in range(len(self.object_pool)):
+        num_obj = self.belief["num_obj"]
+        for i in range(num_obj):
             self.object_pool[i]["grasp"] = grasps[i]
 
         self.belief["grasps"] = grasps
 
     def estimate_state_with_user_answer(self, action, answer):
-
-        num_box = self.belief["num_box"]
         response, clue = self._process_user_answer(answer)
+        logger.info("estimate_state_with_user_answer, response: {}, info: {}".format(response, clue))
 
         action_type, target_idx = self.parse_action(action)
         assert action_type == "Q1"
@@ -279,11 +281,11 @@ class Invigorate(object):
         # Firstly, regrounding the target according to the answer if possible.
         if clue != "":
             # if there is a clue, regrounding the target with the clue and update the object belief
-            img = self.belief['img']
+            img = self.img
             bboxes = self.belief['bboxes']
             classes = self.belief['classes']
             regrounding_scores = self._vis_ground_client.ground(img, bboxes, clue, classes)
-            target_prob = self._multi_step_grounding(regrounding_scores)
+            target_prob = self._cal_target_prob_from_grounding_score(regrounding_scores)
             target_prob = self._integrate_historic_answer(target_prob)
             self.expr.append(clue) # append clue to expression list
         else:
@@ -301,9 +303,12 @@ class Invigorate(object):
                 self.object_pool[target_idx]["is_target"] = 1
             else:
                 # user answer "no"
-                target_prob[target_idx] = 0
-                target_prob /= np.sum(target_prob)
-                self.object_pool[target_idx]["is_target"] = 0
+                # target_prob[target_idx] = 0
+                # target_prob /= np.sum(target_prob)
+                # self.object_pool[target_idx]["is_target"] = 0
+                self.object_pool[target_idx]["cand_belief"] = 0
+                p_cand = [o["cand_belief"] for o in self.object_pool]
+                target_prob = self._cal_target_prob_from_p_cand(p_cand)
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -549,9 +554,11 @@ class Invigorate(object):
 
         num_obj = self.belief["target_prob"].shape[0] - 1
         belief = copy.deepcopy(self.belief)
-        for k in belief:
-            if belief[k] is not None:
-                belief[k] = torch.from_numpy(belief[k])
+        belief["target_prob"] = torch.from_numpy(belief["target_prob"])
+        belief["rel_prob"] = torch.from_numpy(belief["rel_prob"])
+        # for k in belief:
+        #     if belief[k] is not None:
+        #         belief[k] = torch.from_numpy(belief[k])
         belief["infos"] = infos
         for k in belief["infos"]:
             belief["infos"][k] = torch.from_numpy(belief["infos"][k])
@@ -573,8 +580,13 @@ class Invigorate(object):
         target_prob = self.belief['target_prob']
         num_box = target_prob.shape[0] - 1
         rel_prob = self.belief['rel_prob']
-        leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
+
         logger.info("decision_making_pomdp: ")
+        logger.info("target_prob: {}".format(target_prob))
+        logger.info("rel_prob: {}".format(rel_prob))
+
+        leaf_desc_prob,_, leaf_prob, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob, with_virtual_node=True)
+
         infos = {
             "leaf_desc_prob": leaf_desc_prob,
             "leaf_prob": leaf_prob
@@ -886,9 +898,9 @@ class Invigorate(object):
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"].append(scores[k].tolist())
         for i in range(len(self.object_pool)):
-            # NOTE!!! This should not happen!!
-            logger.warn("history bbox not matched!!! This should not happen!!!")
             if i not in det_to_pool.values():
+                # NOTE!!! This should not happen!!
+                logger.warn("history bbox not matched!!! This should not happen!!!")
                 self.object_pool[i]["removed"] = True
 
         # initialize newly detected bboxes
@@ -905,9 +917,11 @@ class Invigorate(object):
     # ---------- grounding helpers ------------
 
     def _integrate_historic_answer(self, target_prob):
-        # incorporate QA history TODO
+        # incorporate QA history
+        num_obj = self.belief["num_obj"]
         target_prob_backup = target_prob.copy()
-        for i in range(len(self.object_pool)):
+
+        for i in range(num_obj):
             if self.object_pool[i]["is_target"] == 1:
                 target_prob[:] = 0.
                 target_prob[i] = 1.
@@ -943,9 +957,10 @@ class Invigorate(object):
         if len(cls_filter) == 0:
             # no filter is available
             disable_cls_filter = True
-        cand_neg_prior = []
+
+        cand_det_neg_llh = []
         cand_neg_llh = []
-        cand_pos_prior = []
+        cand_det_pos_llh = []
         cand_pos_llh = []
         for i, score in enumerate(mattnet_score):
             self.object_pool[i]["cand_belief"].update(score, self.obj_kdes)
@@ -957,25 +972,29 @@ class Invigorate(object):
 
             if not disable_cls_filter:
                 # prior prob
-                p_pos_prior = 0
-                p_neg_prior = 0
+                p_det_pos_llh = 0
                 cls_scores = np.array(self.object_pool[i]["cls_scores"]).mean(axis=0)
                 for cls in CLASSES:
                     if cls in cls_filter:
-                        p_pos_prior += cls_scores[CLASSES_TO_IND[cls]]
+                        p_det_pos_llh += cls_scores[CLASSES_TO_IND[cls]]
                     else:
-                        p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
-                cand_pos_prior.append(p_pos_prior)
-                cand_neg_prior.append(p_neg_prior)
+                        # p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
+                        pass
+
+                p_det_neg_llh = 1 # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
+                                  # probability of getting that observation
+
+                cand_det_pos_llh.append(p_det_pos_llh)
+                cand_det_neg_llh.append(p_det_neg_llh)
             else:
-                cand_pos_prior.append(1.)
-                cand_neg_prior.append(1.)
+                cand_det_pos_llh.append(1.)
+                cand_det_neg_llh.append(1.)
 
-        logger.info("cand_pos_prior: {}".format(cand_pos_prior))
-        logger.info("cand_pos_llh: {}".format(cand_pos_llh))
+        logger.info("cand_pos_llh: {}, cand_neg_llh: {}".format(cand_pos_llh, cand_neg_llh))
+        logger.info("cand_det_pos_llh: {}, cand_det_neg_llh: {}".format(cand_det_pos_llh, cand_det_neg_llh))
 
-        p_cand_pos = np.array(cand_pos_prior) * np.array(cand_pos_llh)
-        p_cand_neg = np.array(cand_neg_prior) * np.array(cand_neg_llh)
+        p_cand_pos = np.array(cand_det_pos_llh) * np.array(cand_pos_llh)
+        p_cand_neg = np.array(cand_det_pos_llh) * np.array(cand_neg_llh)
 
         # normalize the distribution
         p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
@@ -1108,7 +1127,7 @@ class Invigorate(object):
                 continue
             subj_cand.append(token)
         subj_cand = set(subj_cand)
-        if len(subj_cand.intersection(set(subject_tokens))) == 0:
+        if len(subj_cand.intersection(set(subject_tokens))) == 0 and len(answer) > 0:
             answer = " ".join(subject_tokens + answer.split(" "))
 
         return response, answer
