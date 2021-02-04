@@ -179,7 +179,10 @@ class Invigorate(object):
                 cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
                 logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
 
+        # Note!!! filtering happens here
+        logger.info("filtering objects!")
         pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates(renew=True)
+
         bboxes = np.asarray([self.object_pool[v]["bbox"].tolist() for k, v in det_to_pool.items()])
         classes = np.asarray([np.argmax(np.array(self.object_pool[v]["cls_scores"]).mean(axis=0)[1:]) + 1
                               for k, v in det_to_pool.items()]).reshape(-1, 1)
@@ -299,7 +302,7 @@ class Invigorate(object):
                 # self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
                 self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 1
                 self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 0
-                p_cand = [o["cand_belief"].belief[1] for o in self.object_pool if not o["removed"]]
+                p_cand = self._multistep_p_cand_update(det_to_pool)
                 target_prob = self._cal_target_prob_from_p_cand(p_cand)
                 target_prob = np.append(target_prob, max(0.0, 1. - target_prob.sum()))
 
@@ -843,6 +846,10 @@ class Invigorate(object):
 
         if prev_bbox.size == 0:
             return {}
+
+        scores = scores.copy()
+        prev_scores = prev_scores.copy()
+
         ovs = bbox_overlaps(torch.from_numpy(bbox[:, :4]), torch.from_numpy(prev_bbox[:, :4])).numpy()
         ind_match_dict = {}
         if mode == "heuristic":
@@ -918,8 +925,8 @@ class Invigorate(object):
             self.object_pool[v]["cls_scores"].append(scores[k].tolist())
         for i in range(len(self.object_pool)):
             if not self.object_pool[i]["removed"] and i not in det_to_pool.values():
-                # NOTE!!! This should not happen!!
-                logger.warn("history bbox not matched!!! This should not happen!!!")
+                # This only happens when the detected class lable is different with previous box
+                logger.info("history bbox {} not matched!, class label different, deleting original object".format(i))
                 self.object_pool[i]["removed"] = True
 
         # initialize newly detected bboxes, add to object pool
@@ -965,7 +972,7 @@ class Invigorate(object):
         assert len(cls_filter) <= 1
         return cls_filter
 
-    def _cal_target_prob_from_grounding_score(self, mattnet_score, det_to_pool):
+    def _multistep_p_cand_update(self, det_to_pool):
         cls_filter = self._initialize_cls_filter()
         disable_cls_filter= False
         if len(cls_filter) == 0:
@@ -976,11 +983,8 @@ class Invigorate(object):
         cand_neg_llh = []
         cand_det_pos_llh = []
         cand_pos_llh = []
-        for i, score in enumerate(mattnet_score):
-            pool_ind = det_to_pool[i]
-            self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
-            self.object_pool[pool_ind]["ground_scores_history"].append(score)
 
+        for pool_ind in det_to_pool.values():
             # likelihood
             cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
             cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
@@ -1014,6 +1018,16 @@ class Invigorate(object):
         p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
 
         logger.info("p_cand: {}".format(p_cand))
+
+        return p_cand
+
+    def _cal_target_prob_from_grounding_score(self, mattnet_score, det_to_pool):
+        for i, score in enumerate(mattnet_score):
+            pool_ind = det_to_pool[i]
+            self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
+            self.object_pool[pool_ind]["ground_scores_history"].append(score)
+
+        p_cand = self._multistep_p_cand_update(det_to_pool)
 
         ground_result = self._cal_target_prob_from_p_cand(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
@@ -1198,6 +1212,7 @@ class Invigorate(object):
                         if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < 0.5]
             for i in invalid_obj_inds:
                 self.object_pool[i]["removed"] = True
+            logger.info("filtering object: object ind removed: {}".format(invalid_obj_inds))
 
             self.pool_to_det = OrderedDict(zip(obj_inds, list(range(len(obj_inds)))))
             self.det_to_pool = OrderedDict(zip(list(range(len(obj_inds))), obj_inds))
