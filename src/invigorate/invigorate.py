@@ -2,8 +2,6 @@
 
 '''
 *. More structural target prob update, there should not be stages
-*. Isoloate object pool
-*. Running average
 '''
 
 '''
@@ -27,7 +25,6 @@ Assume p(x1) = 0, p(x2) = 1
 '''
 
 import warnings
-
 import torch
 from torch import t
 import torch.nn.functional as f
@@ -147,15 +144,14 @@ class Invigorate(object):
             logger.warning("WARNING: nothing is detected")
             return None
         print('--------------------------------------------------------')
-        logger.info('multistep_object_detection: _object_detection finished, all current detections: ')
+        logger.info('Perceive_img: _object_detection finished, all current detections: ')
         for i in range(bboxes.shape[0]):
             sc = scores[i].max()
             cls = CLASSES[int(classes[i].item())]
             logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
         # double check the rois in our object pool
-        rois = [o["bbox"] for o in self.object_pool]
-        logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
+        rois = [o["bbox"][None, :] for o in self.object_pool if not o["removed"]]
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
             logger.info('num_of history objects: {}'.format(rois.shape[0]))
@@ -167,41 +163,29 @@ class Invigorate(object):
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes_his[i]))
 
             bboxes, classes, scores = self._merge_bboxes(bboxes, classes, scores, bboxes_his, classes_his, scores_his)
-            logger.info('multistep_object_detection: detection merging finished, '
+            logger.info('Perceive_img: detection merging finished, '
                         'the final results that will be further merged into the object pool: ')
             for i in range(bboxes.shape[0]):
                 sc = scores[i].max()
                 cls = CLASSES[int(classes[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
-        # Match bbox and update class scores
+        # Match newly detected bbox to history bboxes. Form new object pool
         self._bbox_post_process(bboxes, scores)
-        logger.info('multistep_object_detection, after post process, object pool:')
-        for i in range(len(self.object_pool)):
-            obj = self.object_pool[i]
-            sc = np.array(obj["cls_scores"]).mean(axis=0).max()
-            cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
-            logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
-
-        logger.info('Perceive_img: updating object pool, filtering background objects')
-        # TODO test here
-        class_scores = np.asarray([np.array(object["cls_scores"]).mean(axis=0) for object in self.object_pool.items()]) # N x 32
-        valid_obj_indexes = np.flatnonzero(class_scores[:, 1:].max(axis=1) > 0.5)
-        invalid_obj_indexes = np.flatnonzero(class_scores[:, 1:].max(axis=1) < 0.5)
-        new_object_pool = [obj for i, obj in enumerate(self.object_pool) if i in valid_obj_indexes] # put valid objects in front of object pool
-        new_object_pool += [obj for i, obj in enumerate(self.object_pool) if i in invalid_obj_indexes]
-        self.object_pool = new_object_pool
-
         logger.info('Perceive_img: Object pool updated, the remaining objects: ')
-        for i in range(len(valid_obj_indexes)):
-            obj = self.object_pool[i]
-            sc = np.array(obj["cls_scores"]).mean(axis=0).max()
-            cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
-            logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
+        for i, obj in enumerate(self.object_pool):
+            if not obj["removed"]:
+                sc = np.array(obj["cls_scores"]).mean(axis=0).max()
+                cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
+                logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
 
-        bboxes = np.asarray([self.object_pool[i]["bbox"].tolist() for i in range(len(valid_obj_indexes))])
-        class_scores = np.asarray([np.array(self.object_pool[i]["cls_scores"]).mean(axis=0) for i in range(len(valid_obj_indexes))])
-        classes = np.argmax(class_scores, axis=1).reshape(-1, 1)
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates(renew=True)
+        bboxes = np.asarray([self.object_pool[v]["bbox"].tolist() for k, v in det_to_pool.items()])
+        classes = np.asarray([np.argmax(np.array(self.object_pool[v]["cls_scores"]).mean(axis=0)[1:]) + 1
+                              for k, v in det_to_pool.items()]).reshape(-1, 1)
+        logger.info("after multistep, num of objects :  {}".format(obj_num))
+        class_names = [CLASSES[i[0]] for i in classes]
+        logger.info("after multistep, classes :  {}".format(class_names))
 
         self.belief["num_obj"] = len(bboxes)
         self.belief["bboxes"] = bboxes
@@ -214,20 +198,23 @@ class Invigorate(object):
         bboxes = self.belief["bboxes"]
         classes = self.belief["classes"]
 
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
+
         # grounding
         grounding_scores = [self._vis_ground_client.ground(img, bboxes, e, classes) for e in self.expr]
         logger.info('Perceive_img: mattnet grounding finished')
-        for g_score in grounding_scores:
+        for i, g_score in enumerate(grounding_scores):
+            logger.info("grounding_scores against {} is".format(self.expr[i]))
+            logger.info(g_score)
             # multistep state estimation
-            target_prob = self._cal_target_prob_from_grounding_score(g_score)
+            target_prob = self._cal_target_prob_from_grounding_score(g_score, det_to_pool)
 
         # 2. integrate historic answer
-        target_prob = self._integrate_historic_answer(target_prob)
+        target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
 
         # copy back to object pool
-        num_obj = self.belief["num_obj"]
-        for i in range(num_obj):
-            self.object_pool[i]["target_prob"] = target_prob[i]
+        for k, v in det_to_pool.items():
+            self.object_pool[v]["target_prob"] = target_prob[k]
 
         print('--------------------------------------------------------')
         logger.info('Step 3: incorporate QA history completed')
@@ -241,7 +228,9 @@ class Invigorate(object):
         bboxes = self.belief["bboxes"]
         # classes = self.belief["classes"]
 
-        # relationship
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
+
+        # detect relationship
         rel_mat, rel_score_mat = self._rel_det_client.detect_obr(img, bboxes)
         logger.info('Perceive_img: mrt detection finished')
 
@@ -249,7 +238,7 @@ class Invigorate(object):
         rel_mat, rel_score_mat = self.rel_score_process(rel_score_mat)
 
         # multistep state estimation
-        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat)
+        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, det_to_pool)
 
         self.belief['rel_prob'] = rel_prob_mat
 
@@ -257,21 +246,22 @@ class Invigorate(object):
         # get current belief
         bboxes = self.belief["bboxes"]
 
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
+
         # grasp
         grasps = self._grasp_det_client.detect_grasps(img, bboxes)
         grasps = self._grasp_filter(bboxes, grasps)
         logger.info('Perceive_img: grasp detection finished')
 
-        # update target_prob
-        num_obj = self.belief["num_obj"]
-        for i in range(num_obj):
-            self.object_pool[i]["grasp"] = grasps[i]
+        # copy back to object pool
+        for k, v in det_to_pool.items():
+            self.object_pool[v]["grasps"] = grasps[k]
 
         self.belief["grasps"] = grasps
 
     def estimate_state_with_user_answer(self, action, answer):
         response, clue = self._process_user_answer(answer)
-        logger.info("estimate_state_with_user_answer, response: {}, info: {}".format(response, clue))
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
         action_type, target_idx = self.parse_action(action)
         assert action_type == "Q1"
@@ -286,14 +276,15 @@ class Invigorate(object):
             bboxes = self.belief['bboxes']
             classes = self.belief['classes']
             regrounding_scores = self._vis_ground_client.ground(img, bboxes, clue, classes)
-            target_prob = self._cal_target_prob_from_grounding_score(regrounding_scores)
-            target_prob = self._integrate_historic_answer(target_prob)
-            self.expr.append(clue) # append clue to expression list
+            target_prob = self._cal_target_prob_from_grounding_score(regrounding_scores, det_to_pool)
+            target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
+            self.expr.append(clue)
         else:
             target_prob = self.belief["target_prob"]
 
         if response is not None:
             if response is True:
+                # TODO edit candidate belief here
                 # user answer "yes"
                 # set non-target
                 target_prob[:] = 0
@@ -301,15 +292,16 @@ class Invigorate(object):
                     obj["is_target"] = 0
                 # set target
                 target_prob[target_idx] = 1
-                self.object_pool[target_idx]["is_target"] = 1
+                self.object_pool[det_to_pool[target_idx]]["is_target"] = 1
             else:
-                # user answer "no"
                 # target_prob[target_idx] = 0
                 # target_prob /= np.sum(target_prob)
-                # self.object_pool[target_idx]["is_target"] = 0
-                self.object_pool[target_idx]["cand_belief"] = 0
-                p_cand = [o["cand_belief"] for o in self.object_pool]
+                # self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 1
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 0
+                p_cand = [o["cand_belief"].belief[1] for o in self.object_pool if not o["removed"]]
                 target_prob = self._cal_target_prob_from_p_cand(p_cand)
+                target_prob = np.append(target_prob, max(0.0, 1. - target_prob.sum()))
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -326,10 +318,12 @@ class Invigorate(object):
 
     def transit_state(self, action):
         action_type, target_idx = self.parse_action(action)
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
         if action_type == 'GRASP_AND_END' or action_type == 'GRASP_AND_CONTINUE':
             # mark object as being removed
-            self.object_pool.pop(target_idx)
+            self.object_pool[det_to_pool[target_idx]]["removed"] = True
+
         elif action_type == 'Q1':
             # asking question does not change state
             pass
@@ -344,7 +338,7 @@ class Invigorate(object):
         '''
 
         if num_obj is None:
-            num_obj = self.belief['num_obj']
+            _, _, num_obj = self._get_valid_obj_candidates()
 
         if action < num_obj:
             return 'GRASP_AND_END', action
@@ -357,8 +351,13 @@ class Invigorate(object):
 
     def _init_kde(self):
         # with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_vilbert.pkl')) as f:
-        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_mattnet.pkl')) as f:
-            data = pkl.load(f)
+        with open(osp.join(KDE_MODEL_PATH, 'ground_density_estimation_mattnet.pkl'), "rb") as f:
+            if PYTHON_VERSION == "3":
+                data = pkl.load(f, encoding='latin1')
+            elif PYTHON_VERSION == "2":
+                data = pkl.load(f)
+            else:
+                raise ValueError
         data = data["ground"]
         pos_data = []
         neg_data = []
@@ -377,7 +376,12 @@ class Invigorate(object):
         self.obj_kdes = [kde_neg, kde_pos]
 
         with open(osp.join(KDE_MODEL_PATH, "relation_density_estimation.pkl"), "rb") as f:
-            rel_data = pkl.load(f)
+            if PYTHON_VERSION == "3":
+                rel_data = pkl.load(f, encoding='latin1')
+            elif PYTHON_VERSION == "2":
+                rel_data = pkl.load(f)
+            else:
+                raise ValueError
         parents = np.array([d["det_score"] for d in rel_data if d["gt"] == 1])
         children = np.array([d["det_score"] for d in rel_data if d["gt"] == 2])
         norel = np.array([d["det_score"] for d in rel_data if d["gt"] == 3])
@@ -385,6 +389,19 @@ class Invigorate(object):
         kde_children = gaussian_kde(children, bandwidth=0.2)
         kde_norel = gaussian_kde(norel, bandwidth=0.2)
         self.rel_kdes = [kde_parents, kde_children, kde_norel]
+
+        # with open(osp.join(KDE_MODEL_PATH, "object_density_estimation.pkl"), "rb") as f:
+        #     if PYTHON_VERSION == "3":
+        #         obj_data = pkl.load(f, encoding='latin1')
+        #     elif PYTHON_VERSION == "2":
+        #         obj_data = pkl.load(f)
+        #     else:
+        #         raise ValueError
+        # pos_obj_data = np.expand_dims(np.array(obj_data["pos"]), axis=-1)
+        # neg_obj_data = np.expand_dims(np.array(obj_data["neg"]), axis=-1)
+        # kde_obj_pos = gaussian_kde(pos_obj_data, bandwidth=0.5)
+        # kde_obj_neg = gaussian_kde(neg_obj_data, bandwidth=0.5)
+        # self.obj_det_kdes = [kde_obj_neg, kde_obj_pos]
 
     def _init_object(self, bbox, score):
         new_box = {}
@@ -882,29 +899,30 @@ class Invigorate(object):
         return bboxes, classes, scores
 
     def _bbox_post_process(self, bboxes, scores):
-        not_removed = [i for i, o in enumerate(self.object_pool)]
+        # history objects information
+        not_removed = [i for i, o in enumerate(self.object_pool) if not o["removed"]]
         no_rmv_to_pool = OrderedDict(zip(range(len(not_removed)), not_removed))
-        prev_boxes = np.array([b["bbox"] for b in self.object_pool])
-        prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool])
+        prev_boxes = np.array([b["bbox"] for b in self.object_pool if not b["removed"]])
+        prev_scores = np.array([np.array(b["cls_scores"]).mean(axis=0).tolist() for b in self.object_pool if not b["removed"]])
 
-        # match bboxes
+        # match newly detected bbox to the history objects
         det_to_no_rmv = self._bbox_match(bboxes, prev_boxes, scores, prev_scores)
         det_to_pool = {i: no_rmv_to_pool[v] for i, v in det_to_no_rmv.items()}
         pool_to_det = {v: i for i, v in det_to_pool.items()}
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
-        logger.info('_bbox_post_process: Object selected for latter process: {}'.format(pool_to_det.keys()))
+        logger.info('_bbox_post_process: object from object pool selected for latter process: {}'.format(pool_to_det.keys()))
 
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
             self.object_pool[v]["cls_scores"].append(scores[k].tolist())
         for i in range(len(self.object_pool)):
-            if i not in det_to_pool.values():
+            if not self.object_pool[i]["removed"] and i not in det_to_pool.values():
                 # NOTE!!! This should not happen!!
                 logger.warn("history bbox not matched!!! This should not happen!!!")
                 self.object_pool[i]["removed"] = True
 
-        # initialize newly detected bboxes
+        # initialize newly detected bboxes, add to object pool
         for i in not_matched:
             new_box = self._init_object(bboxes[i], scores[i])
             self.object_pool.append(new_box)
@@ -917,26 +935,24 @@ class Invigorate(object):
 
     # ---------- grounding helpers ------------
 
-    def _integrate_historic_answer(self, target_prob):
+    def _integrate_historic_answer(self, target_prob, det_to_pool):
         # incorporate QA history
-        num_obj = self.belief["num_obj"]
         target_prob_backup = target_prob.copy()
-
-        for i in range(num_obj):
-            if self.object_pool[i]["is_target"] == 1:
+        for k, v in det_to_pool.items():
+            if self.object_pool[v]["is_target"] == 1:
                 target_prob[:] = 0.
-                target_prob[i] = 1.
-            elif self.object_pool[i]["is_target"] == 0:
-                target_prob[i] = 0.
+                target_prob[k] = 1.
+            elif self.object_pool[v]["is_target"] == 0:
+                target_prob[k] = 0.
         # sanity check
         if target_prob.sum() > 0:
             target_prob /= target_prob.sum()
         else:
             # something wrong with the matching process. roll back
             target_prob = target_prob_backup
-            # for k, v in det_to_pool.items():
-            #     target_prob[k] = 0
-            # target_prob /= target_prob.sum()
+            for k, v in det_to_pool.items():
+                target_prob[k] = 0
+            target_prob /= target_prob.sum()
         return target_prob
 
     def _initialize_cls_filter(self):
@@ -949,10 +965,7 @@ class Invigorate(object):
         assert len(cls_filter) <= 1
         return cls_filter
 
-    def _cal_target_prob_from_grounding_score(self, mattnet_score):
-        '''
-        Ground objects
-        '''
+    def _cal_target_prob_from_grounding_score(self, mattnet_score, det_to_pool):
         cls_filter = self._initialize_cls_filter()
         disable_cls_filter= False
         if len(cls_filter) == 0:
@@ -964,17 +977,17 @@ class Invigorate(object):
         cand_det_pos_llh = []
         cand_pos_llh = []
         for i, score in enumerate(mattnet_score):
-            self.object_pool[i]["cand_belief"].update(score, self.obj_kdes)
-            self.object_pool[i]["ground_scores_history"].append(score)
+            pool_ind = det_to_pool[i]
+            self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
+            self.object_pool[pool_ind]["ground_scores_history"].append(score)
 
             # likelihood
-            cand_neg_llh.append(self.object_pool[i]["cand_belief"].belief[0])
-            cand_pos_llh.append(self.object_pool[i]["cand_belief"].belief[1])
+            cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
+            cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
 
             if not disable_cls_filter:
-                # prior prob
                 p_det_pos_llh = 0
-                cls_scores = np.array(self.object_pool[i]["cls_scores"]).mean(axis=0)
+                cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
                 for cls in CLASSES:
                     if cls in cls_filter:
                         p_det_pos_llh += cls_scores[CLASSES_TO_IND[cls]]
@@ -991,11 +1004,11 @@ class Invigorate(object):
                 cand_det_pos_llh.append(1.)
                 cand_det_neg_llh.append(1.)
 
-        logger.info("cand_pos_llh: {}, cand_neg_llh: {}".format(cand_pos_llh, cand_neg_llh))
         logger.info("cand_det_pos_llh: {}, cand_det_neg_llh: {}".format(cand_det_pos_llh, cand_det_neg_llh))
+        logger.info("cand_pos_llh: {}, cand_neg_llh: {}".format(cand_pos_llh, cand_neg_llh))
 
         p_cand_pos = np.array(cand_det_pos_llh) * np.array(cand_pos_llh)
-        p_cand_neg = np.array(cand_det_pos_llh) * np.array(cand_neg_llh)
+        p_cand_neg = np.array(cand_det_neg_llh) * np.array(cand_neg_llh)
 
         # normalize the distribution
         p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
@@ -1030,22 +1043,33 @@ class Invigorate(object):
         rel_mat = np.argmax(rel_score_mat, axis=0) + 1
         return rel_mat, rel_score_mat
 
-    def _multi_step_mrt_estimation(self, rel_score_mat):
+    def _multi_step_mrt_estimation(self, rel_score_mat, det_to_pool):
         # multi-step observations for relationship probability estimation
-
-        # update the relation pool TODO
-        rel_prob_mat = np.zeros_like(rel_score_mat)
-        num_obj = rel_prob_mat.shape[1]
-        for box_ind_i in range(num_obj):
-            for box_ind_j in range(box_ind_i + 1, num_obj):
-                if box_ind_i < box_ind_j:
+        box_inds = det_to_pool.keys()
+        # update the relation pool
+        rel_prob_mat = np.zeros((3, len(box_inds), len(box_inds)))
+        for i in range(len(box_inds)):
+            box_ind_i = box_inds[i]
+            for j in range(i + 1, len(box_inds)):
+                box_ind_j = box_inds[j]
+                pool_ind_i = det_to_pool[box_ind_i]
+                pool_ind_j = det_to_pool[box_ind_j]
+                if pool_ind_i < pool_ind_j:
                     rel_score = rel_score_mat[:, box_ind_i, box_ind_j]
-                    self.rel_pool[(box_ind_i, box_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(box_ind_i, box_ind_j)]["rel_belief"].belief
+                    self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
                     rel_prob_mat[:, box_ind_j, box_ind_i] = [
-                        self.rel_pool[(box_ind_i, box_ind_j)]["rel_belief"].belief[1],
-                        self.rel_pool[(box_ind_i, box_ind_j)]["rel_belief"].belief[0],
-                        self.rel_pool[(box_ind_i, box_ind_j)]["rel_belief"].belief[2], ]
+                        self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[1],
+                        self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[0],
+                        self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[2], ]
+                else:
+                    rel_score = rel_score_mat[:, box_ind_j, box_ind_i]
+                    self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(rel_score, self.rel_kdes)
+                    rel_prob_mat[:, box_ind_j, box_ind_i] = self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = [
+                        self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[1],
+                        self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[0],
+                        self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[2], ]
         return rel_prob_mat
 
     # ---------- other helpers ------------
@@ -1162,3 +1186,20 @@ class Invigorate(object):
             subj_tokens.append(token)
 
         return subj_tokens
+
+    def _get_valid_obj_candidates(self, renew=False):
+        if renew:
+            # any objects cls must > 0.5
+            obj_inds = [i for i, obj in enumerate(self.object_pool)
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > 0.5]
+
+            # set invalid object to be removed!!
+            invalid_obj_inds = [i for i, obj in enumerate(self.object_pool)
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < 0.5]
+            for i in invalid_obj_inds:
+                self.object_pool[i]["removed"] = True
+
+            self.pool_to_det = OrderedDict(zip(obj_inds, list(range(len(obj_inds)))))
+            self.det_to_pool = OrderedDict(zip(list(range(len(obj_inds))), obj_inds))
+            self.obj_num = len(self.pool_to_det)
+        return self.pool_to_det, self.det_to_pool, self.obj_num
