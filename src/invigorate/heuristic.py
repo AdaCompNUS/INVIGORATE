@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
-from .invigorate import Invigorate
+from invigorate import Invigorate
 
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)
@@ -19,10 +19,15 @@ class Heuristic(Invigorate):
     '''
 
     def plan_action(self):
-        return self.decision_making_heuristic()
+        '''
+        @return action, int, if 0 < action < num_obj, grasp obj with index action and end
+                             if num_obj < action < 2*num_obj, grasp obj with index action and continue
+                             if 2*num_obj < action < 3*num_obj, ask questions about obj with index action
+        '''
+        return self._decision_making_heuristic()
 
-    def decision_making_heuristic(self):
-        num_box = self.observations['num_box']
+    def _decision_making_heuristic(self):
+        num_box = self.belief['num_box']
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
         leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)

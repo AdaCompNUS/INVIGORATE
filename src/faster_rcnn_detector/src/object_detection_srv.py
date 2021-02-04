@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import sys
+sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
+sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
 
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
@@ -59,6 +61,8 @@ class ObjectDetectionService():
             res = ObjectDetectionResponse()
             return res
 
+        img_cv2 = self._imgmsg_to_cv2(req.image)
+        outputs = self._predictor([img_cv2, detected_instances=blahblahs])
         img_cv2 = self._imgmsg_to_cv2(req.img)
         outputs = self._predictor(img_cv2)
         # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
