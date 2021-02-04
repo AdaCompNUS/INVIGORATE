@@ -87,7 +87,7 @@ class Invigorate(object):
         self._penalty_for_asking = -2
         self._penalty_for_fail = -10
         self.history_scores = []
-        self.object_pool = {}
+        self.object_pool = []
         self.rel_pool = {}
         self.target_in_pool = None
         self._init_kde()
@@ -154,7 +154,7 @@ class Invigorate(object):
             logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
         # double check the rois in our object pool
-        rois = [o["bbox"] for o in self.object_pool.items()]
+        rois = [o["bbox"] for o in self.object_pool]
         logger.info("multistep_object_detection: feeding history bboxes, num = {}".format(len(rois)))
         if len(rois) > 0:
             rois = np.concatenate(rois, axis=0)
@@ -177,7 +177,8 @@ class Invigorate(object):
         # Match bbox and update class scores
         self._bbox_post_process(bboxes, scores)
         logger.info('multistep_object_detection, after post process, object pool:')
-        for i, obj in self.object_pool:
+        for i in range(len(self.object_pool)):
+            obj = self.object_pool[i]
             sc = np.array(obj["cls_scores"]).mean(axis=0).max()
             cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
             logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))

@@ -25,8 +25,7 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog, DatasetCatalog
-
-from invigorate_msgs.srv import *
+from invigorate_msgs.srv import ObjectDetection, ObjectDetectionResponse
 from config.config import *
 
 # --------- SETTINGS ------------
@@ -57,13 +56,15 @@ class ObjectDetectionService():
         return im
 
     def _detect_objects(self, req):
-        if req.image.encoding != '8UC3':
+        if req.img.encoding != '8UC3':
             rospy.logerr("object_detection_srv, image encoding not supported!!")
             res = ObjectDetectionResponse()
             return res
 
         img_cv2 = self._imgmsg_to_cv2(req.image)
         outputs = self._predictor([img_cv2, detected_instances=blahblahs])
+        img_cv2 = self._imgmsg_to_cv2(req.img)
+        outputs = self._predictor(img_cv2)
         # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
         print(outputs["instances"].pred_classes)
         print(outputs["instances"].pred_boxes)
@@ -71,20 +72,17 @@ class ObjectDetectionService():
 
         res = ObjectDetectionResponse()
         pred_classes = outputs["instances"].pred_classes.cpu().numpy().tolist()
-        pred_bboxes = outputs["instances"].pred_boxes.tensor
-        pred_bboxes =  pred_bboxes.cpu().numpy().tolist()
-        #pred_masks = outputs["instances"].pred_masks.cpu()
-        #pred_masks = pred_masks.view(pred_masks.size()[0], -1)
-        #pred_masks =  pred_masks.numpy().tolist()
-        object_list = []
-        for i in range(len(pred_classes)):
-            object2d = Object2D()
-            object2d.class_name = self._class_names[pred_classes[i]]
-            object2d.prob = outputs["instances"].scores[i].item()
-            object2d.bbox = pred_bboxes[i]
-            #object2d.mask = pred_masks[i]
-            object_list.append(object2d)
-        res.objects = object_list
+        num_box = len(pred_classes)
+        pred_bboxes = outputs["instances"].pred_boxes.tensor.cpu().numpy().reshape(-1).tolist()
+        cls_scores = outputs["instances"].scores.cpu().numpy().tolist()
+        # pred_bboxes =  pred_bboxes.cpu().numpy().tolist()
+
+        res = ObjectDetectionResponse()
+        res.num_box = num_box
+        res.bbox = pred_bboxes
+        res.cls = pred_classes
+        res.cls_scores = cls_scores
+        res.box_feats = json.dumps("")
 
         return res
 

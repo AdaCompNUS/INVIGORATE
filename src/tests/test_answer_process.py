@@ -110,7 +110,7 @@ def _process_user_answer(answer, subject_tokens):
             continue
         subj_cand.append(token)
     subj_cand = set(subj_cand)
-    if len(subj_cand.intersection(set(subject_tokens))) == 0:
+    if len(subj_cand.intersection(set(subject_tokens))) == 0 and len(answer) > 0:
         answer = " ".join(subject_tokens + answer.split(" "))
 
     return response, answer
@@ -121,7 +121,7 @@ print(postag_analysis(expr, mode))
 subject = _find_subject(expr)
 print("Parsed subject: {}".format(" ".join(subject)))
 while(True):
-    answer = raw_input("input a sentence: ")
+    answer = raw_input("input an answer: ")
     response, answer = _process_user_answer(answer, subject)
     print("Processed Answer: {}".format(answer))
     # print(postag_analysis(answer, mode))
