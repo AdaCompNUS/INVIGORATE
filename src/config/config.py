@@ -46,18 +46,14 @@ GRASP_AND_END = 0
 GRASP_AND_CONTINUE = 1
 ASK_Q1 = 2
 
-CLASSES = ['__background__',  # always index 0
-               'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
-               'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-               'remote controller', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
-               'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
-               'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
+# CLASSES = ['__background__',  # always index 0
+#                'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
+#                'stapler', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
+#                'remote controller', 'can', 'tape', 'knife', 'wrench', 'cup', 'charger',
+#                'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
+#                'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
 
-CLASSES_2 = ['__background__',  # always index 0
-               'box', 'banana', 'notebook', 'apple', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-               'remote controller', 'can', 'knife', 'cup', 'wallet', 'glasses', 'toothbrush']
-
-CLASSES_NEW_DETECTOR = [
+CLASSES = [
 '__background__',
 'sports ball' ,
 'bottle' ,
@@ -75,6 +71,10 @@ CLASSES_NEW_DETECTOR = [
 'toothbrush' ,
 'box' ,
 ]
+
+CLASSES_2 = ['__background__',  # always index 0
+               'box', 'banana', 'notebook', 'apple', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
+               'remote controller', 'can', 'knife', 'cup', 'wallet', 'glasses', 'toothbrush']
 
 COCO_CLASSES = [u'__background__', u'person', u'bicycle', u'car',
 u'motorcycle',

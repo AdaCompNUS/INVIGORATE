@@ -496,7 +496,7 @@ class Invigorate(object):
             grasp_macros = belief["grasp_macros"][target]
             leaf_prob = grasp_macros["leaf_prob"]
             p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
-            p_fail = 1. - target_prob[target].item() * p_not_remove_non_leaf
+            p_fail = 1. - target_prob[target].item()
             return penalty_for_fail * p_fail
 
         def belief_update(belief):

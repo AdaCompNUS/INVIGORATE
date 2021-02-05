@@ -31,7 +31,7 @@ from detectron2.structures import boxes
 from detectron2.data import MetadataCatalog, DatasetCatalog
 from invigorate_msgs.srv import ObjectDetection, ObjectDetectionResponse
 from config.config import *
-
+import pdb
 # --------- SETTINGS ------------
 VISUALIZE = False
 
@@ -90,9 +90,9 @@ class ObjectDetectionService():
             rois = np.array([req.rois]).reshape(-1, 4)
         num_box, pred_bboxes, pred_classes, cls_scores = self._detect_objects(img_cv2, rois)
 
-        pred_classes = pred_classes.cpu().numpy().tolist()
-        pred_bboxes = pred_bboxes.cpu().numpy().reshape(-1).tolist()
-        cls_scores = cls_scores.cpu().numpy().reshape(-1).tolist()
+        pred_classes = pred_classes.cpu().numpy().astype(np.int32).tolist()
+        pred_bboxes = pred_bboxes.cpu().numpy().astype(np.float64).reshape(-1).tolist()
+        cls_scores = cls_scores.cpu().numpy().astype(np.float64).reshape(-1).tolist()
         print(num_box)
         print(pred_bboxes)
         print(pred_classes)
@@ -138,7 +138,7 @@ class ObjectDetectionService():
         cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    rospy.init_node('object_detection_service')
+    rospy.init_node('detectron2_server')
     object_detection_service = ObjectDetectionService()
     rospy.spin()
 
