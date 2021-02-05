@@ -8,7 +8,9 @@ class Detectron2Client():
         self._br = CvBridge()
         self._obj_det = rospy.ServiceProxy('object_detection_srv', ObjectDetection)
 
-    def detect_objects(self, img):
+    def detect_objects(self, img, rois=None):
+        if rois is not None:
+            rois = rois.flatten().tolist()
         img_msg = self._br.cv2_to_imgmsg(img)
-        res = self._obj_det(img_msg, False)
+        res = self._obj_det(img_msg, False, rois)
         return res.num_box, res.bbox, res.cls, res.cls_scores
