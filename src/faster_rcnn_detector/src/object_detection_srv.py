@@ -66,7 +66,7 @@ class ObjectDetectionService():
         self._predictor = DefaultPredictor(self._cfg)
 
         # init ros service
-        self._service = rospy.Service('object_detection_srv', ObjectDetection, self._detect_objects)
+        self._service = rospy.Service('object_detection_srv', ObjectDetection, self._call_back)
         rospy.loginfo("object_detection_srv inited")
 
     def _imgmsg_to_cv2(self, img_msg):
@@ -83,13 +83,20 @@ class ObjectDetectionService():
             res = ObjectDetectionResponse()
             return res
 
-        img_cv2 = self._imgmsg_to_cv2(req.image)
-        rois = np.array(req.rois).view(-1, 4)
+        img_cv2 = self._imgmsg_to_cv2(req.img)
+        if len(req.rois) == 0:
+            rois = None
+        else:
+            rois = np.array([req.rois]).reshape(-1, 4)
         num_box, pred_bboxes, pred_classes, cls_scores = self._detect_objects(img_cv2, rois)
 
         pred_classes = pred_classes.cpu().numpy().tolist()
-        pred_bboxes = pred_bboxes.tensor.cpu().numpy().reshape(-1).tolist()
-        cls_scores = cls_scores.cpu().numpy().tolist()
+        pred_bboxes = pred_bboxes.cpu().numpy().reshape(-1).tolist()
+        cls_scores = cls_scores.cpu().numpy().reshape(-1).tolist()
+        print(num_box)
+        print(pred_bboxes)
+        print(pred_classes)
+        print(cls_scores)
 
         res = ObjectDetectionResponse()
         res.num_box = num_box
