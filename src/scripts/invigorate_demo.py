@@ -166,34 +166,28 @@ def main():
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
 
-            # perception
-            observations = invigorate_client.perceive_img(img, expr)
-            if observations is None:
-                logger.warning("nothing is detected, abort!!!")
-                break
-
             # state_estimation
-            invigorate_client.estimate_state_with_observation(observations)
+            invigorate_client.estimate_state_with_img(img, expr)
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
 
             # state_estimation
-            invigorate_client.estimate_state_with_user_answer(action, answer, observations)
+            invigorate_client.estimate_state_with_user_answer(action, answer)
         elif exec_type == EXEC_DUMMY_ASK:
             # get user answer
             answer = dummy_question_answer
 
             # state_estimation
-            invigorate_client.estimate_state_with_user_answer(action, answer, observations)
+            invigorate_client.estimate_state_with_user_answer(action, answer)
         else:
             raise RuntimeError('Invalid exec_type')
 
         # debug
-        img = observations['img']
-        bboxes = invigorate_client.step_infos['bboxes']
+        img = invigorate_client.img
+        bboxes = invigorate_client.belief['bboxes']
         num_obj = bboxes.shape[0]
-        classes = invigorate_client.step_infos['classes']
+        classes = invigorate_client.belief['classes']
         # rel_mat = observations['rel_mat']
         rel_score_mat = invigorate_client.belief['rel_prob']
         rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
@@ -205,7 +199,7 @@ def main():
 
         # plan for optimal actions
         action = invigorate_client.plan_action() # action_idx.
-        action_type, target_idx = invigorate_client.get_action_type(action, num_obj)
+        action_type, target_idx = invigorate_client.parse_action(action, num_obj)
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':
@@ -255,7 +249,7 @@ def main():
 
         # exec action
         if exec_type == EXEC_GRASP:
-            grasps = invigorate_client.step_infos['grasps']
+            grasps = invigorate_client.belief['grasps']
             logger.debug("grasps.shape {}".format(grasps.shape))
             object_name = CLASSES[classes[target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')

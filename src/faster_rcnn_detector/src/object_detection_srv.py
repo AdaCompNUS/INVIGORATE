@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import sys
+sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
+sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
 
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
@@ -95,6 +97,8 @@ class ObjectDetectionService():
             res = ObjectDetectionResponse()
             return res
 
+        img_cv2 = self._imgmsg_to_cv2(req.image)
+        outputs = self._predictor([img_cv2, detected_instances=blahblahs])
         img_cv2 = self._imgmsg_to_cv2(req.img)
         rois = np.array(req.rois).view(-1, 4)
         num_box, pred_bboxes, pred_classes, cls_scores = self._detect_objects(img_cv2, rois)
