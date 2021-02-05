@@ -74,7 +74,7 @@ logger = logging.getLogger(LOGGER_NAME)
 class Invigorate(object):
     def __init__(self):
         logger.info('waiting for services...')
-        self._obj_det_client = FasterRCNNClient()
+        self._obj_det_client = Detectron2Client()
         self._vis_ground_client = MAttNetClient()
         self._vmrn_client = VMRNClient()
         self._rel_det_client = self._vmrn_client
@@ -956,13 +956,11 @@ class Invigorate(object):
         assert len(cls_filter) <= 1
         return cls_filter
 
-
     def _multistep_p_cand_update(self, mattnet_score, det_to_pool):
         for i, score in enumerate(mattnet_score):
             pool_ind = det_to_pool[i]
             self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
             self.object_pool[pool_ind]["ground_scores_history"].append(score)
-
 
     def _cal_p_cand(self):
         _, det_to_pool, _ = self._get_valid_obj_candidates()
