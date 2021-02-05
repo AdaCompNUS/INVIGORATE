@@ -60,7 +60,7 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 # ROBOT = 'Dummy'
 GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
@@ -75,8 +75,8 @@ if ROBOT == 'Fetch':
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
-# DISPLAY_DEBUG_IMG = "matplotlib"
-DISPLAY_DEBUG_IMG = 'pil'
+DISPLAY_DEBUG_IMG = "matplotlib"
+# DISPLAY_DEBUG_IMG = 'pil'
 DEBUG = True
 
 # ------- Statics -----------
@@ -93,32 +93,6 @@ def init_robot(robot):
         raise Exception('robot not recognized!!')
 
     return robot
-
-def process_user_command(command, nlp_server="nltk"):
-    if nlp_server == "nltk":
-        text = nltk.word_tokenize(command)
-        pos_tags = nltk.pos_tag(text)
-    else:
-        doc = stanford_nlp_server(command)
-        pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
-
-    # the object lies after the verb
-    verb_ind = -1
-    for i, (token, postag) in enumerate(pos_tags):
-        if postag.startswith("VB"):
-            verb_ind = i
-
-    particle_ind = -1
-    for i, (token, postag) in enumerate(pos_tags):
-        if postag in {"RP"}:
-            particle_ind = i
-
-    ind = max(verb_ind, particle_ind)
-    clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
-    clue = ' '.join(clue_tokens)
-    logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
-
-    return clue
 
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
@@ -148,7 +122,6 @@ def main():
 
     # get user command
     expr = robot.listen()
-    # expr = process_user_command(expr)
 
     all_results = []
     exec_type = EXEC_GRASP

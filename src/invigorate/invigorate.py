@@ -124,7 +124,7 @@ class Invigorate(object):
         self.multistep_object_detection(img)
 
         # multistep grounding
-        self.multistep_grounding(img, expr)
+        self.multistep_grounding(img)
 
         # multistep obr detection
         self.multistep_obr_detection(img)
@@ -197,10 +197,9 @@ class Invigorate(object):
         logger.info("bboxes: {}".format(self.belief["bboxes"]))
         logger.info("classes: {}".format(self.belief["classes"]))
 
-    def multistep_grounding(self, img, expr):
+    def multistep_grounding(self, img):
         bboxes = self.belief["bboxes"]
         classes = self.belief["classes"]
-
         pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
         # grounding
@@ -210,10 +209,8 @@ class Invigorate(object):
             logger.info("grounding_scores against {} is".format(self.expr[i]))
             logger.info(g_score)
             # multistep state estimation
-            target_prob = self._cal_target_prob_from_grounding_score(g_score, det_to_pool)
-
-        # 2. integrate historic answer
-        target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
+            self._multistep_p_cand_update(g_score, det_to_pool)
+        target_prob = self._cal_target_prob()
 
         # copy back to object pool
         for k, v in det_to_pool.items():
@@ -279,32 +276,30 @@ class Invigorate(object):
             bboxes = self.belief['bboxes']
             classes = self.belief['classes']
             regrounding_scores = self._vis_ground_client.ground(img, bboxes, clue, classes)
-            target_prob = self._cal_target_prob_from_grounding_score(regrounding_scores, det_to_pool)
-            target_prob = self._integrate_historic_answer(target_prob, det_to_pool)
+            self._multistep_p_cand_update(regrounding_scores, det_to_pool)
             self.expr.append(clue)
-        else:
-            target_prob = self.belief["target_prob"]
 
         if response is not None:
             if response is True:
                 # TODO edit candidate belief here
                 # user answer "yes"
                 # set non-target
-                target_prob[:] = 0
                 for obj in self.object_pool:
                     obj["is_target"] = 0
-                # set target
-                target_prob[target_idx] = 1
+                    obj["cand_belief"].belief[0] = 1.
+                    obj["cand_belief"].belief[1] = 0.
+                # set the only target
                 self.object_pool[det_to_pool[target_idx]]["is_target"] = 1
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 0.
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 1.
             else:
                 # target_prob[target_idx] = 0
                 # target_prob /= np.sum(target_prob)
                 # self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
                 self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 1
                 self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 0
-                p_cand = self._multistep_p_cand_update(det_to_pool)
-                target_prob = self._cal_target_prob_from_p_cand(p_cand)
-                target_prob = np.append(target_prob, max(0.0, 1. - target_prob.sum()))
+
+        target_prob = self._cal_target_prob()
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -942,26 +937,6 @@ class Invigorate(object):
 
     # ---------- grounding helpers ------------
 
-    def _integrate_historic_answer(self, target_prob, det_to_pool):
-        # incorporate QA history
-        target_prob_backup = target_prob.copy()
-        for k, v in det_to_pool.items():
-            if self.object_pool[v]["is_target"] == 1:
-                target_prob[:] = 0.
-                target_prob[k] = 1.
-            elif self.object_pool[v]["is_target"] == 0:
-                target_prob[k] = 0.
-        # sanity check
-        if target_prob.sum() > 0:
-            target_prob /= target_prob.sum()
-        else:
-            # something wrong with the matching process. roll back
-            target_prob = target_prob_backup
-            for k, v in det_to_pool.items():
-                target_prob[k] = 0
-            target_prob /= target_prob.sum()
-        return target_prob
-
     def _initialize_cls_filter(self):
         subj_str = ''.join(self.subject)
         cls_filter = []
@@ -972,7 +947,16 @@ class Invigorate(object):
         assert len(cls_filter) <= 1
         return cls_filter
 
-    def _multistep_p_cand_update(self, det_to_pool):
+
+    def _multistep_p_cand_update(self, mattnet_score, det_to_pool):
+        for i, score in enumerate(mattnet_score):
+            pool_ind = det_to_pool[i]
+            self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
+            self.object_pool[pool_ind]["ground_scores_history"].append(score)
+
+
+    def _cal_p_cand(self):
+        _, det_to_pool, _ = self._get_valid_obj_candidates()
         cls_filter = self._initialize_cls_filter()
         disable_cls_filter= False
         if len(cls_filter) == 0:
@@ -999,6 +983,7 @@ class Invigorate(object):
                         # p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
                         pass
 
+                # TODO: Improvement needed here
                 if p_det_pos_llh < 0.05:
                     p_det_pos_llh = 0.0
 
@@ -1024,20 +1009,16 @@ class Invigorate(object):
 
         return p_cand
 
-    def _cal_target_prob_from_grounding_score(self, mattnet_score, det_to_pool):
-        for i, score in enumerate(mattnet_score):
-            pool_ind = det_to_pool[i]
-            self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
-            self.object_pool[pool_ind]["ground_scores_history"].append(score)
 
-        p_cand = self._multistep_p_cand_update(det_to_pool)
-
+    def _cal_target_prob(self):
+        p_cand = self._cal_p_cand()
         ground_result = self._cal_target_prob_from_p_cand(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
         return ground_result
 
+
     def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
-        pcand = torch.Tensor(pcand).reshape(1, -1)
+        pcand = torch.as_tensor(pcand).reshape(1, -1)
         pcand = pcand.repeat(sample_num, 1)
         sampled = torch.bernoulli(pcand)
         sampled_sum = sampled.sum(-1)
@@ -1046,6 +1027,7 @@ class Invigorate(object):
         if sampled.sum() > 1:
             sampled /= sampled.sum()
         return sampled
+
 
     # ---------- relation detection helpers ------------
 
@@ -1204,14 +1186,11 @@ class Invigorate(object):
 
         return subj_tokens
 
-    def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):
-        scores = scores.copy()
-        prev_scores = prev_scores.copy()
-        # match bboxes between two steps.
-        def bbox_overlaps(anchors, gt_boxes):
-            """
-            anchors: (N, 4) ndarray of float
-            gt_boxes: (K, 4) ndarray of float
+    def _get_valid_obj_candidates(self, renew=False):
+        if renew:
+            # any objects cls must > 0.5
+            obj_inds = [i for i, obj in enumerate(self.object_pool)
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > 0.5]
 
             # set invalid object to be removed!!
             invalid_obj_inds = [i for i, obj in enumerate(self.object_pool)
