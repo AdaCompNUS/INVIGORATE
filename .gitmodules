@@ -16,6 +16,3 @@
 [submodule "src/vlbert_service/src/vlbert"]
 	path = src/vlbert_service/src/vlbert
 	url = https://github.com/ZhangHanbo/VL-BERT-multi-task.git
-[submodule "src/detectron2"]
-	path = src/detectron2
-	url = https://github.com/facebookresearch/detectron2
