@@ -62,7 +62,7 @@ from libraries.utils.log import LOGGER_NAME
 # -------- Settings --------
 ROBOT = 'Dummy'
 # ROBOT = 'Dummy'
-GENERATE_CAPTIONS = True
+GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:

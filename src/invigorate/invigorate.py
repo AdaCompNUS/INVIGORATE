@@ -914,6 +914,11 @@ class Invigorate(object):
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         logger.info('_bbox_post_process: object from object pool selected for latter process: {}'.format(pool_to_det.keys()))
 
+        target_confirmed = False
+        for o in self.object_pool:
+            if o["is_target"] == 1:
+                target_confirmed = True
+
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
@@ -930,6 +935,9 @@ class Invigorate(object):
             self.object_pool.append(new_box)
             det_to_pool[i] = len(self.object_pool) - 1
             pool_to_det[len(self.object_pool) - 1] = i
+            if target_confirmed:
+                new_box["cand_belief"].belief[0] = 1.
+                new_box["cand_belief"].belief[1] = 0.
             for j in range(len(self.object_pool[:-1])):
                 # initialize relationship belief
                 new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
@@ -974,20 +982,19 @@ class Invigorate(object):
             cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
 
             if not disable_cls_filter:
-                p_det_pos_llh = 0
+                p_det = 0
                 cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
                 for cls in CLASSES:
                     if cls in cls_filter:
-                        p_det_pos_llh += cls_scores[CLASSES_TO_IND[cls]]
-                    else:
-                        # p_neg_prior += cls_scores[CLASSES_TO_IND[cls]]
-                        pass
+                        p_det += cls_scores[CLASSES_TO_IND[cls]]
 
                 # TODO: Improvement needed here
-                if p_det_pos_llh < 0.05:
+                if p_det < 0.05:
                     p_det_pos_llh = 0.0
+                else:
+                    p_det_pos_llh = 1.0
 
-                p_det_neg_llh = 1 # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
+                p_det_neg_llh = 1.0 # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
                                   # probability of getting that observation
 
                 cand_det_pos_llh.append(p_det_pos_llh)
