@@ -65,22 +65,6 @@ class ObjectDetectionService():
         self._cfg.MODEL.WEIGHTS = os.path.join(NN_MODEL_PATH, 'model_final_r50_fpn.pth')
         self._predictor = DefaultPredictor(self._cfg)
 
-        self._class_names = [{'supercategory': 'sports', 'id': 1, 'name': 'sports ball'},
-                             {'supercategory': 'kitchen', 'id': 2, 'name': 'bottle'},
-                             {'supercategory': 'kitchen', 'id': 3, 'name': 'cup'},
-                             {'supercategory': 'kitchen', 'id': 4, 'name': 'knife'},
-                             {'supercategory': 'food', 'id': 5, 'name': 'banana'},
-                             {'supercategory': 'food', 'id': 6, 'name': 'apple'},
-                             {'supercategory': 'food', 'id': 7, 'name': 'carrot'},
-                             {'supercategory': 'electronic', 'id': 8, 'name': 'mouse'},
-                             {'supercategory': 'electronic', 'id': 9, 'name': 'remote'},
-                             {'supercategory': 'electronic', 'id': 10, 'name': 'cell phone'},
-                             {'supercategory': 'indoor', 'id': 11, 'name': 'book'},
-                             {'supercategory': 'indoor', 'id': 12, 'name': 'scissors'},
-                             {'supercategory': 'indoor', 'id': 13, 'name': 'teddy bear'},
-                             {'supercategory': 'indoor', 'id': 14, 'name': 'toothbrush'},
-                             {'supercategory': 'indoor', 'id': 15, 'name': 'box'}]
-
         # init ros service
         self._service = rospy.Service('object_detection_srv', ObjectDetection, self._detect_objects)
         rospy.loginfo("object_detection_srv inited")
@@ -122,12 +106,15 @@ class ObjectDetectionService():
         if rois is None:
             # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
             # self._visualize(img_cv2, outputs)
-
+            scores = outputs["instances"].original_scores
+            bg_scores = torch.clamp(1 - scores.sum(dim=1), min=0.)
+            scores = torch.cat([bg_scores.unsqueeze(1), scores], dim = 1)
             return len(outputs["instances"].pred_classes), outputs["instances"].pred_boxes.tensor, \
-                   outputs["instances"].pred_classes, outputs["instances"].original_scores
+                   outputs["instances"].pred_classes, scores
         else:
 
             scores = F.softmax(outputs, dim=1)
+            scores[:, 0], scores[:, -1] = scores[:, -1].clone(), scores[:, 0].clone()
             cls = scores.argmax(dim=1)
             return len(cls), torch.as_tensor(rois), cls, scores
 
@@ -146,10 +133,5 @@ class ObjectDetectionService():
 if __name__ == '__main__':
     rospy.init_node('object_detection_service')
     object_detection_service = ObjectDetectionService()
-    img_path = "../../images/1.png"
-    rois = np.array([
-        100., 100., 150., 150.
-    ])
-    print(object_detection_service._detect_objects(cv2.imread(img_path), rois=rois))
     rospy.spin()
 

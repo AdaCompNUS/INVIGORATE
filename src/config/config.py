@@ -57,6 +57,25 @@ CLASSES_2 = ['__background__',  # always index 0
                'box', 'banana', 'notebook', 'apple', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
                'remote controller', 'can', 'knife', 'cup', 'wallet', 'glasses', 'toothbrush']
 
+CLASSES_NEW_DETECTOR = [
+'__background__',
+'sports ball' ,
+'bottle' ,
+'cup' ,
+'knife' ,
+'banana' ,
+'apple' ,
+'carrot' ,
+'mouse' ,
+'remote' ,
+'cell phone' ,
+'book' ,
+'scissors' ,
+'teddy bear' ,
+'toothbrush' ,
+'box' ,
+]
+
 COCO_CLASSES = [u'__background__', u'person', u'bicycle', u'car',
 u'motorcycle',
 u'airplane',
