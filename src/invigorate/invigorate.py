@@ -974,7 +974,7 @@ class Invigorate(object):
         cand_neg_llh = []
         cand_det_pos_llh = []
         cand_pos_llh = []
-
+        conf_scores = []
         for pool_ind in det_to_pool.values():
             # likelihood
             cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
@@ -988,6 +988,7 @@ class Invigorate(object):
                         p_det += cls_scores[CLASSES_TO_IND[cls]]
 
                 # TODO: Improvement needed here
+                conf_score = p_det
                 if p_det < 0.05:
                     p_det_pos_llh = 0.0
                 else:
@@ -996,11 +997,14 @@ class Invigorate(object):
                 p_det_neg_llh = 1.0 # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
                                   # probability of getting that observation
 
+                conf_scores.append(conf_score)
                 cand_det_pos_llh.append(p_det_pos_llh)
                 cand_det_neg_llh.append(p_det_neg_llh)
             else:
                 cand_det_pos_llh.append(1.)
                 cand_det_neg_llh.append(1.)
+
+        logger.debug("conf_scores: {}".format(conf_scores))
 
         logger.info("cand_det_pos_llh: {}, cand_det_neg_llh: {}".format(cand_det_pos_llh, cand_det_neg_llh))
         logger.info("cand_pos_llh: {}, cand_neg_llh: {}".format(cand_pos_llh, cand_neg_llh))
