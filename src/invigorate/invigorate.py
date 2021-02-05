@@ -1200,11 +1200,11 @@ class Invigorate(object):
         if renew:
             # any objects cls must > 0.5
             obj_inds = [i for i, obj in enumerate(self.object_pool)
-                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > 0.5]
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > 0.4]
 
             # set invalid object to be removed!!
             invalid_obj_inds = [i for i, obj in enumerate(self.object_pool)
-                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < 0.5]
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < 0.4]
             for i in invalid_obj_inds:
                 self.object_pool[i]["removed"] = True
             logger.info("filtering object: object ind removed: {}".format(invalid_obj_inds))
