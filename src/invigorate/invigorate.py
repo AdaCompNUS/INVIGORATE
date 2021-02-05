@@ -1113,6 +1113,8 @@ class Invigorate(object):
         return subj_tokens
 
     def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):
+        scores = scores.copy()
+        prev_scores = prev_scores.copy()
         # match bboxes between two steps.
         def bbox_overlaps(anchors, gt_boxes):
             """
