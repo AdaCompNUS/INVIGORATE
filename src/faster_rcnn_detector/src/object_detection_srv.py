@@ -58,11 +58,12 @@ class ObjectDetectionService():
         # init Detectron2
         self._cfg = get_cfg()
         # add project-specific config (e.g., TensorMask) here if you're not running a model in detectron2's core library
-        # self._cfg.merge_from_file(model_zoo.get_config_file("Misc/cascade_rcnn_X_152_32x8d_FPN_IN5k_gn_dconv.yaml"))
-        self._cfg.merge_from_file(model_zoo.get_config_file("Base-RCNN-FPN.yaml"))
+        self._cfg.merge_from_file(model_zoo.get_config_file("Misc/cascade_rcnn_X_152_32x8d_FPN_IN5k_gn_dconv.yaml"))
+        # self._cfg.merge_from_file(model_zoo.get_config_file("Base-RCNN-FPN.yaml"))
         self._cfg.MODEL.ROI_HEADS.NUM_CLASSES = 15
         self._cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
-        self._cfg.MODEL.WEIGHTS = os.path.join(NN_MODEL_PATH, 'model_final_r50_fpn.pth')
+        # self._cfg.MODEL.WEIGHTS = os.path.join(NN_MODEL_PATH, 'model_final_r50_fpn.pth')
+        self._cfg.MODEL.WEIGHTS = os.path.join(NN_MODEL_PATH, 'model_final_cascade.pth')
         self._predictor = DefaultPredictor(self._cfg)
 
         # init ros service
