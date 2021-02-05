@@ -917,7 +917,7 @@ class Invigorate(object):
 
         target_confirmed = False
         for o in self.object_pool:
-            if o["is_target"] == 1:
+            if o["is_target"] == 1 and not o["removed"]:
                 target_confirmed = True
 
         # updating the information of matched bboxes
