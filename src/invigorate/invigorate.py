@@ -793,16 +793,17 @@ class Invigorate(object):
         return bboxes, classes, class_scores
 
     def _bbox_filter(self, bbox, cls, cls_scores):
-        # apply NMS
-        bbox_scores = np.max(cls_scores, axis=1)
-        keep = nms(torch.from_numpy(bbox), torch.from_numpy(bbox_scores), 0.7)
-        keep = keep.view(-1).numpy().tolist()
-        for i in range(bbox.shape[0]):
-            if i not in keep and bbox_scores[i] > 0.9:
-                keep.append(i)
-        bbox = bbox[keep]
-        cls = cls[keep]
-        cls_scores = cls_scores[keep]
+        # # apply NMS
+        # bbox_scores = np.max(cls_scores, axis=1)
+        # keep = nms(torch.from_numpy(bbox), torch.from_numpy(bbox_scores), 0.7)
+        # keep = keep.view(-1).numpy().tolist()
+        # for i in range(bbox.shape[0]):
+        #     if i not in keep and bbox_scores[i] > 0.9:
+        #         keep.append(i)
+        # bbox = bbox[keep]
+        # cls = cls[keep]
+        # cls_scores = cls_scores[keep]
+        # return bbox, cls, cls_scores
         return bbox, cls, cls_scores
 
     def _bbox_match(self, bbox, prev_bbox, scores=None, prev_scores=None, mode = "hungarian"):

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import sys
-sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
-sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
+if "/opt/ros/kinetic/lib/python2.7/dist-packages" in sys.path:
+    sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
+    sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
 
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
@@ -14,14 +15,15 @@ import torch
 import detectron2
 from detectron2.utils.logger import setup_logger
 setup_logger()
-
+import torch
+from torch import nn
+from torch.nn import functional as F
 # import some common libraries
 import numpy as np
 import os, json, cv2, random
 # import some common detectron2 utilities
 from detectron2 import model_zoo
 from detectron2 import modeling
-modeling.roi_heads.roi_heads
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
@@ -98,8 +100,6 @@ class ObjectDetectionService():
             return res
 
         img_cv2 = self._imgmsg_to_cv2(req.image)
-        outputs = self._predictor([img_cv2, detected_instances=blahblahs])
-        img_cv2 = self._imgmsg_to_cv2(req.img)
         rois = np.array(req.rois).view(-1, 4)
         num_box, pred_bboxes, pred_classes, cls_scores = self._detect_objects(img_cv2, rois)
 
@@ -113,16 +113,23 @@ class ObjectDetectionService():
         res.cls = pred_classes
         res.cls_scores = cls_scores
         res.box_feats = json.dumps("")
-
+        return res
 
     def _detect_objects(self, img_cv2, rois=None):
 
-        outputs = self._predictor(img_cv2)
-        # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
-        # self._visualize(img_cv2, outputs)
+        outputs = self._predictor(img_cv2, rois)
 
-        return len(outputs["instances"].pred_classes), outputs["instances"].pred_boxes, \
-               outputs["instances"].pred_classes, outputs["instances"].scores
+        if rois is None:
+            # look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification
+            # self._visualize(img_cv2, outputs)
+
+            return len(outputs["instances"].pred_classes), outputs["instances"].pred_boxes.tensor, \
+                   outputs["instances"].pred_classes, outputs["instances"].original_scores
+        else:
+
+            scores = F.softmax(outputs, dim=1)
+            cls = scores.argmax(dim=1)
+            return len(cls), torch.as_tensor(rois), cls, scores
 
     def _visualize(self, im, outputs):
         if not VISUALIZE:
@@ -140,6 +147,9 @@ if __name__ == '__main__':
     rospy.init_node('object_detection_service')
     object_detection_service = ObjectDetectionService()
     img_path = "../../images/1.png"
-    object_detection_service._detect_objects(cv2.imread(img_path), rois=None)
+    rois = np.array([
+        100., 100., 150., 150.
+    ])
+    print(object_detection_service._detect_objects(cv2.imread(img_path), rois=rois))
     rospy.spin()
 
