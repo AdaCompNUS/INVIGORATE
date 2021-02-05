@@ -53,6 +53,10 @@ ASK_Q1 = 2
 #                'badminton', 'wallet', 'wrist developer', 'glasses', 'plier', 'headset',
 #                'toothbrush', 'card', 'paper', 'towel', 'shaver', 'watch']
 
+CLASSES_2 = ['__background__',  # always index 0
+               'box', 'banana', 'notebook', 'apple', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
+               'remote controller', 'can', 'knife', 'cup', 'wallet', 'glasses', 'toothbrush']
+
 CLASSES = [
 '__background__',
 'sports ball' ,
@@ -71,10 +75,6 @@ CLASSES = [
 'toothbrush' ,
 'box' ,
 ]
-
-CLASSES_2 = ['__background__',  # always index 0
-               'box', 'banana', 'notebook', 'apple', 'mobile phone', 'bottle', 'pen', 'mouse', 'umbrella',
-               'remote controller', 'can', 'knife', 'cup', 'wallet', 'glasses', 'toothbrush']
 
 COCO_CLASSES = [u'__background__', u'person', u'bicycle', u'car',
 u'motorcycle',
