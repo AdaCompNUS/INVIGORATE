@@ -122,7 +122,8 @@ class ObjectDetectionService():
         else:
 
             scores = F.softmax(outputs, dim=1)
-            scores[:, 0], scores[:, -1] = scores[:, -1].clone(), scores[:, 0].clone()
+            bg_score = scores[:, -1:]
+            scores = torch.cat([bg_score, scores], dim=1)
             cls = scores.argmax(dim=1)
             return len(cls), torch.as_tensor(rois), cls, scores
 
