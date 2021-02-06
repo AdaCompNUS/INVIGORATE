@@ -120,10 +120,9 @@ class ObjectDetectionService():
             return len(outputs["instances"].pred_classes), outputs["instances"].pred_boxes.tensor, \
                    outputs["instances"].pred_classes + 1, scores
         else:
-
             scores = F.softmax(outputs, dim=1)
             bg_score = scores[:, -1:]
-            scores = torch.cat([bg_score, scores], dim=1)
+            scores = torch.cat([bg_score, scores[:, :-1]], dim=1)
             cls = scores.argmax(dim=1)
             return len(cls), torch.as_tensor(rois), cls, scores
 
