@@ -15,13 +15,60 @@ import os.path as osp
 from PIL import Image
 import time
 import datetime
+import pdb
 
-import vmrn._init_path
-# from model.utils.config import cfg
-from vmrn.model.utils.net_utils import create_mrt
 # from sklearn.manifold import TSNE
 from config.config import *
-from paper_fig_generator import gen_paper_fig
+from .paper_fig_generator import gen_paper_fig
+
+def create_mrt(rel_mat, class_names=None, rel_score=None):
+    '''
+    rel_mat: np.array of size [num_box, num_box]
+             where rel_mat[i, j] is the relationship between obj i and obj j.
+             1 means i is the parent of j.
+             2 means i is the child of j.
+             3 means i has no relation to j.
+    '''
+
+    # using relationship matrix to create manipulation relationship tree
+    mrt = nx.DiGraph()
+
+    if rel_mat.size == 0:
+        # No object is detected
+        return mrt
+    elif (rel_mat > 0).sum() == 0:
+        # No relation is detected, meaning that there is only one object in the scene
+        class_names = class_names or [0]
+        mrt.add_node(class_names[0])
+        return mrt
+
+    node_num = np.max(np.where(rel_mat > 0)[0]) + 1
+    if class_names is None:
+        # no other node information
+        class_names = list(range(node_num))
+    elif isinstance(class_names[0], float):
+        # normalized confidence score
+        class_names = ["{:d}\n{:.2f}".format(i, cls) for i, cls in enumerate(class_names)]
+    else:
+        # class name
+        class_names = ["{:s}{:d}".format(cls, i) for i, cls in enumerate(class_names)]
+
+    if rel_score is None:
+        rel_score = np.zeros(rel_mat.shape, dtype=np.float32)
+
+    for obj1 in range(node_num):
+        mrt.add_node(class_names[obj1])
+        for obj2 in range(obj1):
+            if rel_mat[obj1, obj2].item() == 1:
+                # OBJ1 is the father of OBJ2
+                mrt.add_edge(class_names[obj2], class_names[obj1],
+                             weight=np.round(rel_score[obj1, obj2].item(), decimals=2))
+
+            if rel_mat[obj1, obj2].item() == 2:
+                # OBJ2 is the father of OBJ1
+                mrt.add_edge(class_names[obj1], class_names[obj2],
+                             weight=np.round(rel_score[obj1, obj2].item(), decimals=2))
+    return mrt
 
 def split_long_string(in_str, len_thresh = 30):
     if in_str =='':
@@ -70,9 +117,9 @@ class DataViewer(object):
         self.classes = classes
         self.num_classes = len(self.classes)
         # Extend color_pool so that it is longer than classes
-        self.color_pool = (self.num_classes / len(self.color_pool) + 1) * self.color_pool
-        self.class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
-        self.ind_to_class = dict(zip(xrange(self.num_classes), self.classes))
+        self.color_pool = int(self.num_classes / len(self.color_pool) + 1) * self.color_pool
+        self.class_to_ind = dict(zip(self.classes, range(self.num_classes)))
+        self.ind_to_class = dict(zip(range(self.num_classes), self.classes))
         self.color_dict = dict(zip(self.classes, self.color_pool[:self.num_classes]))
 
     def draw_single_bbox(self, img, bbox, bbox_color=(163, 68, 187), text_str="", test_bg_color = None):
@@ -130,7 +177,7 @@ class DataViewer(object):
             im = self.draw_single_grasp(im, dets[i], str(g_inds[i]) if g_inds is not None else None)
         return im
 
-    def draw_objdet(self, im, dets, o_inds = None):
+    def draw_objdet(self, im, dets, o_inds = None, scores = None):
         """
         :param im: original image
         :param dets: detections. size N x 5 with 4-d bbox and 1-d class
@@ -146,6 +193,8 @@ class DataViewer(object):
 
         for i in range(num_box):
             cls = self.ind_to_class[dets[i, -1]]
+            if scores is not None:
+                cls = "{}:{:.2f}".format(cls, scores[i])
             if o_inds is None:
                 im = self.draw_single_bbox(im, dets[i][:4], self.color_dict[cls], cls)
             else:
@@ -179,7 +228,7 @@ class DataViewer(object):
         # for e in mrt.edges():
         #     print(e)
 
-        fig = plt.figure(0, figsize=(5, 5))
+        fig = plt.figure(MRT_FIGURE_ID, figsize=(5, 5))
         pos = nx.circular_layout(mrt)
         nx.draw(mrt, pos, with_labels=True, font_size=16,
                 node_color='#FFF68F', node_shape='s', node_size=1500, labels={node:node for node in mrt.nodes()})
@@ -198,7 +247,7 @@ class DataViewer(object):
         else:
             img = rel_img
 
-        plt.close(0)
+        plt.close(MRT_FIGURE_ID)
         return img
 
     def draw_caption(self, im, dets, captions):
@@ -287,7 +336,7 @@ class DataViewer(object):
         return im
 
     def vis_action(self, action_str, shape, draw_arrow = False):
-        im = 255. * np.ones(shape)
+        im = 255 * np.ones(shape)
         action_str = action_str.split("\n")
 
         mid_line = im.shape[0] / 2
@@ -333,8 +382,8 @@ class DataViewer(object):
         rel_det_img = self.add_bg_score_to_img(rel_det_img, target_prob.tolist()[-1])
 
         # grounding
-        print("Target Probability: ")
-        print(target_prob.tolist())
+        # print("Target Probability: ")
+        # print(target_prob.tolist())
         ground_img = self.draw_grounding_probs(img_show.copy(), expr, vis_bboxes, target_prob)
         ground_img = self.add_obj_classes_to_img(ground_img, vis_bboxes)
 
@@ -353,18 +402,18 @@ class DataViewer(object):
                 if question_str is not None:
                     action_str = question_str
                 else:
-                    action_str = integrase.Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
+                    action_str = Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
                 question_type = "Q1_TYPE1"
-            else:
-                if target_prob[-1] == 1:
-                    action_str = Q2["type2"]
-                    question_type = "Q2_TYPE2"
-                elif (target_prob[:-1] > 0.02).sum() == 1:
-                    action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
-                    question_type = "Q2_TYPE3"
-                else:
-                    action_str = Q2["type1"]
-                    question_type = "Q2_TYPE1"
+            # else:
+            #     if target_prob[-1] == 1:
+            #         action_str = Q2["type2"]
+            #         question_type = "Q2_TYPE2"
+            #     elif (target_prob[:-1] > 0.02).sum() == 1:
+            #         action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
+            #         question_type = "Q2_TYPE3"
+            #     else:
+            #         action_str = Q2["type1"]
+            #         question_type = "Q2_TYPE1"
             print(action_str)
 
             action_img_shape = list(img_show.shape)
@@ -383,11 +432,12 @@ class DataViewer(object):
             ground_img = self.add_grasp_to_img(ground_img, np.expand_dims(grasps[target_idx], axis=0))
 
         # save result
-        out_dir = osp.join(ROOT_DIR, "images/output")
+        out_dir = LOG_DIR
         final_img = np.concatenate([
             np.concatenate([object_det_img, rel_det_img], axis=1),
             np.concatenate([ground_img, action_img], axis=1),
         ], axis=0)
+        final_img = final_img.astype(np.uint8)
 
         if save:
             if im_id is None:
@@ -427,8 +477,14 @@ class DataViewer(object):
     def relscores_to_visscores(self, rel_score_mat):
         return np.max(rel_score_mat, axis=0)
 
-    def display_img(self, img):
+    def display_img(self, img, mode="matplotlib"):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        im_pil = Image.fromarray(img)
-        im_pil.show()
+        if mode =="matplotlib":
+            plt.figure(DISPLAY_FIGURE_ID)
+            plt.axis('off')
+            plt.imshow(img)
+            plt.show()
+        elif mode == "pil":
+            im_pil = Image.fromarray(img)
+            im_pil.show()
 

@@ -1,8 +1,10 @@
-src/images
+
 build/
 devel/
 logs/
 src/experiment
+src/images
+tmp/
 
 .catkin_tools/
 .vscode/
@@ -31,3 +33,6 @@ src/experiment
 src/.DS_Store
 
 .DS_Store
+
+src/vilbert_service/vilbert
+src/vilbert_service/vqa_markrcnn_benchmark

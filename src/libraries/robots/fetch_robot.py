@@ -41,7 +41,8 @@ BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
-DUMMY_GRASP = False
+DUMMY_SAY = False
+DUMMY_GRASP = True
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -60,21 +61,17 @@ ORIG_IMAGE_SIZE = (480, 640)
 # X_OFFSET = int(ORIG_IMAGE_SIZE[1] * (1 - SCALE) / 2)
 # YCROP = (Y_OFFSET, ORIG_IMAGE_SIZE[0] - Y_OFFSET)
 # XCROP = (X_OFFSET, ORIG_IMAGE_SIZE[1] - X_OFFSET)
-if USE_REALSENSE:
-    # YCROP = (180, 450)
-    # XCROP = (200, 500)
-    YCROP = (470, 1000)
-    XCROP = (700, 1460)
-else:
-    YCROP = (180, 450)
-    XCROP = (150, 490)
+YCROP = (470, 1000) # 1080
+XCROP = (700, 1460) # 1920
+FETCH_YCROP = (180, 450) # 480
+FETCH_XCROP = (150, 490) # 640
 
 FETCH_GRIPPER_LENGTH = 0.2
 FETCH_MAX_GRIPPER_OPENING = 0.1
 GRASP_DEPTH = 0.01
-GRASP_POSE_X_OFFST = -0.01 # -0.018
-GRASP_POSE_Y_OFFST = 0.003 # 0.02
-GRASP_POSE_Z_OFFST = -0.02 # -0.015
+GRASP_POSE_X_OFFST = -0.00 # -0.018
+GRASP_POSE_Y_OFFST = 0.000 # 0.02
+GRASP_POSE_Z_OFFST = -0.001 # -0.015
 GRASP_WIDTH_OFFSET = 0.0
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
@@ -279,10 +276,10 @@ class FetchRobot():
         target_pose.pose.position.x = 0.519
         target_pose.pose.position.y = 0.519
         target_pose.pose.position.z = 0.98
-        target_pose.pose.orientation.x = -0.515
-        target_pose.pose.orientation.y = -0.482
-        target_pose.pose.orientation.z = 0.517
-        target_pose.pose.orientation.w = -0.485
+        target_pose.pose.orientation.x = 0
+        target_pose.pose.orientation.y = 0
+        target_pose.pose.orientation.z = 0
+        target_pose.pose.orientation.w = 1.0
 
         return target_pose
 
@@ -304,8 +301,11 @@ class FetchRobot():
         start_time = time.time()
         # build uv array for segmentation
         uvs = []
-        for x in range(XCROP[0], XCROP[1]):
-            for y in range(YCROP[0], YCROP[1]):
+        # for x in range(XCROP[0], XCROP[1]):
+        #     for y in range(YCROP[0], YCROP[1]):
+        #         uvs.append([x, y])
+        for x in range(FETCH_XCROP[0], FETCH_XCROP[1]):
+            for y in range(FETCH_YCROP[0], FETCH_YCROP[1]):
                 uvs.append([x, y])
 
         points = pcl2.read_points(raw_pc, skip_nans=True, field_names=('x', 'y', 'z'), uvs=uvs)
@@ -352,7 +352,7 @@ class FetchRobot():
             resp = self._fetch_image_client()
             img = self._br.imgmsg_to_cv2(resp.image, desired_encoding='bgr8')
             logger.info('img_size : {}'.format(img.shape))
-            img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
+            img = img[FETCH_YCROP[0]:FETCH_YCROP[1], FETCH_XCROP[0]:FETCH_XCROP[1]]
             logger.info('img_size : {}'.format(img.shape))
         # depth_img_msg = rospy.wait_for_message('/head_camera/depth/image_rect', Image)
         # depth = self._br.imgmsg_to_cv2(depth_img_msg, desired_encoding='passthrough')
@@ -425,9 +425,12 @@ class FetchRobot():
         self._arm.move_in_cartesian(dx=dx, dy=dy)
 
     def say(self, text):
-        # print('Dummy execution of say: {}'.format(text))
-        resp = self._fetch_speaker_client(text)
-        return resp.success
+        if DUMMY_SAY:
+            print('Dummy execution of say: {}'.format(text))
+            return True
+        else:
+            resp = self._fetch_speaker_client(text)
+            return resp.success
 
     def listen(self, timeout=None):
         if DUMMY_LISTEN:

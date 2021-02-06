@@ -10,14 +10,19 @@ import matplotlib.pyplot as plt
 import os.path as osp
 
 import sys
-sys.path.append("..")
-from vmrn_msgs.srv import VmrDetection, VmrDetectionResponse
+sys.path.append("../vmrn_old")
+from invigorate_msgs.srv import VmrDetection, VmrDetectionResponse
 
-import vmrn_old._init_path
-from vmrn_old.model.utils.config import cfg, cfg_from_file
-from vmrn_old.model.utils.net_utils import rel_prob_to_mat, create_mrt
-import vmrn_old.model.AllinOne as ALL_IN_ONE
+import model
+print("model path: {}".format(model.__file__))
 
+import _init_path
+from model.utils.config import cfg, cfg_from_file
+from model.utils.net_utils import rel_prob_to_mat, create_mrt
+import model.AllinOne as ALL_IN_ONE
+
+# check python paths
+for p in sys.path: print(p)
 
 # -------- Constants -------
 VMRN_OLD_ROOT_DIR = '../vmrn_old'

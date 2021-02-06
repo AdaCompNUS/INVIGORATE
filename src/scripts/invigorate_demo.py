@@ -3,6 +3,9 @@
 '''
 TODO
 P1:
+*. compare kinect
+*. Try higher resolution realsense [Done, it does not work]
+*. Manually adjust position and check it reports so many collision, knife, toothbrush
 
 P2
 *. question answering for where is it? do not constrain clue to "it is under sth"
@@ -43,20 +46,27 @@ from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import nltk
 import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
-from invigorate.invigorate import *
-from libraries.caption_generator import caption_generator
+from invigorate.invigorate import Invigorate
+# from invigorate.baseline import Baseline
+from invigorate.greedy import Greedy
+from invigorate.heuristic import Heuristic
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-GENERATE_CAPTIONS = True
+# ROBOT = 'Fetch'
+ROBOT = 'Dummy'
+GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
+
+if GENERATE_CAPTIONS:
+    from libraries.caption_generator import caption_generator
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -65,6 +75,9 @@ if ROBOT == 'Fetch':
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
+# DISPLAY_DEBUG_IMG = "matplotlib"
+DISPLAY_DEBUG_IMG = 'pil'
+DEBUG = True
 
 # ------- Statics -----------
 logger = logging.getLogger(LOGGER_NAME)
@@ -81,45 +94,27 @@ def init_robot(robot):
 
     return robot
 
-def process_user_command(command, nlp_server="nltk"):
-    if nlp_server == "nltk":
-        text = nltk.word_tokenize(command)
-        pos_tags = nltk.pos_tag(text)
-    else:
-        doc = stanford_nlp_server(command)
-        pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
-
-    # the object lies after the verb
-    verb_ind = -1
-    for i, (token, postag) in enumerate(pos_tags):
-        if postag.startswith("VB"):
-            verb_ind = i
-
-    particle_ind = -1
-    for i, (token, postag) in enumerate(pos_tags):
-        if postag in {"RP"}:
-            particle_ind = i
-
-    ind = max(verb_ind, particle_ind)
-    clue_tokens = [token for (token, _) in pos_tags[ind+1:]]
-    clue = ' '.join(clue_tokens)
-    logger.info("Processed clue: {:s}".format(clue if clue != '' else "None"))
-
-    return clue
-
 def main():
     rospy.init_node('INVIGORATE', anonymous=True)
 
     if EXP_SETTING == "invigorate":
         invigorate_client = Invigorate()
-    elif EXP_SETTING == "baseline":
-        invigorate_client = Baseline()
-    elif EXP_SETTING == "no_uncert":
-        invigorate_client = No_Uncertainty()
-    elif EXP_SETTING == "no_multistep":
-        invigorate_client = No_Multistep()
-    elif EXP_SETTING == "no_multistep_2":
-        invigorate_client = No_Multistep_2()
+    # elif EXP_SETTING == "baseline":
+    #     invigorate_client = Baseline()
+    elif EXP_SETTING == 'greedy':
+        invigorate_client = Greedy()
+    elif EXP_SETTING == 'heuristic':
+        invigorate_client = Heuristic()
+
+    # elif EXP_SETTING == "no_uncert":
+    #     invigorate_client = No_Uncertainty()
+    # elif EXP_SETTING == "no_multistep":
+    #     invigorate_client = No_Multistep()
+    # elif EXP_SETTING == "no_multistep_2":
+    #     invigorate_client = No_Multistep_2()
+    # elif EXP_SETTING == "invigorate_pomdp_no_unseenobj":
+    #     invigorate_client = InvigoratePOMDPNoUnseenObj()
+
     logger.info("SETTING: {}".format(EXP_SETTING))
 
     data_viewer = DataViewer(CLASSES)
@@ -127,7 +122,6 @@ def main():
 
     # get user command
     expr = robot.listen()
-    expr = process_user_command(expr)
 
     all_results = []
     exec_type = EXEC_GRASP
@@ -138,22 +132,15 @@ def main():
     dummy_question_answer = None
     to_end = False
     while not to_end:
-        logger.info("------------------------")
+        logger.info("----------------------------------------------------------------------------------------")
         logger.info("Start of iteration")
 
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
             img, _ = robot.read_imgs()
 
-            # perception
-            observations = invigorate_client.perceive_img(img, expr)
-            if observations is None:
-                logger.warning("nothing is detected, abort!!!")
-                break
-            num_box = observations['bboxes'].shape[0]
-
             # state_estimation
-            invigorate_client.estimate_state_with_observation(observations)
+            invigorate_client.estimate_state_with_img(img, expr)
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
@@ -170,78 +157,90 @@ def main():
             raise RuntimeError('Invalid exec_type')
 
         # debug
-        img = observations['img']
-        bboxes = observations['bboxes']
-        classes = observations['classes']
-        rel_mat = observations['rel_mat']
-        rel_score_mat = observations['rel_score_mat']
+        img = invigorate_client.img
+        bboxes = invigorate_client.belief['bboxes']
+        num_obj = bboxes.shape[0]
+        classes = invigorate_client.belief['classes']
+        # rel_mat = observations['rel_mat']
+        rel_score_mat = invigorate_client.belief['rel_prob']
+        rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
-        imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
-        if DISPLAY_DEBUG_IMG:
-            data_viewer.display_img(imgs['final_img'])
-        cv2.imwrite("outputs/final.png", imgs['final_img'])
+        # imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
+        # if DISPLAY_DEBUG_IMG:
+        #     data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
+        # cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
         action = invigorate_client.plan_action() # action_idx.
-        action_type = invigorate_client.get_action_type(action)
+        action_type, target_idx = invigorate_client.parse_action(action, num_obj)
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':
-            grasp_target_idx = action
-            logger.info("Grasping object " + str(grasp_target_idx) + " and ending the program")
+            logger.info("Grasping object " + str(target_idx) + " and ending the program")
             exec_type = EXEC_GRASP
             to_end = True
-        elif action_type == 'GRASP_AND_CONTINUE': # if it is a grasp action
-            grasp_target_idx = action - num_box
-            logger.info("Grasping object " + str(grasp_target_idx) + " and continuing")
+        elif action_type == 'GRASP_AND_CONTINUE':
+            logger.info("Grasping object " + str(target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
-            target_idx = action - 2 * num_box
             logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
-                caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
+                subject = invigorate_client.subject[0] # the object name is the subject in question str
+                caption = caption_generator.generate_caption(img, bboxes, classes, target_idx, subject)
                 question_str = Q1["type1"].format(caption)
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
             exec_type = EXEC_ASK
-        else: # action type is Q2
-            logger.info("Askig Q2 and continuing")
-            if invigorate_client.clue is not None:
-                # special case.
-                dummy_question_answer = invigorate_client.clue
-                question_str = ''
-                exec_type = EXEC_DUMMY_ASK
-            elif target_prob[-1] == 1:
-                question_str = Q2["type2"]
-                exec_type = EXEC_ASK
-            elif (target_prob[:-1] > 0.02).sum() == 1:
-                target_idx = np.argmax(target_prob[:-1])
-                if GENERATE_CAPTIONS:
-                    # generate caption
-                    caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
-                    question_str = Q2["type3"].format(caption)
-                else:
-                    question_str = Q2["type3"].format(target_idx + "th object")
-                exec_type = EXEC_ASK
-            else:
-                question_str = Q2["type1"]
-                exec_type = EXEC_ASK
+        # else: # action type is Q2
+        #     logger.info("Askig Q2 and continuing")
+        #     if invigorate_client.clue is not None:
+        #         # special case.
+        #         dummy_question_answer = invigorate_client.clue
+        #         question_str = ''
+        #         exec_type = EXEC_DUMMY_ASK
+        #     elif target_prob[-1] == 1:
+        #         question_str = Q2["type2"]
+        #         exec_type = EXEC_ASK
+        #     elif (target_prob[:-1] > 0.02).sum() == 1:
+        #         target_idx = np.argmax(target_prob[:-1])
+        #         if GENERATE_CAPTIONS:
+        #             # generate caption
+        #             caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
+        #             question_str = Q2["type3"].format(caption)
+        #         else:
+        #             question_str = Q2["type3"].format(target_idx + "th object")
+        #         exec_type = EXEC_ASK
+        #     else:
+        #         question_str = Q2["type1"]
+        #         exec_type = EXEC_ASK
+
+        # debug
+        if DISPLAY_DEBUG_IMG:
+            imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action=action,
+                question_str=question_str, save=False)
+            data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
 
         # exec action
         if exec_type == EXEC_GRASP:
-            grasps = observations['grasps']
+            grasps = invigorate_client.belief['grasps']
             logger.debug("grasps.shape {}".format(grasps.shape))
-            object_name = CLASSES[classes[grasp_target_idx][0]]
+            object_name = CLASSES[classes[target_idx][0]]
             is_target = (action_type == 'GRASP_AND_END')
 
             # display grasp
-            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, grasp_target_idx)
+            im = data_viewer.display_obj_to_grasp(img.copy(), bboxes, grasps, target_idx)
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             cv2.imwrite("outputs/grasp.png", im)
-            if DISPLAY_DEBUG_IMG:
-                im_pil = Image.fromarray(im)
-                im_pil.show()
+            if DISPLAY_DEBUG_IMG is not None:
+                if DISPLAY_DEBUG_IMG == "matplotlib":
+                    plt.figure(DISPLAY_FIGURE_ID)
+                    plt.axis('off')
+                    plt.imshow(im)
+                    plt.show()
+                elif DISPLAY_DEBUG_IMG == "pil":
+                    im_pil = Image.fromarray(im)
+                    im_pil.show()
 
             # say
             # TODO generate caption??
@@ -251,7 +250,7 @@ def main():
                 robot.say("now I can grasp the {}".format(object_name))
 
             # execute grasping action
-            grasp = grasps[action % num_box][:8]
+            grasp = grasps[action % num_obj][:8]
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 logger.error('grasp failed!!!')
@@ -264,22 +263,24 @@ def main():
                 robot.say("this is for you")
         elif exec_type == EXEC_ASK:
             robot.say(question_str)
+            # exec_type = EXEC_GRASP # TEST
 
         # transit state
         invigorate_client.transit_state(action)
 
         # generate debug images
-        img = observations['img']
-        bboxes = observations['bboxes']
-        classes = observations['classes']
-        rel_mat = observations['rel_mat']
-        rel_score_mat = observations['rel_score_mat']
-        target_prob = invigorate_client.belief['target_prob']
+        # img = observations['img']
+        # bboxes = invigorate_client.step_infos['bboxes']
+        # classes = invigorate_client.step_infos['classes']
+        # rel_score_mat = invigorate_client.belief['rel_prob']
+        # rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
+        # target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
-        # to_cont = raw_input('To_continue?')
-        # if to_cont != 'y':
-        #     break
+        if DEBUG:
+            to_cont = raw_input('To_continue?')
+            if to_cont == 'q':
+                break
 
     print("exit!")
     # rospy.sleep(10) # wait 10 second

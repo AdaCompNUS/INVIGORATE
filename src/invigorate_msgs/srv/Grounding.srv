@@ -1,0 +1,7 @@
+sensor_msgs/Image img
+float64[] bboxes
+string expr
+
+---
+
+float64[] grounding_scores # grounding_scores[i] is raw grounding score of bboxes[i]

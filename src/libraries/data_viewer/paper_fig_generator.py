@@ -18,7 +18,7 @@ class paperFig(object):
         self.data = data
         self.size = size
 
-        self.fig = plt.figure(figsize=self.size, facecolor='white')
+        self.fig = plt.figure(PAPER_FIGURE_ID, figsize=self.size, facecolor='white')
 
     def color_transfer(self, color):
         assert len(color) == 3
@@ -183,10 +183,8 @@ def gen_paper_fig(expr, results):
     image_id = "{}-{}-{}-{}".format(current_date.year, current_date.month, current_date.day,
                                     time.strftime("%H:%M:%S"))
 
-    if MODE == EXPERIMENT:
-        plt.savefig(EXP_RES_DIR + "/" + image_id + ".png")
-    else:
-        plt.savefig(ROOT_DIR +  "images/output/paper_fig/" + image_id + ".png")
+    plt.savefig(LOG_DIR + "/" + image_id + ".png")
+    plt.clf()
 
 if __name__=="__main__":
     img = cv2.imread("../../images/1.png")

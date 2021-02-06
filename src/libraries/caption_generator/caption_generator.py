@@ -10,8 +10,8 @@ def caption_generation_client(img, bbox, target_box_id):
     top_caption, top_context_box_idx = ingress_client.generate_rel_captions_for_box(img, bbox.tolist(), target_box_id)
     return top_caption, top_context_box_idx
 
-def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
-    obj_name = CLASSES[int(obj_cls)]
+def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption, subject):
+    obj_name = subject
     cxt_obj_name = CLASSES[int(cxt_obj_cls)]
 
     if rel_caption.startswith("at") or rel_caption.startswith("on") or rel_caption.startswith("in"):
@@ -25,7 +25,7 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption):
     rel_caption_sentence = rel_caption_sentence.replace('.', '')
     return rel_caption_sentence
 
-def generate_caption(img_cv, bboxes, classes, target_box_ind):
+def generate_caption(img_cv, bboxes, classes, target_box_ind, subject):
     # input validity check
     if bboxes.shape[1] == 5:
         # filter out class scores if necessary
@@ -37,8 +37,8 @@ def generate_caption(img_cv, bboxes, classes, target_box_ind):
     print('top_context_box_idxs: {}'.format(top_context_box_idxs))
     if top_context_box_idxs == len(bboxes):
         # top context is background
-        caption_sentence = form_rel_caption_sentence(classes[target_box_ind], 0, top_caption)
+        caption_sentence = form_rel_caption_sentence(classes[target_box_ind], 0, top_caption, subject)
     else:
-        caption_sentence = form_rel_caption_sentence(classes[target_box_ind], classes[top_context_box_idxs], top_caption)
+        caption_sentence = form_rel_caption_sentence(classes[target_box_ind], classes[top_context_box_idxs], top_caption, subject)
     print('caption_sentence: {}'.format(caption_sentence))
     return caption_sentence

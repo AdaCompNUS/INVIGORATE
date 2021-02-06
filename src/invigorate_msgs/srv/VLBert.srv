@@ -1,0 +1,11 @@
+sensor_msgs/Image img
+float64[] bboxes
+string expr
+
+---
+
+float64[] grounding_scores # grounding_scores[i] is raw grounding score of bboxes[i]
+float64[] rel_score_mat # flattened list of size [3, num_box, num_box]
+                        # where rel_score_mat[1, i, j] is the probability of i being the parent of j,
+                        # where rel_score_mat[2, i, j] is the probability of i being the child of j,
+                        # where rel_score_mat[0, i, j] is the probability of i having no relation to j,

@@ -16,7 +16,7 @@ from scipy.misc import imread, imresize
 import sys
 sys.path.append("..")
 
-from vmrn_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
+from invigorate_msgs.srv import MAttNetGrounding, MAttNetGroundingResponse
 
 from MAttNet.tools.mattnet import MattNet
 
@@ -55,7 +55,7 @@ class mattnet_server(object):
         bboxes = req.bbox
         cls = req.cls
         expr = req.expr
-        cls_names = [self._classes[i] for i in cls]
+        cls_names = [str(i) for i in cls]
 
         # forward image
         bboxes = np.array(bboxes).reshape(-1, 4)

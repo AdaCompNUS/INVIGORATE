@@ -15,7 +15,7 @@ import sys
 import json
 
 from mattnet_v2 import MattNetV2
-from vmrn_msgs.srv import MAttNetGroundingV2, MAttNetGroundingV2Response
+from invigorate_msgs.srv import MAttNetGroundingV2, MAttNetGroundingV2Response
 
 # box functions
 def xywh_to_xyxy(boxes):
