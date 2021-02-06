@@ -45,7 +45,7 @@ import datetime
 from PIL import Image
 # from stanfordcorenlp import StanfordCoreNLP
 import matplotlib
-# matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import nltk
 import logging
@@ -60,9 +60,9 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
 # ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
+GENERATE_CAPTIONS =True
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -75,8 +75,8 @@ if ROBOT == 'Fetch':
 EXEC_GRASP = 0
 EXEC_ASK = 1
 EXEC_DUMMY_ASK = 2
-DISPLAY_DEBUG_IMG = "matplotlib"
-# DISPLAY_DEBUG_IMG = 'pil'
+# DISPLAY_DEBUG_IMG = "matplotlib"
+DISPLAY_DEBUG_IMG = 'pil'
 DEBUG = True
 
 # ------- Statics -----------
@@ -132,7 +132,7 @@ def main():
     dummy_question_answer = None
     to_end = False
     while not to_end:
-        logger.info("------------------------")
+        logger.info("----------------------------------------------------------------------------------------")
         logger.info("Start of iteration")
 
         if exec_type == EXEC_GRASP:
