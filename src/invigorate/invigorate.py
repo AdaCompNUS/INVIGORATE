@@ -81,7 +81,7 @@ class Invigorate(object):
         self._grasp_det_client = self._vmrn_client
 
         self._policy_tree_max_depth = 3
-        self._penalty_for_asking = -2
+        self._penalty_for_asking = - 2
         self._penalty_for_fail = -10
         self.history_scores = []
         self.object_pool = []
@@ -957,6 +957,11 @@ class Invigorate(object):
         return cls_filter
 
     def _multistep_p_cand_update(self, mattnet_score, det_to_pool):
+
+        for o in self.object_pool:
+            if not o["removed"] and o["is_target"]==1:
+                return
+
         for i, score in enumerate(mattnet_score):
             pool_ind = det_to_pool[i]
             self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
