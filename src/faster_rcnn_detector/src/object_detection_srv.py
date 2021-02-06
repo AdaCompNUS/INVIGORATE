@@ -52,7 +52,6 @@ class ObjectDetector(DefaultPredictor):
             predictions = self.model([inputs])[0]
             return predictions
 
-
 class ObjectDetectionService():
     def __init__(self):
         # init Detectron2

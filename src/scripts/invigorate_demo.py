@@ -60,9 +60,9 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-# ROBOT = 'Dummy'
-GENERATE_CAPTIONS =True
+# ROBOT = 'Fetch'
+ROBOT = 'Dummy'
+GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -186,7 +186,8 @@ def main():
             logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
-                caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
+                subject = invigorate_client.subject[0] # the object name is the subject in question str
+                caption = caption_generator.generate_caption(img, bboxes, classes, target_idx, subject)
                 question_str = Q1["type1"].format(caption)
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
@@ -278,6 +279,8 @@ def main():
 
         if DEBUG:
             to_cont = raw_input('To_continue?')
+            if to_cont == 'q':
+                break
 
     print("exit!")
     # rospy.sleep(10) # wait 10 second
