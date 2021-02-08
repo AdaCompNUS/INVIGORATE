@@ -121,7 +121,9 @@ class Invigorate(object):
         self.subject = self._find_subject(expr)
 
         # multistep object detection
-        self.multistep_object_detection(img)
+        res = self.multistep_object_detection(img)
+        if not res:
+            return False
 
         # multistep grounding
         self.multistep_grounding(img)
@@ -142,11 +144,12 @@ class Invigorate(object):
         bboxes, classes, scores = self._object_detection(img)
         if bboxes is None:
             logger.warning("WARNING: nothing is detected")
-            return None
+            return False
+
         print('--------------------------------------------------------')
         logger.info('Perceive_img: _object_detection finished, all current detections: ')
         for i in range(bboxes.shape[0]):
-            sc = scores[i].max()
+            sc = scores[i][1:].max()
             cls = CLASSES[int(classes[i].item())]
             logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
@@ -158,7 +161,7 @@ class Invigorate(object):
             bboxes_his, classes_his, scores_his = self._object_detection(img, rois)
             logger.info('Perceive_img: _his_object_re-classification finished, all historic detections: ')
             for i in range(bboxes_his.shape[0]):
-                sc = scores_his[i].max()
+                sc = scores_his[i][1:].max()
                 cls = CLASSES[int(classes_his[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes_his[i]))
 
@@ -166,7 +169,7 @@ class Invigorate(object):
             logger.info('Perceive_img: detection merging finished, '
                         'the final results that will be further merged into the object pool: ')
             for i in range(bboxes.shape[0]):
-                sc = scores[i].max()
+                sc = scores[i][1:].max()
                 cls = CLASSES[int(classes[i].item())]
                 logger.info("Class: {}, Score: {:.2f}, Location: {}".format(cls, sc, bboxes[i]))
 
@@ -196,6 +199,8 @@ class Invigorate(object):
         logger.info("multistep_object_detection finished:")
         logger.info("bboxes: {}".format(self.belief["bboxes"]))
         logger.info("classes: {}".format(self.belief["classes"]))
+
+        return True
 
     def multistep_grounding(self, img):
         bboxes = self.belief["bboxes"]
@@ -993,7 +998,7 @@ class Invigorate(object):
 
                 # TODO: Improvement needed here
                 conf_score = p_det
-                if p_det < 0.2: #   
+                if p_det < 0.2: #
                     p_det_pos_llh = 0.0
                 else:
                     p_det_pos_llh = 1.0

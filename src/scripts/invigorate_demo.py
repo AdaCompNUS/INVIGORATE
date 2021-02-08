@@ -60,9 +60,9 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-# ROBOT = 'Fetch'
-ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
+ROBOT = 'Fetch'
+# ROBOT = 'Dummy'
+GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -140,7 +140,10 @@ def main():
             img, _ = robot.read_imgs()
 
             # state_estimation
-            invigorate_client.estimate_state_with_img(img, expr)
+            res = invigorate_client.estimate_state_with_img(img, expr)
+            if not res:
+                logger.info("exit!!")
+                return
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
@@ -176,7 +179,7 @@ def main():
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':
-            logger.info("Grasping object " + str(target_idx) + " and ending the program")
+            logger.info("Grasping object " + str(target_idx) + " and ending the promgram")
             exec_type = EXEC_GRASP
             to_end = True
         elif action_type == 'GRASP_AND_CONTINUE':
@@ -186,7 +189,7 @@ def main():
             logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
-                subject = invigorate_client.subject[0] # the object name is the subject in question str
+                subject = invigorate_client.subject[-1]
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx, subject)
                 question_str = Q1["type1"].format(caption)
             else:

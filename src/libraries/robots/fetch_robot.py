@@ -42,7 +42,7 @@ GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
 DUMMY_SAY = False
-DUMMY_GRASP = True
+DUMMY_GRASP = False
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -99,6 +99,12 @@ class FetchRobot():
         self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
         self._tl = tf.TransformListener()
         self._arm = fetch_api.ArmV2()
+        self._torso = fetch_api.Torso()
+        self._head = fetch_api.Head()
+
+        #
+        self._torso.set_height(0.15)
+        self._head.pan_tilt(pan=0, tilt= math.radians(50), duration=2)
 
         # call pnp service to get ready
         pnp_req = PickPlaceRequest()
@@ -275,7 +281,7 @@ class FetchRobot():
         target_pose.header.frame_id="base_link"
         target_pose.pose.position.x = 0.519
         target_pose.pose.position.y = 0.519
-        target_pose.pose.position.z = 0.98
+        target_pose.pose.position.z = 0.65
         target_pose.pose.orientation.x = 0
         target_pose.pose.orientation.y = 0
         target_pose.pose.orientation.z = 0
