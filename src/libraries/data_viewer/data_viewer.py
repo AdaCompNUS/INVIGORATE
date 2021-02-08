@@ -400,7 +400,8 @@ class DataViewer(object):
                 action_str = "Grasping object " + str(target_idx) + " and continuing"
             elif action < 3 * num_box:
                 if question_str is not None:
-                    action_str = question_str
+                    action_str = Q1["type1"].format(str(target_idx - 2 * num_box) + "th object\n")
+                    action_str += question_str
                 else:
                     action_str = Q1["type1"].format(str(target_idx - 2 * num_box) + "th object")
                 question_type = "Q1_TYPE1"
