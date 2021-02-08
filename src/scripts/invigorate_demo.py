@@ -140,7 +140,10 @@ def main():
             img, _ = robot.read_imgs()
 
             # state_estimation
-            invigorate_client.estimate_state_with_img(img, expr)
+            res = invigorate_client.estimate_state_with_img(img, expr)
+            if not res:
+                logger.info("exit!!")
+                return
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
