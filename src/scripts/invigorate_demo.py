@@ -179,7 +179,7 @@ def main():
 
         to_grasp = False
         if action_type == 'GRASP_AND_END':
-            logger.info("Grasping object " + str(target_idx) + " and ending the program")
+            logger.info("Grasping object " + str(target_idx) + " and ending the promgram")
             exec_type = EXEC_GRASP
             to_end = True
         elif action_type == 'GRASP_AND_CONTINUE':
@@ -189,7 +189,7 @@ def main():
             logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
-                subject = " ".join(invigorate_client.subject)
+                subject = invigorate_client.subject[-1]
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx, subject)
                 question_str = Q1["type1"].format(caption)
             else:
