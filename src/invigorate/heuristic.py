@@ -27,7 +27,7 @@ class Heuristic(Invigorate):
         return self._decision_making_heuristic()
 
     def _decision_making_heuristic(self):
-        num_box = self.belief['num_box']
+        pool_to_det, det_to_pool, num_obj = self._get_valid_obj_candidates()
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
         leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
@@ -43,7 +43,7 @@ class Heuristic(Invigorate):
         pos_num = (cluster_res==pos_label).sum()
         if pos_num > 1:
             # multiple candidates, ask question
-            action = np.argmax(target_prob[:-1].reshape(-1)) + 2 * num_box
+            action = np.argmax(target_prob[:-1].reshape(-1)) + 2 * num_obj
         else:
             # only one target, grasp its most probable leaf and descendant
             target = np.argmax(target_prob.reshape(-1))
@@ -54,7 +54,7 @@ class Heuristic(Invigorate):
                 action = current_tgt
             else:
                 # grasp and continue
-                action = current_tgt + num_box
+                action = current_tgt + num_obj
             logger.info("target = {}, its leaf_and_desc = {}".format(target, current_tgt))
 
         return action

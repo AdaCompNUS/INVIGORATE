@@ -90,6 +90,18 @@ class Greedy(Invigorate):
 
         self.belief['rel_prob'] = rel_prob_mat
 
+    def grasp_detection(self, img):
+        # get current belief
+        bboxes = self.belief["bboxes"]
+        num_obj = self.belief["num_obj"]
+
+        # grasp
+        grasps = self._grasp_det_client.detect_grasps(img, bboxes)
+        grasps = self._grasp_filter(bboxes, grasps)
+        logger.info('Perceive_img: grasp detection finished')
+
+        self.belief["grasps"] = grasps
+
     def plan_action(self):
         return self.decision_making_greedy()
 
