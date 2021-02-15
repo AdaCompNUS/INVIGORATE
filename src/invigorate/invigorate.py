@@ -40,6 +40,9 @@ from sklearn.cluster import KMeans
 from scipy import optimize
 import logging
 import matplotlib.pyplot as plt
+from collections import OrderedDict
+import nltk
+import pdb
 
 from libraries.data_viewer.data_viewer import DataViewer
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
@@ -52,9 +55,7 @@ from libraries.ros_clients.mattnet_client import MAttNetClient
 from libraries.ros_clients.faster_rcnn_client import FasterRCNNClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
-from collections import OrderedDict
-import nltk
-import pdb
+
 
 try:
     import stanza
@@ -300,7 +301,7 @@ class Invigorate(object):
             else:
                 # target_prob[target_idx] = 0
                 # target_prob /= np.sum(target_prob)
-                # self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
+                self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
                 self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 1
                 self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 0
 

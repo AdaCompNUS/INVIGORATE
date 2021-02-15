@@ -19,6 +19,11 @@ class Greedy(Invigorate):
     def estimate_state_with_img(self, img, expr):
         logger.info("Greedy: estimate_state_with_observation")
 
+        self.img = img
+        if expr not in self.expr:
+            self.expr.append(expr)
+        self.subject = self._find_subject(expr)
+
         # multistep object detection
         self.singlestep_object_detection(img)
 
@@ -31,6 +36,8 @@ class Greedy(Invigorate):
         # grasp detection
         # Note, this is not multistep
         self.grasp_detection(img)
+
+        return True
 
     def singlestep_object_detection(self, img):
         bboxes, classes, scores = self._object_detection(img)
@@ -110,7 +117,7 @@ class Greedy(Invigorate):
 
         target_prob = self.belief['target_prob']
         rel_prob = self.belief['rel_prob']
-        num_box = len(self.step_infos["bboxes"])
+        num_box = len(self.belief["bboxes"])
         leaf_desc_prob,_, _, _, _ = self._get_leaf_desc_prob_from_rel_mat(rel_prob)
 
         # choose grasp action greedily, ignoring background

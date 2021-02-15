@@ -37,7 +37,7 @@ import warnings
 import rospy
 import cv2
 from cv_bridge import CvBridge
-import torch
+# import torch
 import numpy as np
 import os
 import time
@@ -56,13 +56,15 @@ from invigorate.invigorate import Invigorate
 # from invigorate.baseline import Baseline
 from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
+from invigorate.no_interaction import NoInteraction
+from invigorate.no_multistep import NoMultistep
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-# ROBOT = 'Dummy'
-GENERATE_CAPTIONS = True
+# ROBOT = 'Fetch'
+ROBOT = 'Dummy'
+GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -99,21 +101,14 @@ def main():
 
     if EXP_SETTING == "invigorate":
         invigorate_client = Invigorate()
-    # elif EXP_SETTING == "baseline":
-    #     invigorate_client = Baseline()
     elif EXP_SETTING == 'greedy':
         invigorate_client = Greedy()
     elif EXP_SETTING == 'heuristic':
         invigorate_client = Heuristic()
-
-    # elif EXP_SETTING == "no_uncert":
-    #     invigorate_client = No_Uncertainty()
-    # elif EXP_SETTING == "no_multistep":
-    #     invigorate_client = No_Multistep()
-    # elif EXP_SETTING == "no_multistep_2":
-    #     invigorate_client = No_Multistep_2()
-    # elif EXP_SETTING == "invigorate_pomdp_no_unseenobj":
-    #     invigorate_client = InvigoratePOMDPNoUnseenObj()
+    elif EXP_SETTING == "no_interaction":
+        invigorate_client = NoInteraction()
+    elif EXP_SETTING == "no_multistep":
+        invigorate_client = NoMultistep()
 
     logger.info("SETTING: {}".format(EXP_SETTING))
 

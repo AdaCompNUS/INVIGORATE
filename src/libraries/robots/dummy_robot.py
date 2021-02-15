@@ -8,9 +8,7 @@ from cv_bridge import CvBridge
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
-
-
-USE_REALSENSE = False
+USE_REALSENSE = True
 
 YCROP = (470, 1000) # 1080
 XCROP = (700, 1460) # 1920
