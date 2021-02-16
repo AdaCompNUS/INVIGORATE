@@ -42,7 +42,7 @@ GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
 DUMMY_SAY = False
-DUMMY_GRASP = False
+DUMMY_GRASP = True
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -104,7 +104,7 @@ class FetchRobot():
 
         #
         self._torso.set_height(0.15)
-        self._head.pan_tilt(pan=0, tilt= math.radians(50), duration=2)
+        self._head.pan_tilt(pan=0, tilt= math.radians(60), duration=2)
 
         # call pnp service to get ready
         pnp_req = PickPlaceRequest()
