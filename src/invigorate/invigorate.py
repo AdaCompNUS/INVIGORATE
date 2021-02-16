@@ -66,7 +66,9 @@ except:
 DEBUG = False
 
 # -------- Constants ---------
-MAX_Q2_NUM = 1 # the robot can at most ask MAX_Q2_NUM Q2s.
+POLICY_TREE_MAX_DEPTH = 3
+PENALTY_FOR_ASKING = -2
+PENALTY_FOR_FAIL = -10
 
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)
@@ -81,9 +83,9 @@ class Invigorate(object):
         self._rel_det_client = self._vmrn_client
         self._grasp_det_client = self._vmrn_client
 
-        self._policy_tree_max_depth = 3
-        self._penalty_for_asking = - 2
-        self._penalty_for_fail = -10
+        self._policy_tree_max_depth = POLICY_TREE_MAX_DEPTH
+        self._penalty_for_asking = PENALTY_FOR_ASKING
+        self._penalty_for_fail = PENALTY_FOR_FAIL
         self.history_scores = []
         self.object_pool = []
         self.rel_pool = {}
