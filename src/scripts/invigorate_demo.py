@@ -57,7 +57,7 @@ from invigorate.invigorate import Invigorate
 from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
 from invigorate.no_interaction import NoInteraction
-from invigorate.no_multistep import NoMultistep
+from invigorate.no_multistep import NoMultistep, NoMultistepAll
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
@@ -109,6 +109,8 @@ def main():
         invigorate_client = NoInteraction()
     elif EXP_SETTING == "no_multistep":
         invigorate_client = NoMultistep()
+    elif EXP_SETTING == "no_multistep_all":
+        invigorate_client = NoMultistepAll()
 
     logger.info("SETTING: {}".format(EXP_SETTING))
 
@@ -138,10 +140,10 @@ def main():
             # NOTE: only applicable for EXPERIMENT mode. Ensure the first picture is the same for all baselines!
             if first_time and MODE == EXPERIMENT:
                 origin_img_path = osp.join(EXP_RES_DIR, "../origin.png")
-                if EXP_SETTING == "greedy":
-                    cv2.imwrite(origin_img_path, img) # if greedy, write image
-                else:
-                    img = cv2.imread(origin_img_path) # for others, read image
+                # if EXP_SETTING == "greedy":
+                #     cv2.imwrite(origin_img_path, img) # if greedy, write image
+                # else:
+                img = cv2.imread(origin_img_path) # for others, read image
                 first_time = False
 
             # state_estimation

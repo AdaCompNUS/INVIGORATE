@@ -82,12 +82,13 @@ MODE = EXPERIMENT # 0 for test, 1 for experiment
 # EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
-# EXP_SETTINg = "no_multistep"
-EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "no_multistep"
+EXP_SETTING = "no_multistep_all"
+# EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 9
-SCENE_NUM = 6
+SCENE_NUM = 8
 VER_NUM = 0
 if EXP_SETTING == "baseline":
     VER_NUM = 1
@@ -101,6 +102,8 @@ elif EXP_SETTING == "no_interaction":
     VER_NUM = 5
 elif EXP_SETTING == "no_multistep":
     VER_NUM = 6
+elif EXP_SETTING == "no_multistep_all":
+    VER_NUM = 7
 
 EXP_DIR = osp.join(ROOT_DIR, "experiment")
 EXP_RES_DIR = osp.join(EXP_DIR, "participant {}".format(PARTICIPANT_NUM), "{}".format(SCENE_NUM), "{}".format(VER_NUM))

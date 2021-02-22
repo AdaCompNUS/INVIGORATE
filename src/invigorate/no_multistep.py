@@ -78,5 +78,19 @@ class NoMultistep(Invigorate):
     
         return True
 
+class NoMultistepAll(Invigorate):
 
+    def transit_state(self, action):
+        action_type, target_idx = self.parse_action(action)
+        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
+        if action_type == 'GRASP_AND_END' or action_type == 'GRASP_AND_CONTINUE':
+            # clear everything
+            self.object_pool = []
+            self.rel_pool = {}
+
+        elif action_type == 'Q1':
+            # asking question does not change state
+            pass
+    
+        return True

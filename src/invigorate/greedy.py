@@ -46,7 +46,7 @@ class Greedy(Invigorate):
         self.belief["bboxes"] = bboxes
         self.belief["classes"] = classes
         self.belief["cls_scores"] = scores
-        logger.info("multistep_object_detection finished:")
+        logger.info("singlestep_object_detection finished:")
         logger.info("bboxes: {}".format(self.belief["bboxes"]))
         logger.info("classes: {}".format(self.belief["classes"]))
 
