@@ -74,8 +74,8 @@ CLASSES = [
 
 CLASSES_TO_IND = dict(zip(CLASSES, range(len(CLASSES))))
 
-TEST = 0
-EXPERIMENT = 1
+TEST = 1
+EXPERIMENT = 0
 
 # --------------- Settings ------------------
 MODE = EXPERIMENT # 0 for test, 1 for experiment
@@ -83,12 +83,13 @@ MODE = EXPERIMENT # 0 for test, 1 for experiment
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
 # EXP_SETTING = "no_multistep"
-EXP_SETTING = "no_multistep_all"
+# EXP_SETTING = "no_multistep_all"
 # EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+EXP_SETTING = "invigorate_vs_vilbert"
 
 # ------------- EXP Settings --------------
-PARTICIPANT_NUM = 9
-SCENE_NUM = 8
+PARTICIPANT_NUM = 10
+SCENE_NUM = 1
 VER_NUM = 0
 if EXP_SETTING == "baseline":
     VER_NUM = 1
@@ -107,6 +108,10 @@ elif EXP_SETTING == "no_multistep_all":
 
 EXP_DIR = osp.join(ROOT_DIR, "experiment")
 EXP_RES_DIR = osp.join(EXP_DIR, "participant {}".format(PARTICIPANT_NUM), "{}".format(SCENE_NUM), "{}".format(VER_NUM))
+
+if EXP_SETTING == "invigorate_vs_vilbert":
+    EXP_DIR = osp.join(ROOT_DIR, "experiment/invigorate_vs_vilbert")
+    EXP_RES_DIR = osp.join(EXP_DIR, "{}{}".format(PARTICIPANT_NUM, SCENE_NUM))
 
 # ------------ Further settings -------------
 # create directory is necessary
