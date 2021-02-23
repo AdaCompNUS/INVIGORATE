@@ -42,7 +42,7 @@ GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
 DUMMY_SAY = False
-DUMMY_GRASP = True
+DUMMY_GRASP = False
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
@@ -69,6 +69,7 @@ FETCH_XCROP = (150, 490) # 640
 FETCH_GRIPPER_LENGTH = 0.2
 FETCH_MAX_GRIPPER_OPENING = 0.1
 GRASP_DEPTH = 0.01
+INITIAL_GRASP_Z_OFFSET = 0.0
 GRASP_POSE_X_OFFST = -0.00 # -0.018
 GRASP_POSE_Y_OFFST = 0.000 # 0.02
 GRASP_POSE_Z_OFFST = -0.001 # -0.015
@@ -101,10 +102,11 @@ class FetchRobot():
         self._arm = fetch_api.ArmV2()
         self._torso = fetch_api.Torso()
         self._head = fetch_api.Head()
+        self._gripper = fetch_api.Gripper()
 
         #
         self._torso.set_height(0.15)
-        self._head.pan_tilt(pan=0, tilt= math.radians(60), duration=2)
+        self._head.pan_tilt(pan=0, tilt= math.radians(55), duration=2)
 
         # call pnp service to get ready
         pnp_req = PickPlaceRequest()
@@ -210,12 +212,14 @@ class FetchRobot():
         obj_length = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_X]
         obj_width = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Y]
         obj_height = seg_resp.object.primitive.dimensions[SolidPrimitive.BOX_Z]
-        # print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
+        print("obj_x, y, z: {} {} {}".format(obj_length, obj_width, obj_height))
 
         grasp = Grasp()
         grasp.grasp_pose.header = seg_resp.object.header
         grasp.grasp_pose.pose = seg_resp.object.primitive_pose
         grasp.grasp_pose.pose.position.z += obj_height / 2 - GRASP_DEPTH
+        # grasp.grasp_pose.pose.position.z -= GRASP_DEPTH
+        # grasp.grasp_pose.pose.position.z += INITIAL_GRASP_Z_OFFSET
         quat = T.quaternion_from_euler(0, math.pi / 2, seg_req.angle, 'rzyx') # rotate by y to make it facing downwards
                                                                               # rotate by z to align with bbox orientation
         grasp.grasp_pose.pose.orientation.x = quat[0]
@@ -268,8 +272,11 @@ class FetchRobot():
         pnp_req.gripper_opening = new_grasp["width"] + GRASP_WIDTH_OFFSET # HACK!!!
 
         resp = self._pnp_client(pnp_req)
-        if not resp.success:
-            logger.error('ERROR: robot grasp failed!!')
+        num_attempt = 1
+        while not resp.success and num_attempt < 5:
+            logger.error('ERROR: robot grasp failed!!, try again {}'.format(num_attempt))
+            resp = self._pnp_client(pnp_req)
+            num_attempt += 1
         return resp.success
 
     def _move_arm_to_pose(self, target_pose):
@@ -279,9 +286,9 @@ class FetchRobot():
         # this is hard coded for demo
         target_pose = PoseStamped()
         target_pose.header.frame_id="base_link"
-        target_pose.pose.position.x = 0.519
-        target_pose.pose.position.y = 0.519
-        target_pose.pose.position.z = 0.65
+        target_pose.pose.position.x = 0.6
+        target_pose.pose.position.y = 0.45
+        target_pose.pose.position.z = 0.6
         target_pose.pose.orientation.x = 0
         target_pose.pose.orientation.y = 0
         target_pose.pose.orientation.z = 0
@@ -420,7 +427,7 @@ class FetchRobot():
         # self._move_arm_to_pose(target_pose)
 
         target_x = 0.6
-        target_y = -0.25
+        target_y = 0.0
         try:
             (trans, rot) = self._tl.lookupTransform('/base_link', '/wrist_roll_link', rospy.Time())
         except Exception as e:
@@ -429,6 +436,9 @@ class FetchRobot():
         dx = target_x - trans[0]
         dy = target_y - trans[1]
         self._arm.move_in_cartesian(dx=dx, dy=dy)
+
+        rospy.sleep(1.0)
+        self._gripper.open()
 
     def say(self, text):
         if DUMMY_SAY:

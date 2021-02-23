@@ -62,9 +62,9 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-# ROBOT = 'Fetch'
-ROBOT = 'Dummy'
-GENERATE_CAPTIONS = False
+ROBOT = 'Fetch'
+# ROBOT = 'Dummy'
+GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:

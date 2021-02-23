@@ -132,11 +132,11 @@ class Invigorate(object):
         self.multistep_grounding(img)
 
         # multistep obr detection
-        # self.multistep_obr_detection(img)
+        self.multistep_obr_detection(img)
 
         # grasp detection
         # Note, this is not multistep
-        # self.grasp_detection(img)
+        self.grasp_detection(img)
 
         return True
 
