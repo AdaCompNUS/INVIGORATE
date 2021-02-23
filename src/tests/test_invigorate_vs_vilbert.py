@@ -108,8 +108,10 @@ def generate_gt_rel_mat(edges, num_box):
 
 def cal_tgt_loss(gt_tgt_prob, pred_tgt_prob):
     loss = 0.0
+    num_obj = len(gt_tgt_prob)
     for i in range(len(gt_tgt_prob)):
         loss += math.fabs(gt_tgt_prob[i] - pred_tgt_prob[i]) # L1 loss
+    loss /= num_obj
     return loss
 
 def cal_rel_loss(gt_rel_prob, pred_rel_prob):

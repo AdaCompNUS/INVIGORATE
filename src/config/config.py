@@ -78,14 +78,14 @@ TEST = 1
 EXPERIMENT = 0
 
 # --------------- Settings ------------------
-MODE = EXPERIMENT # 0 for test, 1 for experiment
+MODE = TEST # 0 for test, 1 for experiment
 # EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
 # EXP_SETTING = "no_multistep"
 # EXP_SETTING = "no_multistep_all"
-# EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
-EXP_SETTING = "invigorate_vs_vilbert"
+EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "invigorate_vs_vilbert"
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 10
