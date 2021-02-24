@@ -4,6 +4,8 @@ import rospy
 from ingress_srv.ingress_srv import Ingress
 from config.config import CLASSES
 
+SWAP_LEFT_AND_RIGHT = True
+
 def caption_generation_client(img, bbox, target_box_id):
     # dbg_print(bbox)
     ingress_client = Ingress()
@@ -15,14 +17,22 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption, subject):
     cxt_obj_name = CLASSES[int(cxt_obj_cls)]
 
     if rel_caption.startswith("at") or rel_caption.startswith("on") or rel_caption.startswith("in"):
-        # if cxt_obj_cls == 0:
-        #     rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
-        # else:
-        #     rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
-        rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
+        if cxt_obj_cls == 0:
+            rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
+        else:
+            rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
+        # rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
     else:
         rel_caption_sentence = '{} {}'.format(rel_caption, obj_name) # HACK to fix the rare bug where the caption is actually semantic
     rel_caption_sentence = rel_caption_sentence.replace('.', '')
+    print(rel_caption_sentence)
+
+    if SWAP_LEFT_AND_RIGHT:
+        if 'left' in rel_caption_sentence:
+            rel_caption_sentence = rel_caption_sentence.replace('left', 'right')
+        elif 'right' in rel_caption_sentence:
+            rel_caption_sentence = rel_caption_sentence.replace('right', 'left')
+
     return rel_caption_sentence
 
 def generate_caption(img_cv, bboxes, classes, target_box_ind, subject):

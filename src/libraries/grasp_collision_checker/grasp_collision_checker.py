@@ -28,8 +28,8 @@ RIGHT_FINGER_POSE = {"link":[0., 0.101425, 0., 0., 0., 0.],
                      "min_max_translate":[0.0, 0.04]}
 
 # ------------- Settings -------------
-ABSOLUTE_COLLISION_SCORE_THRESHOLD = 20
-IN_GRIPPER_SCORE_THRESOHOLD = 20
+ABSOLUTE_COLLISION_SCORE_THRESHOLD = 10
+IN_GRIPPER_SCORE_THRESOHOLD = 60
 BATCH_SIZE = 1000
 VISUALIZE_GRASP = True
 COLLISION_CHECK_EPSILON = 0.002
@@ -355,6 +355,10 @@ class GraspCollisionChecker():
         else:
             logger.info("original grasp collision: {}, in_gripper_score: {}".format(collision_scores[0], in_gripper_scores[0]))
 
+        # if valid_grasp_inds is not None:
+        #     logger.info("original grasp is acceptable!!")
+        #     return grasp
+
         selected_grasp = None
 
         # Step1 fine tune z first
@@ -410,7 +414,7 @@ class GraspCollisionChecker():
                                     orig_opening])
 
         # visualize initial grasp
-        # self._vis_grasp(scene_pc_seg, orig_grasp_array)
+        self._vis_grasp(scene_pc_seg, orig_grasp_array)
 
         start_time = time.time()
         new_grasp = self._get_collision_free_grasp_cfg(orig_grasp_array, scene_pc_seg)

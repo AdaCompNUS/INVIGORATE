@@ -30,6 +30,7 @@ P2
 
 import sys
 import os.path as osp
+
 this_dir = osp.dirname(osp.abspath(__file__))
 sys.path.insert(0, osp.join(this_dir, '../'))
 
@@ -62,8 +63,8 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-# ROBOT = 'Dummy'
+# ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
@@ -80,6 +81,7 @@ EXEC_DUMMY_ASK = 2
 # DISPLAY_DEBUG_IMG = "matplotlib"
 DISPLAY_DEBUG_IMG = 'pil'
 DEBUG = True
+POINT_WHEN_ASKING = False
 
 # ------- Statics -----------
 logger = logging.getLogger(LOGGER_NAME)
@@ -154,6 +156,8 @@ def main():
         elif exec_type == EXEC_ASK:
             # get user answer
             answer = robot.listen()
+
+            robot.move_arm_to_home()
 
             # state_estimation
             invigorate_client.estimate_state_with_user_answer(action, answer)
@@ -264,6 +268,27 @@ def main():
             res = robot.grasp(grasp, is_target=is_target)
             if not res:
                 logger.error('grasp failed!!!')
+                # try_again = raw_input("try_again?")
+                # if try_again != 'y':
+                #     break
+
+                rospy.loginfo("try using bbox to be the initial grasp box")
+                # invigorate_client.grasp_detection(img)
+                # grasps = invigorate_client.belief['grasps']
+                # grasp = grasps[action % num_obj][:8]
+                bbox = bboxes[action % num_obj]
+                grasp_box = np.zeros(8)
+                grasp_box[0] = bbox[0]
+                grasp_box[1] = bbox[1]
+                grasp_box[2] = bbox[2]
+                grasp_box[3] = bbox[1]
+                grasp_box[4] = bbox[2]
+                grasp_box[5] = bbox[3]
+                grasp_box[6] = bbox[0]
+                grasp_box[7] = bbox[3]
+                res = robot.grasp(grasp_box, is_target=is_target)
+
+            if not res:
                 if not is_target:
                     robot.say("sorry I can't grasp the {}, could you help me remove it?".format(object_name))
                 else:
@@ -272,6 +297,10 @@ def main():
             if res and is_target:
                 robot.say("this is for you")
         elif exec_type == EXEC_ASK:
+            grasps = invigorate_client.belief['grasps']
+            grasp = grasps[action % num_obj][:8]
+            if POINT_WHEN_ASKING:
+                robot.point(grasp)
             robot.say(question_str)
             # exec_type = EXEC_GRASP # TEST
 

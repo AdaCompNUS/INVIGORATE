@@ -56,7 +56,6 @@ from libraries.ros_clients.faster_rcnn_client import FasterRCNNClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
-
 try:
     import stanza
 except:
@@ -112,7 +111,7 @@ class Invigorate(object):
         """
         @ self.belief, dict,
         @      belief['num_obj'], number of objects
-        @      belief["bboxes"], bboxes of those objects
+        @      belief["bboxes"], bboxes of those objects, xyxy
         @      belief["classes"], classes of those objects
         @      belief["target_prob"], target probability of each objects in the scene. This includes bg and therefore has size num_obj + 1
         @      belief["rel_prob"], [3, num_obj + 1, num_obj + 1], relationship probability between objects in the scene.

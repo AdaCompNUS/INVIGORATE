@@ -70,15 +70,15 @@ FETCH_GRIPPER_LENGTH = 0.2
 FETCH_MAX_GRIPPER_OPENING = 0.1
 GRASP_DEPTH = 0.01
 INITIAL_GRASP_Z_OFFSET = 0.0
-GRASP_POSE_X_OFFST = -0.00 # -0.018
-GRASP_POSE_Y_OFFST = 0.000 # 0.02
+GRASP_POSE_X_OFFST = 0.005 # -0.018
+GRASP_POSE_Y_OFFST = -0.005 # 0.02
 GRASP_POSE_Z_OFFST = -0.001 # -0.015
 GRASP_WIDTH_OFFSET = 0.0
 GRIPPER_OPENING_OFFSET = 0.01
 GRIPPER_OPENING_MAX = 0.09
 PLACE_BBOX_SIZE = 80
 APPROACH_DIST = 0.1
-RETREAT_DIST = 0.15
+RETREAT_DIST = 0.08
 GRASP_BOX_TO_GRIPPER_OPENING = 0.00045
 PC_DOWNSAMPLE_SIZE = 0.002
 
@@ -105,7 +105,7 @@ class FetchRobot():
         self._gripper = fetch_api.Gripper()
 
         #
-        self._torso.set_height(0.15)
+        # self._torso.set_height(0.15)
         self._head.pan_tilt(pan=0, tilt= math.radians(55), duration=2)
 
         # call pnp service to get ready
@@ -123,6 +123,8 @@ class FetchRobot():
         self.gripper_model = self._init_gripper_model()
 
         self._grasp_collision_checker = GraspCollisionChecker(self.gripper_model)
+
+        self._place_num_times = 0
 
     def _init_gripper_model(self):
         """
@@ -253,9 +255,9 @@ class FetchRobot():
 
         grasp_pose_tmp = grasp.grasp_pose
         new_grasp = self._get_collision_free_grasp(grasp_pose_tmp, pnp_req.gripper_opening)
-        # to_cont = raw_input("to_continue?")
-        # if to_cont != "y":
-        #     return False
+        to_cont = raw_input("to_continue?")
+        if to_cont == "q":
+            return False
 
         if new_grasp is None:
             logger.error('ERROR: robot grasp failed!!')
@@ -286,25 +288,33 @@ class FetchRobot():
         # this is hard coded for demo
         target_pose = PoseStamped()
         target_pose.header.frame_id="base_link"
-        target_pose.pose.position.x = 0.6
-        target_pose.pose.position.y = 0.45
-        target_pose.pose.position.z = 0.6
-        target_pose.pose.orientation.x = 0
-        target_pose.pose.orientation.y = 0
-        target_pose.pose.orientation.z = 0
-        target_pose.pose.orientation.w = 1.0
+        target_pose.pose.position.x = 0.35
+        target_pose.pose.position.y = 0.45 - self._place_num_times * 0.05
+        target_pose.pose.position.z = 0.79 + APPROACH_DIST + FETCH_GRIPPER_LENGTH
+        quat = T.quaternion_from_euler(0, math.pi / 2, math.pi, 'rzyx') # rotate by y to make it facing downwards
+        target_pose.pose.orientation.x = quat[0]
+        target_pose.pose.orientation.y = quat[1]
+        target_pose.pose.orientation.z = quat[2]
+        target_pose.pose.orientation.w = quat[3]
+        # target_pose.pose.orientation.x = 0
+        # target_pose.pose.orientation.y = 0
+        # target_pose.pose.orientation.z = 0
+        # target_pose.pose.orientation.w = 1.0
+
+        self._place_num_times += 1
 
         return target_pose
 
     def _get_scene_pc(self):
-        start_time = time.time()
-        resp = self._fetch_pc_client()
-        raw_pc = resp.pointcloud
-        end_time = time.time()
-        logger.debug("getting pc takes {}".format(end_time - start_time))
+        # start_time = time.time()
+        # resp = self._fetch_pc_client()
+        # raw_pc = resp.pointcloud
+        # end_time = time.time()
+        # logger.debug("getting pc takes {}".format(end_time - start_time))
 
         try:
-            # raw_pc = rospy.wait_for_message("/camera/depth_registered/points", PointCloud2, timeout=20.0)
+            raw_pc = rospy.wait_for_message("/head_camera/depth_registered/points", PointCloud2, timeout=20.0)
+            raw_pc = rospy.wait_for_message("/head_camera/depth_registered/points", PointCloud2, timeout=20.0)
             trans, rot = self._tl.lookupTransform('base_link', raw_pc.header.frame_id, rospy.Time(0))
             transform_mat44 = np.dot(T.translation_matrix(trans), T.quaternion_matrix(rot))
         except Exception as e:
@@ -397,48 +407,68 @@ class FetchRobot():
             logger.error('ERROR: fail to find a place to place!!')
             return False
 
-        pnp_req = PickPlaceRequest()
-        pnp_req.action = PickPlaceRequest.PLACE
-        pnp_req.place_type = PickPlaceRequest.DROP
+        self._arm.move_to_pose(target_pose, allowed_planning_time=3)
+        self._arm.move_in_cartesian(dz=-APPROACH_DIST)
+        self._gripper.open()
+        self._arm.move_in_cartesian(dz=APPROACH_DIST + 0.05)
 
-        pnp_req.target_pose = target_pose
+        # pnp_req = PickPlaceRequest()
+        # pnp_req.action = PickPlaceRequest.PLACE
+        # pnp_req.place_type = PickPlaceRequest.DROP
 
-        resp = self._pnp_client(pnp_req)
-        if not resp.success:
-            logger.error('ERROR: place_object failed!!')
-        return resp.success
+        # pnp_req.target_pose = target_pose
+
+        # resp = self._pnp_client(pnp_req)
+        # if not resp.success:
+        #     logger.error('ERROR: place_object failed!!')
+        return True
+
+    def point(self, grasp_box):
+        grasp, gripper_opening = self._cal_initial_grasp(grasp_box)
+        grasp.grasp_pose.pose.position.z += APPROACH_DIST + FETCH_GRIPPER_LENGTH + GRASP_POSE_Z_OFFST
+        logger.info("point: {}".format(grasp.grasp_pose))
+        self._gripper.close()
+        self._arm.move_to_pose(grasp.grasp_pose)
 
     def give_obj_to_human(self):
         # print('Dummy execution of give_obj_to_human')
 
-        # Hard code for demo
-        # target_pose = PoseStamped()
-        # target_pose.header.frame_id="base_link"
-        # target_pose.pose.position.x = 0.8
-        # target_pose.pose.position.y = 0
-        # target_pose.pose.position.z = 1.1
-        # quat = T.quaternion_from_euler(0, math.pi / 2, 0, 'rzyx') # rotate by y to make it facing downwards
-        #                                                           # rotate by z to align with bbox orientation
-        # target_pose.pose.orientation.x = quat[0]
-        # target_pose.pose.orientation.y = quat[1]
-        # target_pose.pose.orientation.z = quat[2]
-        # target_pose.pose.orientation.w = quat[3]
-
-        # self._move_arm_to_pose(target_pose)
-
-        target_x = 0.6
-        target_y = 0.0
         try:
             (trans, rot) = self._tl.lookupTransform('/base_link', '/wrist_roll_link', rospy.Time())
         except Exception as e:
             print(e)
             return False
-        dx = target_x - trans[0]
-        dy = target_y - trans[1]
-        self._arm.move_in_cartesian(dx=dx, dy=dy)
+
+        # Hard code for demo
+        target_pose = PoseStamped()
+        target_pose.header.frame_id="base_link"
+        target_pose.pose.position.x = 0.65
+        target_pose.pose.position.y = 0.38
+        target_pose.pose.position.z = trans[2]
+        quat = T.quaternion_from_euler(0, math.pi / 2, math.pi, 'rzyx') # rotate by y to make it facing downwards
+                                                                        # rotate by z to align with bbox orientation
+        target_pose.pose.orientation.x = quat[0]
+        target_pose.pose.orientation.y = quat[1]
+        target_pose.pose.orientation.z = quat[2]
+        target_pose.pose.orientation.w = quat[3]
+
+        self._move_arm_to_pose(target_pose)
+
+        # target_x = 0.87
+        # target_y = 0.85
+        # try:
+        #     (trans, rot) = self._tl.lookupTransform('/base_link', '/wrist_roll_link', rospy.Time())
+        # except Exception as e:
+        #     print(e)
+        #     return False
+        # dx = target_x - trans[0]
+        # dy = target_y - trans[1]
+        # self._arm.move_in_cartesian(dx=dx, dy=dy)
 
         rospy.sleep(1.0)
+        self._arm.move_in_cartesian(dz=-0.06)
         self._gripper.open()
+        self._arm.move_in_cartesian(dz=0.08)
 
     def say(self, text):
         if DUMMY_SAY:
