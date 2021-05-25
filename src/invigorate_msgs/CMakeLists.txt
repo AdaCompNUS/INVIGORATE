@@ -27,12 +27,10 @@ add_service_files(
   FILES
   # DenseCaption.srv
   # MeteorScore.srv
+  Grounding.srv
   MAttNetGrounding.srv
-  MAttNetGroundingV2.srv
   ObjectDetection.srv
   VmrDetection.srv
-  VLBert.srv
-  Grounding.srv
 )
 
 generate_messages(

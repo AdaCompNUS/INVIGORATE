@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+
 if "/opt/ros/kinetic/lib/python2.7/dist-packages" in sys.path:
     sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
     sys.path.append("/opt/ros/kinetic/lib/python2.7/dist-packages")
@@ -32,6 +33,7 @@ from detectron2.data import MetadataCatalog, DatasetCatalog
 from invigorate_msgs.srv import ObjectDetection, ObjectDetectionResponse
 from config.config import *
 import pdb
+
 # --------- SETTINGS ------------
 VISUALIZE = False
 

@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-'''
-*. More structural target prob update, there should not be stages
-'''
 
 '''
 Leaf and desc prob is stored as a NxN matrix.
@@ -47,15 +44,12 @@ import pdb
 from libraries.data_viewer.data_viewer import DataViewer
 from libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from invigorate_msgs.srv import ObjectDetection, VmrDetection, VLBert
-# from libraries.ros_clients.detectron2_client import Detectron2Client
 from libraries.ros_clients.detectron2_client import Detectron2Client
 from libraries.ros_clients.vmrn_client import VMRNClient
 from libraries.ros_clients.vilbert_client import VilbertClient
 from libraries.ros_clients.mattnet_client import MAttNetClient
-from libraries.ros_clients.faster_rcnn_client import FasterRCNNClient
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
-
 
 try:
     import stanza
