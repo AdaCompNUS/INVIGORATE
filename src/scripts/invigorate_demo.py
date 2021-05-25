@@ -64,7 +64,7 @@ from libraries.utils.log import LOGGER_NAME
 # -------- Settings --------
 ROBOT = 'Fetch'
 # ROBOT = 'Dummy'
-GENERATE_CAPTIONS = True
+GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -268,7 +268,7 @@ def main():
                     robot.say("sorry I can't grasp the {}, could you help me remove it?".format(object_name))
                 else:
                     robot.say("sorry I can't grasp the {}, but it is for you".format(object_name))
-                rospy.sleep(5)
+                # rospy.sleep(5)
             if res and is_target:
                 robot.say("this is for you")
         elif exec_type == EXEC_ASK:

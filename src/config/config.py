@@ -89,7 +89,7 @@ EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, inv
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 10
-SCENE_NUM = 1
+SCENE_NUM = 10
 VER_NUM = 0
 if EXP_SETTING == "baseline":
     VER_NUM = 1
@@ -106,7 +106,7 @@ elif EXP_SETTING == "no_multistep":
 elif EXP_SETTING == "no_multistep_all":
     VER_NUM = 7
 
-EXP_DIR = osp.join(ROOT_DIR, "experiment")
+EXP_DIR = osp.join(ROOT_DIR, "experiment/")
 EXP_RES_DIR = osp.join(EXP_DIR, "participant {}".format(PARTICIPANT_NUM), "{}".format(SCENE_NUM), "{}".format(VER_NUM))
 
 if EXP_SETTING == "invigorate_vs_vilbert":
