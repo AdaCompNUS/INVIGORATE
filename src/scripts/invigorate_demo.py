@@ -62,8 +62,8 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-# ROBOT = 'Dummy'
+# ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 
@@ -202,28 +202,6 @@ def main():
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
             exec_type = EXEC_ASK
-        # else: # action type is Q2
-        #     logger.info("Askig Q2 and continuing")
-        #     if invigorate_client.clue is not None:
-        #         # special case.
-        #         dummy_question_answer = invigorate_client.clue
-        #         question_str = ''
-        #         exec_type = EXEC_DUMMY_ASK
-        #     elif target_prob[-1] == 1:
-        #         question_str = Q2["type2"]
-        #         exec_type = EXEC_ASK
-        #     elif (target_prob[:-1] > 0.02).sum() == 1:
-        #         target_idx = np.argmax(target_prob[:-1])
-        #         if GENERATE_CAPTIONS:
-        #             # generate caption
-        #             caption = caption_generator.generate_caption(img, bboxes, classes, target_idx)
-        #             question_str = Q2["type3"].format(caption)
-        #         else:
-        #             question_str = Q2["type3"].format(target_idx + "th object")
-        #         exec_type = EXEC_ASK
-        #     else:
-        #         question_str = Q2["type1"]
-        #         exec_type = EXEC_ASK
 
         # debug
         if DISPLAY_DEBUG_IMG:
@@ -279,12 +257,6 @@ def main():
         invigorate_client.transit_state(action)
 
         # generate debug images
-        # img = observations['img']
-        # bboxes = invigorate_client.step_infos['bboxes']
-        # classes = invigorate_client.step_infos['classes']
-        # rel_score_mat = invigorate_client.belief['rel_prob']
-        # rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
-        # target_prob = invigorate_client.belief['target_prob']
         data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
 
         if DEBUG:
