@@ -37,7 +37,6 @@ class DummyRobot():
 
     def grasp(self, grasp, is_target = False):
         print('Dummy execution of grasp {}'.format(grasp))
-        raw_input("Enter anything to continue")
         return True
 
     def say(self, text):
