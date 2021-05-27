@@ -1,3 +1,8 @@
 nltk=3.4.5
+numpy
+scipy
 numpy-stl
 open3d
+pillow
+matplotlib
+opencv-python

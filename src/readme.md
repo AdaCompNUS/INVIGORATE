@@ -14,30 +14,37 @@ git submodule update --recursive
 # Environment setup
 INVIGORATE relies on 4 different neural networks. Their environments have to be setup respectively. It is recommended that they each have their separate conda environment or docker.
 ## Detectron2 
-Follow the official instructions to install Detectron2
+Follow the [official instructions](https://github.com/facebookresearch/detectron2) to setup environment for Detectron2
 
 ## MAttNet
-Follow the official instruction to install MAttNet
+Follow the [official instruction](https://github.com/lichengunc/MAttNet) to setup environment for MAttNet
 
 ## VMRN
-Follow the official instruction to install VMRN
+Follow the [official instruction](https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch) to setup environment for VMRN
 
 ## INGRESS
-Download the official INGRESS docker.
+Download the [official INGRESS docker](https://hub.docker.com/r/adacompnus/ingress).
+
+## INVIGORATE
+```
+conda create -n invigorate python=2.7
+conda install pytorch torchvision cudatoolkit=10.2 -c pytorch
+pip install -r requirements.txt
+```
 
 # Download models
 # Detectron2
-download model
+Download model
 put it in <root_dir>/model
 
 ## VMRN
-download all_in_one_1_25_1407_0.python
+Download all_in_one_1_25_1407_0.python
 put it in <root_dir>/mrt_detector/vmrn_old/output/res101/vmrdcompv1
 
 ## MAttNet
-download mattnet pretrained model.
+Download mattnet pretrained model.
 put it in <root_dir>/output/refcoco_unc/
-download maskrcnn model
+Download maskrcnn model.
 put it in <root_dir>/pyutils/mask-faster-rcnn/output/res101/coco_2014_train_minus_refer_valtest+coco_2014_valminusminival/notime/
 
 ## INGRESS
@@ -72,7 +79,7 @@ conda activate vmrn
 bash luanch_vmrn.sh
 ```
 ```
-dcoker run -it adacompnus/ingress:v1.1 /bin/bash
+dcoker run -it adacompnus/ingress:v1.2 /bin/bash
 ingress
 ```
 
