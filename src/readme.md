@@ -4,16 +4,16 @@ INVIGORATE is tested on:
 **ROS melodic**
 **Python 2.7**
 
-# Clone the code 
+# Clone the code
 ```
-git clone 
-git submodule init 
+git clone
+git submodule init
 git submodule update --recursive
 ```
 
 # Environment setup
 INVIGORATE relies on 4 different neural networks. Their environments have to be setup respectively. It is recommended that they each have their separate conda environment or docker.
-## Detectron2 
+## Detectron2
 Follow the [official instructions](https://github.com/facebookresearch/detectron2) to setup environment for Detectron2
 
 ## MAttNet
@@ -33,29 +33,28 @@ pip install -r requirements.txt
 ```
 
 # Download models
+All models are stored [here](https://drive.google.com/drive/folders/1jLva2HR6QLxKdaXZBxK4RKI_dNQBDZtK?usp=sharing)
 # Detectron2
-Download model
-put it in <root_dir>/model
+Download model_final_cascade.pth
+put it in <root_dir>/src/model
 
 ## VMRN
 Download all_in_one_1_25_1407_0.python
-put it in <root_dir>/mrt_detector/vmrn_old/output/res101/vmrdcompv1
+put it in <root_dir>/src/mrt_detector/vmrn_old/output/res101/vmrdcompv1
 
 ## MAttNet
-Download mattnet pretrained model.
-put it in <root_dir>/output/refcoco_unc/
-Download maskrcnn model.
-put it in <root_dir>/pyutils/mask-faster-rcnn/output/res101/coco_2014_train_minus_refer_valtest+coco_2014_valminusminival/notime/
+Download mattnet pretrained model on refCOCO from its official repository.
 
 ## INGRESS
 Included in the INGRESS docker
 
 ## INVIGORATE observation models
-download density estimation pickle file
-put it in model
+download density estimation pickle files
+put it in <root_dir>/src/model
 
 ## Download INVIGORATE Dataset
-Download invigorate dataset from here.
+Download invigorate dataset from [here](https://drive.google.com/file/d/1FUoLSZupPi1J3BNRY2VTYC1bKWe50ZRF/view?usp=sharing).
+Extract it and put it under the <root_dir>/src
 
 # Install
 This repo is a ROS workspace. Now build it.
@@ -67,24 +66,25 @@ source devel/setup.bash
 # Run
 Assuming environments for different neural network modules are setup, launch them in separate terminals
 ```
-conda activate detectron2
+conda activate detectron2_env
 bash launch_detectron2.sh
 ```
 ```
-conda activate mattnet
+conda activate mattnet_env
 bash launch_mattnet.sh
 ```
 ```
-conda activate vmrn
+conda activate vmrn_env
 bash luanch_vmrn.sh
 ```
 ```
-dcoker run -it adacompnus/ingress:v1.2 /bin/bash
+docker run -it adacompnus/ingress:v1.2 /bin/bash
 ingress
 ```
 
 Now we are ready to run INVIGORATE! There are 100 scenarios in the provided dataset, we have included experiment results for scenario 1-10. To replicate a particular scenario,
 ```
+conda activate invigorate
 cd src/scripts
 python dataset_demo --scene_num 1
 ```
