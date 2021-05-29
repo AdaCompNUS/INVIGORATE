@@ -49,7 +49,7 @@ Download mattnet pretrained model on refCOCO from its official repository.
 Included in the INGRESS docker
 
 ## INVIGORATE observation models
-download density estimation pickle files
+Download density estimation pickle files. (ground_density_estimation_mattnet.pkl and relation_density_estimation.pkl)
 put it in <root_dir>/src/model
 
 ## Download INVIGORATE Dataset
