@@ -39,7 +39,7 @@ Download model_final_cascade.pth
 put it in <root_dir>/src/model
 
 ## VMRN
-Download all_in_one_1_25_1407_0.python
+Download all_in_one_1_25_1407_0.pth
 put it in <root_dir>/src/mrt_detector/vmrn_old/output/res101/vmrdcompv1
 
 ## MAttNet
