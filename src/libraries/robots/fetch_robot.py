@@ -41,11 +41,12 @@ BBOX_FOR_SEG = 2
 GRASP_BOX_6DOF_PICK = 3
 USE_REALSENSE = True
 DUMMY_LISTEN = True
-DUMMY_SAY = False
-DUMMY_GRASP = True
+DUMMY_SAY = True
+DUMMY_GRASP = False
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
+ROBOT_MODEL_DIR = osp.join(ROOT_DIR, "fetch_robot_stl")
 GRIPPER_FILE = "gripper_link.STL"
 LEFT_GRIPPER_FINGER_FILE = "l_gripper_finger_link.STL"
 RIGHT_GRIPPER_FINGER_FILE = "r_gripper_finger_link.STL"
@@ -96,7 +97,7 @@ class FetchRobot():
         self._table_segmentor_client = rospy.ServiceProxy('/segment_table', TableSegmentation)
         self._tf_transformer = tf.TransformerROS()
         self._fetch_image_client = rospy.ServiceProxy('/rls_perception_service/fetch/rgb_image_service', RetrieveImage)
-        self._fetch_pc_client = rospy.ServiceProxy('/rls_control_service/fetch/retrieve_pc_service', RetrievePointCloud)
+        # self._fetch_pc_client = rospy.ServiceProxy('/rls_control_service/fetch/retrieve_pc_service', RetrievePointCloud)
         self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
         self._tl = tf.TransformListener()
         self._arm = fetch_api.ArmV2()
@@ -134,9 +135,9 @@ class FetchRobot():
         representation for .obj object). Coordinates should be w.r.t. the
         frame of the gripper itself.
         """
-        gripper_model_path = osp.join(CONFIG_DIR, GRIPPER_FILE)
-        l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
-        r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+        gripper_model_path = osp.join(ROBOT_MODEL_DIR, GRIPPER_FILE)
+        l_finger_model_path = osp.join(ROBOT_MODEL_DIR, LEFT_GRIPPER_FINGER_FILE)
+        r_finger_model_path = osp.join(ROBOT_MODEL_DIR, RIGHT_GRIPPER_FINGER_FILE)
         gripper_mesh = stl.mesh.Mesh.from_file(gripper_model_path)
         l_finger_mesh = stl.mesh.Mesh.from_file(l_finger_model_path)
         r_finger_mesh = stl.mesh.Mesh.from_file(r_finger_model_path)
@@ -156,8 +157,8 @@ class FetchRobot():
         if selected_grasp is None:
             return
 
-        l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
-        r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+        l_finger_model_path = osp.join(ROBOT_MODEL_DIR, LEFT_GRIPPER_FINGER_FILE)
+        r_finger_model_path = osp.join(ROBOT_MODEL_DIR, RIGHT_GRIPPER_FINGER_FILE)
         l_finger_mesh = o3d.io.read_triangle_mesh(l_finger_model_path)
         r_finger_mesh = o3d.io.read_triangle_mesh(r_finger_model_path)
         l_finger = l_finger_mesh.sample_points_uniformly(number_of_points=500)
@@ -297,14 +298,15 @@ class FetchRobot():
         return target_pose
 
     def _get_scene_pc(self):
-        start_time = time.time()
-        resp = self._fetch_pc_client()
-        raw_pc = resp.pointcloud
-        end_time = time.time()
-        logger.debug("getting pc takes {}".format(end_time - start_time))
+        # start_time = time.time()
+        # # resp = self._fetch_pc_client()
+        # rospy.log
+        # raw_pc = resp.pointcloud
+        # end_time = time.time()
+        # logger.debug("getting pc takes {}".format(end_time - start_time))
 
         try:
-            # raw_pc = rospy.wait_for_message("/camera/depth_registered/points", PointCloud2, timeout=20.0)
+            raw_pc = rospy.wait_for_message("/head_camera/depth_registered/points", PointCloud2, timeout=20.0)
             trans, rot = self._tl.lookupTransform('base_link', raw_pc.header.frame_id, rospy.Time(0))
             transform_mat44 = np.dot(T.translation_matrix(trans), T.quaternion_matrix(rot))
         except Exception as e:

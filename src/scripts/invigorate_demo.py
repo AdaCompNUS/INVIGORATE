@@ -62,8 +62,8 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-# ROBOT = 'Fetch'
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
+# ROBOT = 'Dummy'ap
 GENERATE_CAPTIONS = False
 DISPLAY_DEBUG_IMG = True
 

@@ -17,6 +17,7 @@ from libraries.utils.log import LOGGER_NAME
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
+ROBOT_MODEL_DIR = osp.join(ROOT_DIR, "fetch_robot_stl")
 GRIPPER_FILE = "gripper_link.STL"
 LEFT_GRIPPER_FINGER_FILE = "l_gripper_finger_link.STL"
 RIGHT_GRIPPER_FINGER_FILE = "r_gripper_finger_link.STL"
@@ -49,8 +50,8 @@ class GraspCollisionChecker():
         if selected_grasp is None:
             return
 
-        l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
-        r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+        l_finger_model_path = osp.join(ROBOT_MODEL_DIR, LEFT_GRIPPER_FINGER_FILE)
+        r_finger_model_path = osp.join(ROBOT_MODEL_DIR, RIGHT_GRIPPER_FINGER_FILE)
         l_finger_mesh = o3d.io.read_triangle_mesh(l_finger_model_path)
         r_finger_mesh = o3d.io.read_triangle_mesh(r_finger_model_path)
         l_finger = l_finger_mesh.sample_points_uniformly(number_of_points=500)
@@ -433,9 +434,9 @@ class GraspCollisionChecker():
         return new_grasp_dict
 
 if __name__=="__main__":
-    gripper_model_path = osp.join(CONFIG_DIR, GRIPPER_FILE)
-    l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
-    r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+    gripper_model_path = osp.join(ROBOT_MODEL_DIR, GRIPPER_FILE)
+    l_finger_model_path = osp.join(ROBOT_MODEL_DIR, LEFT_GRIPPER_FINGER_FILE)
+    r_finger_model_path = osp.join(ROBOT_MODEL_DIR, RIGHT_GRIPPER_FINGER_FILE)
     gripper_mesh = stl.mesh.Mesh.from_file(gripper_model_path)
     l_finger_mesh = stl.mesh.Mesh.from_file(l_finger_model_path)
     r_finger_mesh = stl.mesh.Mesh.from_file(r_finger_model_path)
