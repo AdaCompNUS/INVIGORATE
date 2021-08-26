@@ -26,11 +26,11 @@ from libraries.utils.log import LOGGER_NAME
 # -------- Settings --------
 # ROBOT = 'Fetch'
 ROBOT = 'Dummy'
-GENERATE_CAPTIONS = True
+# GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
-if GENERATE_CAPTIONS:
-    from libraries.caption_generator import caption_generator
+# if GENERATE_CAPTIONS:
+#     from libraries.caption_generator import caption_generator
 
 if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
@@ -150,7 +150,7 @@ def main(args):
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
             logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
-            if GENERATE_CAPTIONS:
+            if args.captions:
                 # generate caption
                 subject = invigorate_client.subject[-1]
                 caption = caption_generator.generate_caption(img, bboxes, classes, target_idx, subject)
@@ -226,6 +226,10 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--scene_num", type=int)
+    parser.add_argument("--captions", action="store_true", default=False, help="use INGRESS to generate captions for question asking")
     args = parser.parse_args()
+
+    if args.captions:
+        from libraries.caption_generator import caption_generator
 
     main(args)

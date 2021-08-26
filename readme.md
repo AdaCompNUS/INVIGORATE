@@ -22,8 +22,20 @@ Follow the [official instruction](https://github.com/lichengunc/MAttNet) to setu
 ## VMRN
 Follow the [official instruction](https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch) to setup environment for VMRN
 
-## INGRESS
-Download the [official INGRESS docker](https://hub.docker.com/r/adacompnus/ingress).
+## INGRESS (Required only if you want to generate captions for asking questions)
+1. Install [docker](https://docs.docker.com/engine/install/ubuntu/)
+2. Follow the instructions to [install NVIDIA docker](https://github.com/NVIDIA/nvidia-docker). You should be able to run this inside docker, if everything is installed properly:
+```bash
+$ nvidia-smi
+```
+3. Download the [official INGRESS docker](https://hub.docker.com/r/adacompnus/ingress).
+4. Inside docker, install lua torch and cuda libraries:
+```bash
+$ luarocks install cutorch
+$ luarocks install cunn
+$ luarocks install cudnn
+```
+5. Make sure you can run [Demo](https://github.com/AdaCompNUS/ingress-proj) for INGRESS.
 
 ## INVIGORATE
 ```
@@ -66,6 +78,9 @@ source devel/setup.bash
 # Run
 Assuming environments for different neural network modules are setup, launch them in separate terminals
 ```
+roscore
+```
+```
 conda activate detectron2_env
 bash launch_detectron2.sh
 ```
@@ -77,6 +92,7 @@ bash launch_mattnet.sh
 conda activate vmrn_env
 bash luanch_vmrn.sh
 ```
+(If you want to generate captions)
 ```
 docker run -it adacompnus/ingress:v1.2 /bin/bash
 ingress
@@ -87,5 +103,9 @@ Now we are ready to run INVIGORATE! There are 100 scenarios in the provided data
 conda activate invigorate
 cd src/scripts
 python dataset_demo --scene_num 1
+```
+If you want to generate captions:
+```
+python dataset_demo --scene_num 1 --captions
 ```
 The result will be saved inside src/logs directory. The result produced should be equivalent to the result in the dataset.
