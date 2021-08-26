@@ -27,7 +27,7 @@ pip install rospkg catkin_pkg opencv-python # to make ROS work with python3
 
 ## MAttNet and VMRN
 Both MAttNet and VMRN requires pytorch 0.4 and cuda 9.0. You can setup the environment on your own or use our provided docker.
-We provide a docker to run MAttNet and VMRN. It contains a conda environment called **torch_old** that contains cuda 9.0 and pytorch 0.4.
+Our docker uses cuda 9.0 and it has a conda environment called **torch_old** that contains pytorch 0.4.
 
 1. Install [docker](https://docs.docker.com/engine/install/ubuntu/)
 2. Follow the [official instruction](https://github.com/NVIDIA/nvidia-docker) to install nvidia-docker. This allows docker to use your GPU.
