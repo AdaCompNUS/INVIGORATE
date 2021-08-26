@@ -10,3 +10,6 @@
 [submodule "src/libraries/tools/refer"]
 	path = src/libraries/tools/refer
 	url = https://github.com/lichengunc/refer
+[submodule "src/faster_rcnn_detector/detectron2"]
+	path = src/faster_rcnn_detector/detectron2
+	url = https://github.com/AdaCompNUS/detectron2.git
