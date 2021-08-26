@@ -26,7 +26,8 @@ pip install rospkg catkin_pkg opencv-python # to make ROS work with python3
 ```
 
 ## MAttNet and VMRN
-We provide a docker to run MAttNet and VMRN. It contains a conda environment called torch_old that contains cuda 9.0 and pytorch 0.4.
+Both MAttNet and VMRN requires pytorch 0.4 and cuda 9.0. You can setup the environment on your own or use our provided docker.
+We provide a docker to run MAttNet and VMRN. It contains a conda environment called **torch_old** that contains cuda 9.0 and pytorch 0.4.
 
 1. Install [docker](https://docs.docker.com/engine/install/ubuntu/)
 2. Follow the [official instruction](https://github.com/NVIDIA/nvidia-docker) to install nvidia-docker. This allows docker to use your GPU.
@@ -142,16 +143,22 @@ roscore
 2. Start detectron service
 ```
 conda activate <detectron2_env> # use your environment name
+source devel/setup.bash
+cd src
 bash launch_detectron2.sh
 ```
 3. Start mattnet service inside docker
 ```
 conda activate torch_old
+source devel/setup.bash
+cd src
 bash launch_mattnet.sh
 ```
 4. Start vmrn service inside docker
 ```
 conda activate torch_old
+source devel/setup.bash
+cd src
 bash luanch_vmrn.sh
 ```
 5. Start INGRESS service inside docker (If you want to generate captions)
@@ -163,6 +170,7 @@ ingress
 Now we are ready to run INVIGORATE! There are 100 scenarios in the provided dataset, we have included experiment results for scenario 1-10. To replicate a particular scenario,
 ```
 conda activate invigorate
+source devel/setup.bash
 cd src/scripts
 python dataset_demo --scene_num 1
 ```
