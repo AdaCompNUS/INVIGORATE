@@ -18,7 +18,7 @@ import datetime
 import pdb
 
 # from sklearn.manifold import TSNE
-from config.config import *
+from invigorate.config.config import *
 from .paper_fig_generator import gen_paper_fig
 
 def create_mrt(rel_mat, class_names=None, rel_score=None):

@@ -7,7 +7,7 @@ import os
 # this_dir = osp.dirname(osp.abspath(__file__))
 # sys.path.insert(0, osp.join(this_dir, '../../'))
 
-from config.config import *
+from invigorate.config.config import *
 
 # --------- Settings -----------
 LOG_LEVEL = logging.DEBUG

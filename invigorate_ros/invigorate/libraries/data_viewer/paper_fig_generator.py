@@ -1,11 +1,10 @@
-from config.config import EXPERIMENT, EXP_RES_DIR
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import time
 import datetime
 import numpy as np
 
-from config.config import *
+from invigorate.config.config import *
 
 class paperFig(object):
     def __init__(self, data, size):
