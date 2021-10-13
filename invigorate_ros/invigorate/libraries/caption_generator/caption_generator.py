@@ -1,8 +1,9 @@
 
 import rospy
+import numpy as np
 
 from ingress_srv.ingress_srv import Ingress
-from config.config import CLASSES
+from invigorate.config.config import CLASSES
 
 def caption_generation_client(img, bbox, target_box_id):
     # dbg_print(bbox)
@@ -30,6 +31,13 @@ def generate_caption(img_cv, bboxes, classes, target_box_ind, subject):
     if bboxes.shape[1] == 5:
         # filter out class scores if necessary
         bboxes = bboxes[:, :4]
+
+    # target_box_class = classes[target_box_ind]
+    # new_bboxes = []
+    # for i in range(bboxes.shape[0]):
+    #     if classes[i] == target_box_class:
+    #         new_bboxes.append(bboxes[i])
+    # new_bboxes = np.array(new_bboxes)
 
     print('generating caption for object {}'.format(target_box_ind))
     top_caption, top_context_box_idxs = caption_generation_client(img_cv, bboxes, target_box_ind)

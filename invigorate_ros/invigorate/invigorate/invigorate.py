@@ -57,7 +57,7 @@ except:
 DEBUG = False
 
 # -------- Constants ---------
-POLICY_TREE_MAX_DEPTH = 3
+POLICY_TREE_MAX_DEPTH = 2
 PENALTY_FOR_ASKING = -2
 PENALTY_FOR_FAIL = -10
 
@@ -438,7 +438,7 @@ class Invigorate(object):
         """
 
         # initialize hyperparameters
-        planning_depth = self._policy_tree_max_depth
+        planning_depth = self._policy_tree_max_depth - self.q2_num_asked
         penalty_for_fail = self._penalty_for_fail
         penalty_for_asking = self._penalty_for_asking
 
