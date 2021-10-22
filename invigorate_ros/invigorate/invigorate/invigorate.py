@@ -99,6 +99,19 @@ class Invigorate(object):
                               "please update your python version and run 'pip install stanza'")
 
     # --------------- Public -------------------
+    def clear(self):
+        self.history_scores = []
+        self.object_pool = []
+        self.rel_pool = {}
+        self.target_in_pool = None
+        self._init_kde()
+        self.belief = {}
+        self.step_infos = {}
+        self.q2_num_asked = 0
+        self.expr = []
+        self.clue = ""
+        self.subject = []
+
     def estimate_state_with_img(self, img, expr):
         """
         @ self.belief, dict,
