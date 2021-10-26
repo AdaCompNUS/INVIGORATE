@@ -59,7 +59,7 @@ DEBUG = False
 # -------- Constants ---------
 POLICY_TREE_MAX_DEPTH = 2
 PENALTY_FOR_ASKING = -2
-PENALTY_FOR_FAIL = -10
+PENALTY_FOR_FAIL = -12
 
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)
