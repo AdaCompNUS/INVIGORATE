@@ -10,6 +10,12 @@ git clone https://github.com/AdaCompNUS/INVIGORATE.git
 cd INVIGORATE
 git submodule init
 git submodule update --recursive
+
+# clone another copy for use inside docker
+git clone https://github.com/AdaCompNUS/INVIGORATE.git INVIGORATE_docker 
+cd INVIGORATE_docker
+git submodule init
+git submodule update --recursive
 ```
 
 # Environment setup
@@ -34,7 +40,6 @@ Our docker uses cuda 9.0 and it has a conda environment called **torch_old** tha
 3. Download and run our provided [docker](https://hub.docker.com/repository/docker/adacompnus/vmrd)
 ```
 cd .. # move to the parent folder of INVIGORATE
-cp -r INVIGORATE INVIGORATE_docker # Make a copy of INVIGORATE. This is because we need to build the ROS workspace inside docker separately.
 docker pull adacompnus/vmrd
 docker run --gpus all -v "$(pwd)"/INVIGORATE_docker:/home/INVIGORATE_docker --network host -it adacompnus/vmrd /bin/bash # mount INVIGORATE_docker folder into docker and give GPU and network access
 ```
