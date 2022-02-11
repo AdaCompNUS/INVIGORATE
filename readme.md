@@ -9,13 +9,13 @@ INVIGORATE is tested on:
 git clone https://github.com/AdaCompNUS/INVIGORATE.git
 cd INVIGORATE
 git submodule init
-git submodule update --recursive
+git submodule update --recursive --init
 
 # clone another copy for use inside docker
 git clone https://github.com/AdaCompNUS/INVIGORATE.git INVIGORATE_docker 
 cd INVIGORATE_docker
 git submodule init
-git submodule update --recursive
+git submodule update --recursive --init
 ```
 
 # Environment setup
