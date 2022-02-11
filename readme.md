@@ -40,10 +40,10 @@ docker run --gpus all -v "$(pwd)"/INVIGORATE_docker:/home/INVIGORATE_docker --ne
 ```
 4. Now you are inside the docker, use the provided **torch_old** environment.
 ```
-conda activate torch_old # the docker has a conda environment with cuda 9.0 and pytorch 0.4
 cd /home/INVIGORATE_docker # go to mounted folder
 catkin build
 source devel/setup.bash
+conda activate torch_old # the docker has a conda environment with cuda 9.0 and pytorch 0.4
 ```
 
 ### MAttNet
