@@ -59,7 +59,7 @@ DEBUG = False
 # -------- Constants ---------
 POLICY_TREE_MAX_DEPTH = 2
 PENALTY_FOR_ASKING = -2
-PENALTY_FOR_FAIL = -15
+PENALTY_FOR_FAIL = -30
 
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)
@@ -517,7 +517,8 @@ class Invigorate(object):
                                     updated_belief[i] is the belief for asking q1 wrt to obj i.
                                     updated_belief[i][0] is the belief for getting answer no, updated_belief[i][1] is the belief for getting answer yes.
             '''
-            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
+            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"]) * 0.8 # HACK for demo to make invigorate ask questions about
+                                                                                               # less probable object
             updated_beliefs = []
             # Do you mean ... ?
             # Answer No
