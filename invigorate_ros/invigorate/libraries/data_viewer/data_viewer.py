@@ -350,8 +350,11 @@ class DataViewer(object):
             cv2.arrowedLine(im, (0, mid_line), (im.shape[1], mid_line), (0, 0, 0), thickness = 2, tipLength = 0.03)
         return im
 
-    def generate_visualization_imgs(self, img, bboxes, classes, rel_mat, rel_score_mat,
-        expr, target_prob, action=None, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500, save=True):
+    def generate_visualization_imgs(
+            self, img, bboxes, classes, rel_mat, rel_score_mat,
+            expr, target_prob, action=None, action_type=None, exec_type=None,
+            target_idx=None, grasps=None, question_str=None,
+            answer=None, im_id=None, tgt_size=500, save=True):
 
         if im_id is None:
             current_date = datetime.datetime.now()
@@ -389,39 +392,31 @@ class DataViewer(object):
 
         # action
         if action != None:
-            target_idx = -1
-            question_type = None
             print("Optimal Action:")
-            if action < num_box:
-                target_idx = action
-                action_str = "Grasping object " + str(action) + " and ending the program"
-            elif action < 2 * num_box:
-                target_idx = action - num_box
+            if action_type == 'GRASP_AND_END':
+                action_str = "Grasping object " + str(target_idx) + " and ending the program"
+            elif action_type == 'GRASP_AND_CONTINUE':
                 action_str = "Grasping object " + str(target_idx) + " and continuing"
-            elif action < 3 * num_box:
-                if question_str is not None:
-                    action_str = Q1["type1"].format(str(action - 2 * num_box) + "th object\n")
-                    action_str += question_str
+            elif action_type in {'Q1', 'Q_IJRR_WITH_POINTING'}:
+                action_str = "Asking about {:d}th object.\n".format(target_idx)
+                action_str += "The generated question is:\n{:s}".format(
+                    question_str if question_str else "Question generation is disabled.")
+            elif action_type == 'Q_IJRR':
+                assert question_str is not None
+                if exec_type == EXEC_DUMMY_ASK:
+                    action_str = question_str + "\n(answered automatically according to histories)"
                 else:
-                    action_str = Q1["type1"].format(str(action - 2 * num_box) + "th object")
-                question_type = "Q1_TYPE1"
-            # else:
-            #     if target_prob[-1] == 1:
-            #         action_str = Q2["type2"]
-            #         question_type = "Q2_TYPE2"
-            #     elif (target_prob[:-1] > 0.02).sum() == 1:
-            #         action_str = Q2["type3"].format(str(np.argmax(target_prob[:-1])) + "th object")
-            #         question_type = "Q2_TYPE3"
-            #     else:
-            #         action_str = Q2["type1"]
-            #         question_type = "Q2_TYPE1"
+                    assert exec_type == EXEC_ASK_WITHOUT_POINT
+                    action_str = question_str
+            else:
+                raise NotImplementedError("Unrecognized action type: {:s}".format(action_type))
+
             print(action_str)
 
             action_img_shape = list(img_show.shape)
             action_img = self.vis_action(split_long_string(action_str), action_img_shape)
         else:
             action_str = ''
-            question_type = None
             action_img = np.zeros((img_show.shape), np.uint8)
 
         # grasps
@@ -465,13 +460,9 @@ class DataViewer(object):
                 "mrt_img": rel_det_img,
                 "ground_img": ground_img,
                 "action_str": split_long_string(action_str),
-                "answer" : answer,
-                "q_type": question_type}
+                "answer" : answer}
 
-    def gen_final_paper_fig(self, img, bboxes, classes, rel_mat, rel_score_mat,
-        expr, target_prob, action, grasps=None, question_str=None, answer=None, im_id=None, tgt_size=500):
-        imgs = self.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr,
-            target_prob, action, grasps, question_str, answer, im_id, tgt_size)
+    def gen_final_paper_fig(self, imgs, expr):
         gen_paper_fig(expr, [imgs])
         return True
 

@@ -8,20 +8,23 @@ from cv_bridge import CvBridge
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
-USE_REALSENSE = False
+USE_LIVE_CAMERA = True
 
-YCROP = (470, 1000) # 1080
-XCROP = (700, 1460) # 1920
+YCROP = (100, 440) # 540
+XCROP = (300, 660) # 960
 
 logger = logging.getLogger(LOGGER_NAME)
 
 class DummyRobot():
-    def __init__(self):
+    def __init__(self,
+                 camera_topic=None):
         self._br = CvBridge()
+        self.camera_topic = camera_topic
 
     def read_imgs(self):
-        if USE_REALSENSE:
-            img_msg = rospy.wait_for_message('/camera/color/image_raw', Image, timeout=10)
+        if USE_LIVE_CAMERA:
+            assert isinstance(self.camera_topic, str)
+            img_msg = rospy.wait_for_message(self.camera_topic, Image, timeout=10)
             img = self._br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
             logger.info('img_size : {}'.format(img.shape))
             img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
@@ -31,6 +34,9 @@ class DummyRobot():
         else:
             img_name = raw_input('Enter img name: ')
             img = cv2.imread(osp.join(ROOT_DIR, 'images/' + img_name))
+            longest_side = max(img.shape)
+            scaler = 800. / longest_side
+            img = cv2.resize(img, None, fx=scaler, fy=scaler)
             depth = None
 
         return img, depth

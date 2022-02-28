@@ -42,9 +42,16 @@ Q1={
     "type1": "Do you mean the {:s}?"
 }
 
+# planned-action type macros
 GRASP_AND_END = 0
 GRASP_AND_CONTINUE = 1
 ASK_Q1 = 2
+
+# executed-action type macros
+EXEC_GRASP = 0
+EXEC_ASK_WITH_POINTING = 1                # with pointing action
+EXEC_DUMMY_ASK = 2
+EXEC_ASK_WITHOUT_POINT=3    # without pointing action
 
 # CLASSES = ['__background__',  # always index 0
 #                'box', 'banana', 'notebook', 'screwdriver', 'toothpaste', 'apple',
@@ -84,13 +91,20 @@ MODE = TEST # 0 for test, 1 for experiment
 # EXP_SETTING = "no_interaction"
 # EXP_SETTING = "no_multistep"
 # EXP_SETTING = "no_multistep_all"
-EXP_SETTING = "invigorate" # choose from: baseline, no_uncert, no_multistep, invigorate
+# EXP_SETTING = "invigorate_ijrr"
+# EXP_SETTING = "invigorate_ijrr_v2"
+# EXP_SETTING = "invigorate_ijrr_v3"
+# EXP_SETTING = "invigorate_ijrr_v4"
+# EXP_SETTING = "invigorate_ijrr_v5"
+EXP_SETTING = "invigorate_ijrr_v6"
+# EXP_SETTING = "invigorate"
 # EXP_SETTING = "invigorate_vs_vilbert"
 
 # ------------- EXP Settings --------------
 PARTICIPANT_NUM = 10
 SCENE_NUM = 10
 VER_NUM = 0
+EPSILON = 0.01
 if EXP_SETTING == "baseline":
     VER_NUM = 1
 elif EXP_SETTING == "greedy":
@@ -105,6 +119,8 @@ elif EXP_SETTING == "no_multistep":
     VER_NUM = 6
 elif EXP_SETTING == "no_multistep_all":
     VER_NUM = 7
+elif EXP_SETTING == "invigorate_ijrr":
+    VER_NUM = 8
 
 EXP_DIR = osp.join(ROOT_DIR, "experiment/")
 EXP_RES_DIR = osp.join(EXP_DIR, "participant {}".format(PARTICIPANT_NUM), "{}".format(SCENE_NUM), "{}".format(VER_NUM))

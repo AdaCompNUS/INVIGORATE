@@ -36,22 +36,114 @@ class gaussian_kde(object):
 
 class object_belief(object):
     def __init__(self):
-        self.belief = np.array([0.5, 0.5])
+        self._belief = np.array([0.5, 0.5])
+        
+        # This placeholder 'cls_llh' is prepared for object detector,
+        # hence in INVIGORATE, the object detection score can also
+        # help to filter out incorrect objects.
+        # However, since results of object detection changes
+        # at every time step, we update it at every step and use it
+        # to update the posterior.
+        # In the future, we can consider to introduce object results
+        # from multiple detection steps as the object class likelihood.
+        self.cls_llh = np.array([0.5, 0.5])
+        
+        self.low_thr = 0.01
 
-    def update(self, score, kde):
-        neg_prob = np.exp(kde[0].comp_prob(score))
-        pos_prob = np.exp(kde[1].comp_prob(score))
-        self.belief *= [neg_prob, pos_prob]
-        self.belief /= self.belief.sum()
-        self.belief = np.clip(self.belief, 0.01, 0.99)
+    @property
+    def belief(self):
+        # handle special cases
+        # here the cls_llh has a higher priority
+        if self.cls_llh[0] == 0 and self.cls_llh[1] > 0:
+            self._belief[:] = [0, 1]
+            return self._belief
+        elif self.cls_llh[0] > 0 and self.cls_llh[1] == 0:
+            self._belief[:] = [1, 0]
+            return self._belief
+        else:
+            assert self.cls_llh[0] > 0 and self.cls_llh[1] > 0
+
+        belief = self._belief
+        belief *= self.cls_llh
+        belief /= belief.sum()
+        return belief
+
+    def update(self, score, kde, is_pos=True):
+        # update with observation
+        if is_pos:
+            neg_prob = np.exp(kde[0].comp_prob(score))
+            pos_prob = np.exp(kde[1].comp_prob(score))
+        else:
+            neg_prob = np.exp(kde[1].comp_prob(score))
+            pos_prob = np.exp(kde[0].comp_prob(score))
+        self.update_with_likelihood([neg_prob, pos_prob])
+        return self.belief
+
+    def update_cls_llh(self, llh):
+        self.cls_llh[:] = llh
+
+    def update_with_likelihood(self, likelihood, enable_low_thresh=True):
+        # for the completely excluded objects, no update is needed
+        if self._belief[0] == 1.:
+            return self._belief
+
+        assert len(likelihood) == 2
+        # handle special cases
+        if likelihood[0] == 0 and likelihood[1] > 0:
+            self._belief[:] = [0, 1]
+            return self.belief
+        elif likelihood[0] > 0 and likelihood[1] == 0:
+            self._belief[:] = [1, 0]
+            return self.belief
+        else:
+            assert likelihood[0] > 0 and likelihood[1] > 0
+
+        self._belief *= likelihood
+        self._belief /= self._belief.sum()
+
+        if enable_low_thresh:
+            self._belief = np.clip(self._belief, self.low_thr, 1 - self.low_thr)
+        else:
+            self._belief = np.clip(self._belief, 0., 1.)
+
         return self.belief
 
     def reset(self):
-        self.belief = np.array([0.5, 0.5])
+        self._belief = np.array([0.5, 0.5])
+
+    def update_linguistic(self, answer, match_prob, epsilon=0.01):
+        # an extension in invigorate_IJRR_v1, not used for other versions
+        # for original INVIGORATE:
+        #        match_prob = 1 for the object being asked,
+        #        match_prob = 0 else.
+
+        # firstly scale match_prob, which is equivalent to scale the observation model
+        match_prob = self._remap_match_prob(match_prob, epsilon)
+
+        if answer:
+            # answer is yes
+            likelihood = [epsilon * (1 - match_prob), match_prob]
+        else:
+            # answer is no
+            likelihood = [1 - epsilon * (1 - match_prob), 1 - match_prob]
+
+        self.update_with_likelihood(likelihood, enable_low_thresh=False)
+
+        return self._belief
+
+    def _remap_match_prob(self, match_prob, epsilon):
+        # scale match_prob so that the stationary point is 0.5
+        # instead of the unstable epsilon / (1 + epsilon)
+        mid_point = epsilon / (1 + epsilon)
+        if match_prob < 0.5:
+            match_prob = match_prob / 0.5 * mid_point
+        else:
+            match_prob = (match_prob - 0.5) / 0.5 * (1 - mid_point) + mid_point
+        return match_prob
 
 class relation_belief(object):
     def __init__(self):
-        self.belief = np.array([0.333, 0.333, 0.334])
+        self.belief = np.array([1./3., 1./3., 1./3.])
 
     def update(self, score, kde):
         MIN_PROB = 0.05

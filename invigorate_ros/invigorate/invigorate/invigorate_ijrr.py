@@ -1,5 +1,94 @@
 #!/usr/bin/env python
-from __future__ import absolute_import
+'''
+This version is a direct extension of RSS paper.
+The modified part locates in the linguistic observation model.
+
+
+Previous model:
+
+-----------------------------------------------
+                        p(yes)          p(no)
+s_i=1, a^q=i,           1               0
+s_i=1, a^q!=i           0               1
+s_i=0, q^q=i            0               1
+s_i=0, a^q!=i           e               1-e
+-----------------------------------------------
+
+Intuition of this model is:
+    1. if object i is the target, and the robot asks about it,
+        the user will definitely answer yes.
+    2. if object i is not the target, and the robot asks about
+        it, the user will definitely answer no.
+    3. if object i is the target, and the robot does not ask
+        about it, the user will definitely answer no.
+    4. if object i is not the target, and the robot does not ask
+        about it, no prior information can be utilized. Hence,
+        we would like to keep the probability of object i being
+        the target unchanged. Therefore, we introduce a hyper-
+        parameter e, to make sure that:
+            1).
+                p(s_i=1|yes, a^q!=i) \propto p(yes|s_i=1, a^q!=i) = 0
+                p(s_i=0|yes, a^q!=i) \propto p(yes|s_i=0, a^q!=i) = e
+                =>
+                p(s_i=1|yes, a^q!=i) = 0
+                p(s_i=0|yes, a^q!=i) = 1
+
+            2).
+                p(s_i=1|no, a^q!=i) \propto p(no|s_i=1, a^q!=i) = 1
+                p(s_i=0|no, a^q!=i) \propto p(no|s_i=0, a^q!=i) = 1-e
+                =>
+                given 1-e is approximately equal to 1,
+                the posterior probability will nearly keep unchanged.
+
+
+And to introduce probabilistic matching between questions and
+objects, the direct extension to this model will be:
+
+-----------------------------------------------
+        p(yes)              p(no)
+s_i=1   p(m_i=1|a^q)        1-p(m_i=1|a^q)
+s_i=0   e * p(m_i=0|a^q)    1 - e * p(m_i=0|a^q)
+-----------------------------------------------
+
+where m_i is a binary variable indicating whether the question
+a^q matches object i. This format can be derived directly from
+Bayesian rules:
+
+    p(o_i|s_i, a^q)=\sum_i p(o_i|s_i, m_i, a^q)p(m_i|s_i, a^q)
+
+m_i is independent from s_i, and o_i is independent from a^q given m_i:
+
+    p(o_i|s_i, a^q)=\sum_i p(o_i|s_i, m_i)p(m_i|a^q)
+
+therefore:
+
+    p(yes|s_i=1, a^q)=p(yes|s_i=1, m_i=1)p(m_i=1|a^q)=p(m_i=1|a^q)
+    p(yes|s_i=0, a^q)=p(yes|s_i=0, m_i=0)p(m_i=0|a^q)=e*p(m_i=0|a^q)
+
+However, there is a fatal issue here:
+    the decision boundary of whether the posterior probability of s_i=1
+    will increase or decrease compared to the prior probability will be:
+
+        p(m_i=1|a^q) = e*p(m_i=0|a^q)
+        =>
+        p(m_i=1|a^q) = e / (e + 1)
+
+    it means that if e is small, even if the object does not match
+    the problem so much (e.g. p(m_i=1|a^q)=0.1), the posterior probability
+    will still increase given answer ``Yes'', which makes this solution mobid.
+
+To solve this issue, we need to calibrate the decision boundary manually.
+Here we use a heuristic method defined in the attribute:
+
+    InvigorateIJRR.calibrate_match_prob
+
+However, the underlying reason of this issue is because the probability of
+the user saying ``Yes'' depends on all objects and hence it is not object-
+specific. Therefore, to systematically solve this issue, we propose to use:
+
+    invigorate_ijrr_v2.py
+
+'''
 
 '''
 Leaf and desc prob is stored as a NxN matrix.
@@ -20,8 +109,8 @@ rel_score_mat, [3, num_box, num_box],
 
 Assume p(x1) = 0, p(x2) = 1
 '''
-# import sys
-# sys.path.append('..')
+import sys
+sys.path.append('..')
 import warnings
 import torch
 import torch.nn.functional as f
@@ -31,6 +120,7 @@ from torchvision.ops import nms
 import time
 import pickle as pkl
 import os.path as osp
+import itertools
 import copy
 from scipy import optimize
 import logging
@@ -38,15 +128,16 @@ import matplotlib.pyplot as plt
 from collections import OrderedDict
 import nltk
 
-from invigorate_msgs.srv import ObjectDetection, VmrDetection
 from invigorate.libraries.data_viewer.data_viewer import DataViewer
 from invigorate.libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
+from invigorate_msgs.srv import ObjectDetection, VmrDetection
 from invigorate.libraries.ros_clients.detectron2_client import Detectron2Client
 from invigorate.libraries.ros_clients.vmrn_client import VMRNClient
 from invigorate.libraries.ros_clients.vilbert_client import VilbertClient
 from invigorate.libraries.ros_clients.mattnet_client import MAttNetClient
 from invigorate.config.config import *
 from invigorate.libraries.utils.log import LOGGER_NAME
+from invigorate.libraries.caption_generator import caption_generator
 
 try:
     import stanza
@@ -60,13 +151,14 @@ DEBUG = False
 POLICY_TREE_MAX_DEPTH = 3
 PENALTY_FOR_ASKING = -2
 PENALTY_FOR_FAIL = -10
-
+EPSILON = 0.5
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)
 
 # -------- Code ---------
-class Invigorate(object):
+class InvigorateIJRR(object):
     def __init__(self):
+
         logger.info('waiting for services...')
         self._obj_det_client = Detectron2Client()
         self._vis_ground_client = MAttNetClient()
@@ -74,23 +166,30 @@ class Invigorate(object):
         self._rel_det_client = self._vmrn_client
         self._grasp_det_client = self._vmrn_client
 
+        # hyperparameters for POMDP planning
         self._policy_tree_max_depth = POLICY_TREE_MAX_DEPTH
         self._penalty_for_asking = PENALTY_FOR_ASKING
         self._penalty_for_fail = PENALTY_FOR_FAIL
-        self.history_scores = []
+
+        # observation model initialization
+        self._init_kde()
+
+        # history information
         self.object_pool = []
         self.rel_pool = {}
-        self.target_in_pool = None
-        self._init_kde()
-        self.belief = {}
-        self.step_infos = {}
-        self.q2_num_asked = 0
-        self.expr = []
-        self.clue = ""
         self.subject = []
-        self.nlp_server = NLP_SERVER
+        self.qa_history = {}
 
+        # cache of the last step
+        self.belief = {}
+        self.expr = []
+        self.last_question = None
+
+        # data viewer
         self.data_viewer = DataViewer(CLASSES)
+
+        # NLP handler
+        self.nlp_server = NLP_SERVER
         if NLP_SERVER == "stanza":
             try:
                 self.stanford_nlp_server = stanza.Pipeline("en")
@@ -100,15 +199,6 @@ class Invigorate(object):
 
     # --------------- Public -------------------
     def estimate_state_with_img(self, img, expr):
-        """
-        @ self.belief, dict,
-        @      belief['num_obj'], number of objects
-        @      belief["bboxes"], bboxes of those objects
-        @      belief["classes"], classes of those objects
-        @      belief["target_prob"], target probability of each objects in the scene. This includes bg and therefore has size num_obj + 1
-        @      belief["rel_prob"], [3, num_obj + 1, num_obj + 1], relationship probability between objects in the scene.
-        """
-
         self.img = img
         if expr not in self.expr:
             self.expr.append(expr)
@@ -119,15 +209,26 @@ class Invigorate(object):
         if not res:
             return False
 
+        # read the infos for later process
+        bboxes = self.belief["bboxes"]
+        classes = self.belief["classes"]
+        _, det_to_pool, _ = self._get_valid_obj_candidates()
+
         # multistep grounding
-        self.multistep_grounding(img)
+        self.multistep_grounding(img, bboxes, classes, det_to_pool)
 
         # multistep obr detection
-        self.multistep_obr_detection(img)
+        self.multistep_obr_detection(img, bboxes, det_to_pool)
 
         # grasp detection
         # Note, this is not multistep
-        self.grasp_detection(img)
+        self.grasp_detection(img, bboxes, det_to_pool)
+
+        # generate question candidates for POMDP planning
+        self.question_captions_generation(img, bboxes, classes, det_to_pool)
+        questions = self.belief["questions"]
+
+        self.match_question_to_object(img, bboxes, classes, questions)
 
         return True
 
@@ -190,18 +291,15 @@ class Invigorate(object):
         self.belief["num_obj"] = len(bboxes)
         self.belief["bboxes"] = bboxes
         self.belief["classes"] = classes
+        self.belief["cls_scores_list"] = [self.object_pool[v]["cls_scores"] for k, v in det_to_pool.items()]
         logger.info("multistep_object_detection finished:")
         logger.info("bboxes: {}".format(self.belief["bboxes"]))
         logger.info("classes: {}".format(self.belief["classes"]))
 
         return True
 
-    def multistep_grounding(self, img):
-        bboxes = self.belief["bboxes"]
-        classes = self.belief["classes"]
-        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
-
-        # grounding
+    def multistep_grounding(self, img, bboxes, classes, det_to_pool):
+        # grounding and update candidate beliefs
         grounding_scores = [self._vis_ground_client.ground(img, bboxes, e, classes) for e in self.expr]
         logger.info('Perceive_img: mattnet grounding finished')
         for i, g_score in enumerate(grounding_scores):
@@ -209,7 +307,12 @@ class Invigorate(object):
             logger.info(g_score)
             # multistep state estimation
             self._multistep_p_cand_update(g_score, det_to_pool)
-        target_prob = self._cal_target_prob()
+
+        # update self.belief with the new candidate beliefs
+        self.belief["cand_belief"] = [self.object_pool[p]["cand_belief"] for _, p in det_to_pool.items()]
+
+        # compute the new target probs
+        target_prob = self._cal_target_prob(self.belief)
 
         # copy back to object pool
         for k, v in det_to_pool.items():
@@ -220,15 +323,10 @@ class Invigorate(object):
         logger.info('target_prob: {}'.format(target_prob))
         print('--------------------------------------------------------')
 
+        # update self.belief with the new target probs
         self.belief['target_prob'] = target_prob
 
-    def multistep_obr_detection(self, img):
-        # get current belief
-        bboxes = self.belief["bboxes"]
-        # classes = self.belief["classes"]
-
-        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
-
+    def multistep_obr_detection(self, img, bboxes, det_to_pool):
         # detect relationship
         rel_mat, rel_score_mat = self._rel_det_client.detect_obr(img, bboxes)
         logger.info('Perceive_img: mrt detection finished')
@@ -241,12 +339,7 @@ class Invigorate(object):
 
         self.belief['rel_prob'] = rel_prob_mat
 
-    def grasp_detection(self, img):
-        # get current belief
-        bboxes = self.belief["bboxes"]
-
-        pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
-
+    def grasp_detection(self, img, bboxes, det_to_pool):
         # grasp
         grasps = self._grasp_det_client.detect_grasps(img, bboxes)
         grasps = self._grasp_filter(bboxes, grasps)
@@ -258,12 +351,68 @@ class Invigorate(object):
 
         self.belief["grasps"] = grasps
 
+    def question_captions_generation(self, img, bboxes, classes, det_to_pool):
+        generated_questions = caption_generator.generate_all_captions(img, bboxes, classes, self.subject)
+
+        # append the newly generated questions to the history
+        # TODO: maybe the historic questions could be good candidates
+        for k, v in det_to_pool.items():
+            self.object_pool[v]["questions"].extend(generated_questions[k])
+
+        cls_filter = self._initialize_cls_filter(self.subject)
+        generated_questions = list(set(itertools.chain(*generated_questions)))
+        if cls_filter:
+            self.belief["questions"] = [q for q in generated_questions if q and cls_filter[0] in q]
+        else:
+            self.belief["questions"] = [q for q in generated_questions if q]
+
+    def match_question_to_object(self, img, bboxes, classes, questions):
+        # grounding
+        q_matching_scores = [self._vis_ground_client.ground(img, bboxes, q, classes) for q in questions]
+
+        logger.info('Perceive_img: mattnet grounding finished')
+        for i, g_score in enumerate(q_matching_scores):
+            logger.info("Question {}: {}".format(i, questions[i]))
+            logger.info(g_score)
+
+        # score to prob is equivalent to a one-step belief tracking.
+        def match_score_to_prob(score):
+            num_obj = len(score)
+            prob_pos, prob_neg = [], []
+            for i in range(num_obj):
+                match_prob_i = object_belief()
+                match_prob_i.update(score[i], self.obj_kdes)
+                prob_neg.append(match_prob_i.belief[0])
+                prob_pos.append(match_prob_i.belief[1])
+            return prob_pos, prob_neg
+
+        q_matching_prob_pos, q_matching_prob_neg = \
+            zip(*[match_score_to_prob(score) for score in q_matching_scores])
+
+        # impose class filtering (raw prior probability derived from object detector)
+        q_matching_prob = []
+        for i, q in enumerate(questions):
+            subject = self._find_subject(q)
+            cls_filter = self._initialize_cls_filter(subject)
+            q_matching_prob.append(self._cal_p_cand_with_cls_filter(
+                q_matching_prob_pos[i], q_matching_prob_neg[i],
+                cls_scores_list=self.belief["cls_scores_list"], cls_filter=cls_filter)
+            )
+        q_matching_prob = np.array(q_matching_prob)
+
+        print('--------------------------------------------------------')
+        logger.info('Object & Question Matching: \n{}'.format(q_matching_prob))
+        print('--------------------------------------------------------')
+
+        self.belief['q_matching_prob'] = q_matching_prob
+
     def estimate_state_with_user_answer(self, action, answer):
         response, clue = self._process_user_answer(answer)
         pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates()
 
         action_type, target_idx = self.parse_action(action)
-        assert action_type == "Q1"
+        assert action_type == "Q_IJRR"
+        match_probs = self.belief['q_matching_prob'][target_idx]
 
         print('--------------------------------------------------------')
         logger.info("Invigorate: handling answer for Q1")
@@ -278,27 +427,15 @@ class Invigorate(object):
             self._multistep_p_cand_update(regrounding_scores, det_to_pool)
             self.expr.append(clue)
 
+        # update the belief using the response
         if response is not None:
-            if response is True:
-                # TODO edit candidate belief here
-                # user answer "yes"
-                # set non-target
-                for obj in self.object_pool:
-                    obj["is_target"] = 0
-                    obj["cand_belief"].belief[0] = 1.
-                    obj["cand_belief"].belief[1] = 0.
-                # set the only target
-                self.object_pool[det_to_pool[target_idx]]["is_target"] = 1
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 0.
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 1.
-            else:
-                # target_prob[target_idx] = 0
-                # target_prob /= np.sum(target_prob)
-                self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 1
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 0
+            for (det_ind, pool_ind), match_prob in zip(det_to_pool.items(), match_probs):
+                self.object_pool[pool_ind]["cand_belief"].update_linguistic(
+                    response,
+                    match_probs[det_ind],
+                    e=EPSILON)
 
-        target_prob = self._cal_target_prob()
+        target_prob = self._cal_target_prob(self.belief)
 
         logger.info("estimate_state_with_user_answer completed")
         print('--------------------------------------------------------')
@@ -341,8 +478,8 @@ class Invigorate(object):
             return 'GRASP_AND_END', action
         elif action < 2 * num_obj:
             return 'GRASP_AND_CONTINUE', action - num_obj
-        elif action < 3 * num_obj:
-            return 'Q1', action - 2 * num_obj
+        else:
+            return 'Q_IJRR', action - 2 * num_obj
 
     # ----------- Init helper ------------
 
@@ -407,16 +544,18 @@ class Invigorate(object):
         new_box["cand_belief"] = object_belief()
         new_box["target_prob"] = 0.
         new_box["ground_scores_history"] = []
-        new_box["clue"] = None
-        new_box["clue_belief"] = object_belief()
+        new_box["removed"] = False
+        new_box["caption_history"] = []
+        new_box["grasp"] = None
+        new_box["questions"] = []
+        # new_box["clue"] = None
+        # new_box["clue_belief"] = object_belief()
+        # new_box["is_target"] = -1 # -1 means unknown
+        # new_box["num_det_failures"] = 0
         # if self.target_in_pool:
         #     new_box["confirmed"] = True
         # else:
         #     new_box["confirmed"] = False  # whether this box has been confirmed by user's answer
-        new_box["is_target"] = -1 # -1 means unknown
-        new_box["removed"] = False
-        new_box["grasp"] = None
-        new_box["num_det_failures"] = 0
         return new_box
 
     def _init_relation(self, rel_score):
@@ -425,8 +564,6 @@ class Invigorate(object):
         new_rel["rel_score_history"] = []
         new_rel["rel_belief"] = relation_belief()
         return new_rel
-
-    # ----------- POMDP helpers -----------------
 
     def _planning_with_macro(self, infos):
         """
@@ -441,6 +578,7 @@ class Invigorate(object):
         planning_depth = self._policy_tree_max_depth
         penalty_for_fail = self._penalty_for_fail
         penalty_for_asking = self._penalty_for_asking
+
 
         def gen_grasp_macro(belief):
 
@@ -492,88 +630,59 @@ class Invigorate(object):
             # POLICY: treat the object with the highest conf score as the target
             target_prob = belief["target_prob"]
             target = torch.argmax(target_prob).item()
-            grasp_macros = belief["grasp_macros"][target]
-            leaf_prob = grasp_macros["leaf_prob"]
-            p_not_remove_non_leaf = torch.cumprod(leaf_prob, dim=0)[-1].item()
             p_fail = 1. - target_prob[target].item()
             return penalty_for_fail * p_fail
 
-        def belief_update(belief):
-            '''
-            @return updated_belief, [num_obj x 2 x num_obj]
-                                    updated_belief[i] is the belief for asking q1 wrt to obj i.
-                                    updated_belief[i][0] is the belief for getting answer no, updated_belief[i][1] is the belief for getting answer yes.
-            '''
-            I = torch.eye(belief["target_prob"].shape[0]).type_as(belief["target_prob"])
-            updated_beliefs = []
-            # Do you mean ... ?
-            # Answer No
-            beliefs_no = belief["target_prob"].unsqueeze(0).repeat(num_obj + 1, 1)
-            beliefs_no *= (1. - I) # set belief wrt to obj being asked to 0
-            beliefs_no /= torch.clamp(torch.sum(beliefs_no, dim=-1, keepdim=True), min=1e-10) # normalize
-            # Answer Yes
-            beliefs_yes = I.clone() # set belief wrt to obj being asked to 1 and set the rest to 0
+        def forward_belief(belief, ans, match_prob, e=0.5):
+            new_belief = copy.deepcopy(belief)
 
-            for i in range(beliefs_no.shape[0] - 1):
-                updated_beliefs.append([beliefs_no[i], beliefs_yes[i]])
+            for i in range(len(new_belief["cand_belief"])):
 
-            return updated_beliefs
+                new_belief["cand_belief"][i].update_linguistic(
+                    ans,
+                    match_prob[i],
+                    e)
 
-        def is_onehot(vec, epsilon=1e-2):
-            return (torch.abs(vec - 1) < epsilon).sum().item() > 0
+            new_belief["target_prob"] = self._cal_target_prob(new_belief, print_loginfo=False)
+            new_belief["target_prob"] = torch.from_numpy(new_belief["target_prob"])
+
+            return new_belief
 
         def estimate_q_vec(belief, current_d):
             if current_d == planning_depth - 1:
                 return torch.tensor([grasp_reward_estimate(belief)])
             else:
-                # branches of grasping
+                # computing q-value for grasping
                 q_vec = [grasp_reward_estimate(belief)]
 
-                # q-value for asking Q1
-                target_prob = belief["target_prob"]
-                new_beliefs = belief_update(belief) # calculate b' for asking q1 about different objects at once.
-                new_belief_dict = copy.deepcopy(belief)
-                for i, new_belief in enumerate(new_beliefs):
+                # computing q-value for asking
+                for i, match_prob in enumerate(belief["q_matching_prob"]):
+                    if current_d == 0:
+                        print(i)
+                    # 1. computing the probability of answering Yes or No
+                    # ONLY WHEN the object is the target and it matches the question, the answer will be Yes.
+                    # OTHERWIZE, it will be no.
+                    target_prob = belief["target_prob"]
+                    p_yes = (target_prob[:-1] * match_prob).sum()
+                    p_no = 1 - p_yes
+
+                    # 2. update the belief
+                    new_belief_yes = forward_belief(belief, True, match_prob, EPSILON)
+                    new_belief_no = forward_belief(belief, False, match_prob, EPSILON)
+
+                    # 3. computing the q value
                     q = penalty_for_asking
-                    for j, b in enumerate(new_belief):
-                        new_belief_dict["target_prob"] = b
-
-                        # # branches of asking questions
-                        # if is_onehot(b):
-                        #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, planning_depth - 1).max()
-                        # else:
-                        #     t_q = penalty_for_asking + estimate_q_vec(new_belief_dict, current_d + 1).max()
-                        # if j == 0:
-                        #     # Answer is No
-                        #     q += t_q * (1 - target_prob[i])
-                        # else:
-                        #     # Answer is Yes
-                        #     q += t_q * target_prob[i]
-
-                        # calculate value of new belief
-                        if is_onehot(b):
-                            # set the depth to maximum depth as there is no need to plan further
-                            new_belief_val = estimate_q_vec(new_belief_dict, planning_depth - 1).max()
-                        else:
-                            new_belief_val = estimate_q_vec(new_belief_dict, current_d + 1).max()
-
-                        if j == 0:
-                            # Answer is No
-                            q += (1 - target_prob[i]) * new_belief_val # observation prob * value of new belief
-                        else:
-                            # Answer is Yes
-                            q += target_prob[i] * new_belief_val # observation prob * value of new belief
+                    yes_val = estimate_q_vec(new_belief_yes, current_d + 1).max()
+                    no_val = estimate_q_vec(new_belief_no, current_d + 1).max()
+                    q += p_no * no_val + p_yes * yes_val
                     q_vec.append(q.item())
 
                 return torch.Tensor(q_vec).type_as(belief["target_prob"])
 
-        num_obj = self.belief["target_prob"].shape[0] - 1
         belief = copy.deepcopy(self.belief)
         belief["target_prob"] = torch.from_numpy(belief["target_prob"])
         belief["rel_prob"] = torch.from_numpy(belief["rel_prob"])
-        # for k in belief:
-        #     if belief[k] is not None:
-        #         belief[k] = torch.from_numpy(belief[k])
+        belief["q_matching_prob"] = torch.from_numpy(belief["q_matching_prob"])
         belief["infos"] = infos
         for k in belief["infos"]:
             belief["infos"][k] = torch.from_numpy(belief["infos"][k])
@@ -582,8 +691,7 @@ class Invigorate(object):
         q_vec = estimate_q_vec(belief, 0)
         logger.info("Q Value for Each Action: ")
         logger.info("Grasping:{:.3f}".format(q_vec.tolist()[0]))
-        logger.info("Asking Q1:{:s}".format(q_vec.tolist()[1:num_obj + 1]))
-        # print("Asking Q2:{:.3f}".format(q_vec.tolist()[num_obj+1]))
+        logger.info("Asking:{:s}".format(q_vec.tolist()[1:]))
 
         for k in grasp_macros:
             for kk in grasp_macros[k]:
@@ -913,11 +1021,6 @@ class Invigorate(object):
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         logger.info('_bbox_post_process: object from object pool selected for latter process: {}'.format(pool_to_det.keys()))
 
-        target_confirmed = False
-        for o in self.object_pool:
-            if o["is_target"] == 1 and not o["removed"]:
-                target_confirmed = True
-
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
@@ -934,9 +1037,6 @@ class Invigorate(object):
             self.object_pool.append(new_box)
             det_to_pool[i] = len(self.object_pool) - 1
             pool_to_det[len(self.object_pool) - 1] = i
-            if target_confirmed:
-                new_box["cand_belief"].belief[0] = 1.
-                new_box["cand_belief"].belief[1] = 0.
             for j in range(len(self.object_pool[:-1])):
                 # initialize relationship belief
                 new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
@@ -944,8 +1044,8 @@ class Invigorate(object):
 
     # ---------- grounding helpers ------------
 
-    def _initialize_cls_filter(self):
-        subj_str = ''.join(self.subject)
+    def _initialize_cls_filter(self, subject):
+        subj_str = ''.join(subject)
         cls_filter = []
         for cls in CLASSES:
             cls_str = ''.join(cls.split(" "))
@@ -955,41 +1055,33 @@ class Invigorate(object):
         return cls_filter
 
     def _multistep_p_cand_update(self, mattnet_score, det_to_pool):
-
-        for o in self.object_pool:
-            if not o["removed"] and o["is_target"]==1:
-                return
-
+        # for o in self.object_pool:
+        #     if not o["removed"] and o["is_target"] == 1:
+        #         return
         for i, score in enumerate(mattnet_score):
             pool_ind = det_to_pool[i]
             self.object_pool[pool_ind]["cand_belief"].update(score, self.obj_kdes)
             self.object_pool[pool_ind]["ground_scores_history"].append(score)
 
-    def _cal_p_cand(self):
-        _, det_to_pool, _ = self._get_valid_obj_candidates()
-        cls_filter = self._initialize_cls_filter()
-        disable_cls_filter= False
-        if len(cls_filter) == 0:
-            # no filter is available
-            disable_cls_filter = True
+    def _cal_p_cand_with_cls_filter(self, cand_pos_llh, cand_neg_llh, cls_scores_list,
+                                    cls_filter=None, print_loginfo=True):
+        if cls_filter is None:
+            cls_filter = self._initialize_cls_filter(self.subject)
+        disable_cls_filter = not cls_filter
 
         cand_det_neg_llh = []
-        cand_neg_llh = []
         cand_det_pos_llh = []
-        cand_pos_llh = []
         conf_scores = []
-        for pool_ind in det_to_pool.values():
-            # likelihood
-            cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
-            cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
 
+        for i in range(len(cls_scores_list)):
             if not disable_cls_filter:
                 p_det = 0
-                cls_scores = np.array(self.object_pool[pool_ind]["cls_scores"]).mean(axis=0)
+                cls_scores = np.array(cls_scores_list[i]).mean(axis=0)
                 for cls in CLASSES:
                     if cls in cls_filter:
                         p_det += cls_scores[CLASSES_TO_IND[cls]]
 
+                # A heuristic likelihood from object detection.
                 # TODO: Improvement needed here
                 conf_score = p_det
                 if p_det < 0.2: #
@@ -997,8 +1089,9 @@ class Invigorate(object):
                 else:
                     p_det_pos_llh = 1.0
 
-                p_det_neg_llh = 1.0 # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
-                                  # probability of getting that observation
+                # Constants. No matter what observation we get, if the object is not candidate, there is a uniform
+                # probability of getting that observation
+                p_det_neg_llh = 1.0
 
                 conf_scores.append(conf_score)
                 cand_det_pos_llh.append(p_det_pos_llh)
@@ -1007,37 +1100,44 @@ class Invigorate(object):
                 cand_det_pos_llh.append(1.)
                 cand_det_neg_llh.append(1.)
 
-        logger.debug("conf_scores: {}".format(conf_scores))
-
-        logger.info("cand_det_pos_llh: {}, cand_det_neg_llh: {}".format(cand_det_pos_llh, cand_det_neg_llh))
-        logger.info("cand_pos_llh: {}, cand_neg_llh: {}".format(cand_pos_llh, cand_neg_llh))
-
         p_cand_pos = np.array(cand_det_pos_llh) * np.array(cand_pos_llh)
         p_cand_neg = np.array(cand_det_neg_llh) * np.array(cand_neg_llh)
-
         # normalize the distribution
-        p_cand = p_cand_pos / (p_cand_pos + p_cand_neg)
+        p_cand = p_cand_pos / (p_cand_pos + p_cand_neg + 1e-6)
 
-        logger.info("p_cand: {}".format(p_cand))
-        self.p_cand = p_cand
+        if print_loginfo:
+            logger.debug("conf_scores: {}".format(conf_scores))
+            logger.info("cand_det_pos_llh: {}, cand_det_neg_llh: {}".format(cand_det_pos_llh, cand_det_neg_llh))
+            logger.info("cand_pos_llh: {}, cand_neg_llh: {}".format(cand_pos_llh, cand_neg_llh))
+            logger.info("p_cand: {}".format(p_cand))
+
+        # self.p_cand = p_cand
 
         return p_cand
 
 
-    def _cal_target_prob(self):
-        p_cand = self._cal_p_cand()
-        ground_result = self._cal_target_prob_from_p_cand(p_cand)
+    def _cal_target_prob(self, belief, print_loginfo=True):
+        cand_pos_llh, cand_neg_llh = [], []
+        for b in belief["cand_belief"]:
+            # likelihood
+            cand_neg_llh.append(b.belief[0])
+            cand_pos_llh.append(b.belief[1])
+        cls_scores_list = belief["cls_scores_list"]
+        p_cand = self._cal_p_cand_with_cls_filter(
+            cand_pos_llh, cand_neg_llh, cls_scores_list, print_loginfo=print_loginfo)
+        ground_result = self._p_cand_to_target_prob(p_cand)
         ground_result = np.append(ground_result, max(0.0, 1. - ground_result.sum()))
         return ground_result
 
 
-    def _cal_target_prob_from_p_cand(self, pcand, sample_num=100000):
+    def _p_cand_to_target_prob(self, pcand, sample_num=100000):
         pcand = torch.as_tensor(pcand).reshape(1, -1)
         pcand = pcand.repeat(sample_num, 1)
         sampled = torch.bernoulli(pcand)
         sampled_sum = sampled.sum(-1)
         sampled[sampled_sum > 0] /= sampled_sum[sampled_sum > 0].unsqueeze(-1)
-        sampled = np.clip(sampled.mean(0).cpu().numpy(), 0.01, 0.99)
+        sampled = sampled.mean(0).cpu().numpy()
+        # handle possible numerical issues
         if sampled.sum() > 1:
             sampled /= sampled.sum()
         return sampled

@@ -3,8 +3,8 @@
 '''
 TODO
 P1:
-*. compare kinect
-*. Try higher resolution realsense [Done, it does not work]
+*. compare kinect [Done, it works better]
+*. Try higher resolution RealSence [Done, it does not work]
 *. Manually adjust position and check it reports so many collision, knife, toothbrush
 
 P2
@@ -58,13 +58,19 @@ from invigorate.greedy import Greedy
 from invigorate.heuristic import Heuristic
 from invigorate.no_interaction import NoInteraction
 from invigorate.no_multistep import NoMultistep, NoMultistepAll
+from invigorate.invigorate_ijrr import InvigorateIJRR
+from invigorate.invigorate_ijrr_v2 import InvigorateIJRRV2
+from invigorate.invigorate_ijrr_v3 import InvigorateIJRRV3
+from invigorate.invigorate_ijrr_v4 import InvigorateIJRRV4
+from invigorate.invigorate_ijrr_v5 import InvigorateIJRRV5
+from invigorate.invigorate_ijrr_v6 import InvigorateIJRRV6
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
-# ROBOT = 'Dummy'ap
-GENERATE_CAPTIONS = False
+# ROBOT = 'Fetch'
+ROBOT = 'Dummy'
+GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
 if GENERATE_CAPTIONS:
@@ -74,9 +80,7 @@ if ROBOT == 'Fetch':
     from libraries.robots.fetch_robot import FetchRobot
 
 # -------- Constants --------
-EXEC_GRASP = 0
-EXEC_ASK = 1
-EXEC_DUMMY_ASK = 2
+
 # DISPLAY_DEBUG_IMG = "matplotlib"
 DISPLAY_DEBUG_IMG = 'pil'
 DEBUG = True
@@ -88,7 +92,7 @@ br = CvBridge()
 
 def init_robot(robot):
     if robot == 'Dummy':
-        robot = DummyRobot()
+        robot = DummyRobot(camera_topic='/kinect2/qhd/image_color')
     elif robot == 'Fetch':
         robot = FetchRobot()
     else:
@@ -111,6 +115,18 @@ def main():
         invigorate_client = NoMultistep()
     elif EXP_SETTING == "no_multistep_all":
         invigorate_client = NoMultistepAll()
+    elif EXP_SETTING == "invigorate_ijrr":
+        invigorate_client = InvigorateIJRR()
+    elif EXP_SETTING == "invigorate_ijrr_v2":
+        invigorate_client = InvigorateIJRRV2()
+    elif EXP_SETTING == "invigorate_ijrr_v3":
+        invigorate_client = InvigorateIJRRV3()
+    elif EXP_SETTING == "invigorate_ijrr_v4":
+        invigorate_client = InvigorateIJRRV4()
+    elif EXP_SETTING == "invigorate_ijrr_v5":
+        invigorate_client = InvigorateIJRRV5()
+    elif EXP_SETTING == "invigorate_ijrr_v6":
+        invigorate_client = InvigorateIJRRV6()
 
     logger.info("SETTING: {}".format(EXP_SETTING))
 
@@ -151,12 +167,13 @@ def main():
             if not res:
                 logger.info("exit!!")
                 return
-        elif exec_type == EXEC_ASK:
+        elif exec_type in {EXEC_ASK_WITH_POINTING, EXEC_ASK_WITHOUT_POINT}:
             # get user answer
             answer = robot.listen()
 
             # state_estimation
             invigorate_client.estimate_state_with_user_answer(action, answer)
+
         elif exec_type == EXEC_DUMMY_ASK:
             # get user answer
             answer = dummy_question_answer
@@ -175,10 +192,6 @@ def main():
         rel_score_mat = invigorate_client.belief['rel_prob']
         rel_mat, _ = invigorate_client.rel_score_process(rel_score_mat)
         target_prob = invigorate_client.belief['target_prob']
-        # imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, save=False)
-        # if DISPLAY_DEBUG_IMG:
-        #     data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
-        # cv2.imwrite("outputs/final.png", imgs['final_img'])
 
         # plan for optimal actions
         action = invigorate_client.plan_action() # action_idx.
@@ -193,21 +206,48 @@ def main():
             logger.info("Grasping object " + str(target_idx) + " and continuing")
             exec_type = EXEC_GRASP
         elif action_type == 'Q1':
-            logger.info("Askig Q1 about " + str(target_idx) + " and continuing")
+            logger.info("Asking about and Pointing to {:s}th Object".format(str(target_idx)) + " and continuing")
             if GENERATE_CAPTIONS:
                 # generate caption
                 subject = invigorate_client.subject[-1]
-                caption = caption_generator.generate_caption(img, bboxes, classes, target_idx, subject)
+                caption = caption_generator.generate_caption(
+                    img, bboxes, classes, target_idx, subject)
                 question_str = Q1["type1"].format(caption)
             else:
                 question_str = Q1["type1"].format(str(target_idx) + "th object")
-            exec_type = EXEC_ASK
+            logger.info("Generated Question: {:s}".format(question_str))
+            exec_type = EXEC_ASK_WITH_POINTING
+        elif action_type == 'Q_IJRR':
+            caption = invigorate_client.belief["questions"][target_idx]
+            question_str = Q1["type1"].format(caption)
+            logger.info("Only Askig Question: {:s}".format(question_str))
+
+            if hasattr(invigorate_client, 'search_answer'):
+                answer = invigorate_client.search_answer(caption)
+                if answer is not None:
+                    exec_type = EXEC_DUMMY_ASK
+                    dummy_question_answer = answer
+                else:
+                    exec_type = EXEC_ASK_WITHOUT_POINT
+            else:
+                exec_type = EXEC_ASK_WITHOUT_POINT
+
+        elif action_type == 'Q_IJRR_WITH_POINTING':
+            caption = invigorate_client.belief["questions"][target_idx]
+            question_str = Q1["type1"].format(caption)
+            logger.info("Asking about and Pointing to {:s}th Object".format(str(target_idx)) + " and continuing")
+            logger.info("Generated Question: {:s}".format(question_str))
+            exec_type = EXEC_ASK_WITH_POINTING
 
         # debug
-        if DISPLAY_DEBUG_IMG:
-            imgs = data_viewer.generate_visualization_imgs(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action=action,
-                question_str=question_str, save=False)
-            data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
+        expr = invigorate_client.pos_expr
+        imgs = data_viewer.generate_visualization_imgs(
+            img, bboxes, classes, rel_mat, rel_score_mat,
+            expr, target_prob,
+            action=action, action_type=action_type,
+            exec_type=exec_type, target_idx=target_idx,
+            question_str=question_str, save=True)
+        data_viewer.display_img(imgs['final_img'], mode=DISPLAY_DEBUG_IMG)
 
         # exec action
         if exec_type == EXEC_GRASP:
@@ -249,7 +289,10 @@ def main():
                 # rospy.sleep(5)
             if res and is_target:
                 robot.say("this is for you")
-        elif exec_type == EXEC_ASK:
+        elif exec_type == EXEC_ASK_WITH_POINTING:
+            # TODO: IMPLEMENT POINTING POSTURES
+            robot.say(question_str)
+        elif exec_type == EXEC_ASK_WITHOUT_POINT:
             robot.say(question_str)
             # exec_type = EXEC_GRASP # TEST
 
@@ -257,7 +300,11 @@ def main():
         invigorate_client.transit_state(action)
 
         # generate debug images
-        data_viewer.gen_final_paper_fig(img, bboxes, classes, rel_mat, rel_score_mat, expr, target_prob, action, grasps, question_str, answer)
+        data_viewer.gen_final_paper_fig(imgs, expr)
+
+        if EXP_SETTING in {"invigorate_ijrr_v2", "invigorate_ijrr_v3"}:
+            for k, v in invigorate_client.timers.items():
+                print(k, sum(v) / len(v))
 
         if DEBUG:
             to_cont = raw_input('To_continue?')
