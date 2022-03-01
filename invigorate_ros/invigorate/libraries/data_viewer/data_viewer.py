@@ -328,11 +328,19 @@ class DataViewer(object):
                     2, (255, 255, 255), thickness=2)
         return im
 
-    def display_obj_to_grasp(self, im, bboxes, grasps, grasp_target_idx):
+    def display_obj_to_grasp(self, im, bboxes, grasps, grasp_target_idx, save=True):
         im = np.ascontiguousarray(im)
         bboxes = bboxes.astype(np.int)
         im = self.draw_single_bbox(im, bboxes[grasp_target_idx][:4])
         im = self.draw_single_grasp(im, grasps[grasp_target_idx])
+
+        out_dir = LOG_DIR
+        if save:
+            im_id = str(datetime.datetime.now())
+            save_name = im_id + "_grasp.png"
+            save_path = os.path.join(out_dir, save_name)
+            cv2.imwrite(save_path, im)
+
         return im
 
     def vis_action(self, action_str, shape, draw_arrow = False):

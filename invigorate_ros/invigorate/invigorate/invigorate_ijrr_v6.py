@@ -67,12 +67,12 @@ DEBUG = False
 # -------- Constants ---------
 POLICY_TREE_MAX_DEPTH = 3
 PENALTY_FOR_ASKING_WITH_POINTING = -2.5
-PENALTY_FOR_ASKING = -1
+PENALTY_FOR_ASKING = -1.5
 PENALTY_FOR_FAIL = -10
 
 EPSILON = 0.5
 SAME_EXPRESSION_THRESH = 0.4
-ACTIVE_OBJ_DETECTION_SCORE = 0.6 # object with detection scores above this will be actively considered
+ACTIVE_OBJ_DETECTION_SCORE = 0.5 # object with detection scores above this will be actively considered
 REMOVE_OBJ_DETECTION_SCORE = 0.4 # object with detection scores below this will be removed
 
 # -------- Statics ---------
@@ -469,21 +469,20 @@ class InvigorateIJRRV6(object):
         # update the belief using the response
         if response is not None:
             if target_idx >= obj_num:
+                # Firstly, belief tracking according to the additional clue if possible.
+                if clue:
+                    regrounding_scores = self._vis_ground_client.ground(
+                        img, bboxes,
+                        self.pos_expr.replace('remote','remote controller'),
+                        classes)
+                    self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
+
                 # the robot asked a question without pointing to a specific object instance
                 if response:
-                    # we assume that no clue will be given when the user said Yes
-                    assert not clue
                     # belief tracking according to the positive response
                     regrounding_scores = self.belief['q_matching_scores'][target_idx]
                     self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
                 else:
-                    # Firstly, belief tracking according to the additional clue if possible.
-                    if clue:
-                        regrounding_scores = self._vis_ground_client.ground(
-                            img, bboxes,
-                            self.pos_expr.replace('remote','remote controller'),
-                            classes)
-                        self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
                     # belief tracking according to the negative response
                     regrounding_scores = self.belief['q_matching_scores'][target_idx]
                     self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=False)
@@ -1206,7 +1205,6 @@ class InvigorateIJRRV6(object):
             cls_str = ''.join(cls.split(" "))
             if cls_str in subj_str or subj_str in cls_str:
                 cls_filter.append(cls)
-        print(cls_filter)
         assert len(cls_filter) <= 1
         return cls_filter
 
