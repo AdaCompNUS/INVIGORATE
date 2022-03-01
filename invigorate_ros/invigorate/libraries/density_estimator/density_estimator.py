@@ -37,7 +37,7 @@ class gaussian_kde(object):
 class object_belief(object):
     def __init__(self):
         self._belief = np.array([0.5, 0.5])
-        
+
         # This placeholder 'cls_llh' is prepared for object detector,
         # hence in INVIGORATE, the object detection score can also
         # help to filter out incorrect objects.
@@ -47,7 +47,7 @@ class object_belief(object):
         # In the future, we can consider to introduce object results
         # from multiple detection steps as the object class likelihood.
         self.cls_llh = np.array([0.5, 0.5])
-        
+
         self.low_thr = 0.01
 
     @property
@@ -142,33 +142,81 @@ class object_belief(object):
         return match_prob
 
 class relation_belief(object):
-    def __init__(self):
-        self.belief = np.array([1./3., 1./3., 1./3.])
+    def __init__(self,
+                 bbox1=None,
+                 bbox2=None):
+        self._belief = np.array([1./3., 1./3., 1./3.])
+        # if two objects have some relationship, the bboxes
+        # should be near each other.
+        # if two objects do not have relationship, the bboxes
+        # are possibly segregated.
+        self.bbox_llh = np.array([[1.,      0.],
+                                  [1.,      0.],
+                                  [0.99,    0.01]])
 
-    def update(self, score, kde):
+        self.bbox1 = bbox1
+        self.bbox2 = bbox2
+
+    def _box_iou(self, bbox1, bbox2):
+
+        left_int, top_int, right_uni, bottom_uni  = np.maximum(bbox1, bbox2)
+        left_uni, top_uni, right_int, bottom_int = np.minimum(bbox1, bbox2)
+
+        if right_int <= left_int or bottom_int <= top_int:
+            return 0
+        else:
+            iou = (bottom_int - top_int) * (right_int - left_int) / \
+                  ((bottom_uni - top_uni) * (right_uni - left_uni))
+            return iou
+
+    def _is_near(self, bbox1, bbox2):
+        bound_thresh = 0
+        iou = self._box_iou(
+            bbox1 + [-bound_thresh, -bound_thresh, bound_thresh, bound_thresh],
+            bbox2 + [-bound_thresh, -bound_thresh, bound_thresh, bound_thresh])
+        return iou > 0
+
+    @property
+    def belief(self):
+        if self.bbox1 is None or self.bbox2 is None:
+            return self._belief
+        else:
+            if self._is_near(self.bbox1, self.bbox2):
+                belief = self._belief * self.bbox_llh[:, 0]
+            else:
+                belief = self._belief * self.bbox_llh[:, 1]
+            belief /= np.linalg.norm(belief)
+            return belief
+
+    def update(self, score, kde, bbox1=None, bbox2=None):
+        if bbox1 is not None and bbox2 is not None:
+            self.bbox1[:] = bbox1
+            self.bbox2[:] = bbox2
+
         MIN_PROB = 0.05
 
         parent_llh = np.exp(kde[0].comp_prob(score))
         child_llh = np.exp(kde[1].comp_prob(score))
         norel_llh = np.exp(kde[2].comp_prob(score))
         # posterior
-        self.belief *= [parent_llh, child_llh, norel_llh]
-        self.belief /= self.belief.sum()
+        self._belief *= [parent_llh, child_llh, norel_llh]
+        self._belief /= self._belief.sum()
 
         # clip the prob to make sure that the probability is reasonable
-        if self.belief.min() < MIN_PROB:
-            _indicator = (self.belief < MIN_PROB)
-            res_sum = (self.belief * (1 - _indicator)).sum()
+        if self._belief.min() < MIN_PROB:
+            _indicator = (self._belief < MIN_PROB)
+            res_sum = (self._belief * (1 - _indicator)).sum()
 
             for i, _ in enumerate(_indicator):
-                if self.belief[i] < MIN_PROB:
-                    self.belief[i] = MIN_PROB
+                if self._belief[i] < MIN_PROB:
+                    self._belief[i] = MIN_PROB
                 else:
-                    self.belief[i] = self.belief[i] / res_sum * (1 - MIN_PROB * _indicator.sum())
+                    self._belief[i] = self._belief[i] / res_sum * (1 - MIN_PROB * _indicator.sum())
+
         return self.belief
 
     def reset(self):
-        self.belief = np.array([0.333, 0.333, 0.334])
+        self._belief = np.array([0.333, 0.333, 0.334])
 
 if __name__=="__main__":
     # this_dir = osp.dirname(osp.abspath(__file__))

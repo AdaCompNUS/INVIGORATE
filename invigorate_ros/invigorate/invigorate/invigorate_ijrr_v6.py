@@ -72,6 +72,8 @@ PENALTY_FOR_FAIL = -10
 
 EPSILON = 0.5
 SAME_EXPRESSION_THRESH = 0.4
+ACTIVE_OBJ_DETECTION_SCORE = 0.6 # object with detection scores above this will be actively considered
+REMOVE_OBJ_DETECTION_SCORE = 0.4 # object with detection scores below this will be removed
 
 # -------- Statics ---------
 logger = logging.getLogger(LOGGER_NAME)
@@ -234,7 +236,7 @@ class InvigorateIJRRV6(object):
                 cls = CLASSES[np.array(obj["cls_scores"]).mean(axis=0).argmax()]
                 logger.info("Pool ind: {:d}, Class: {}, Score: {:.2f}, Location: {}".format(i, cls, sc, obj["bbox"]))
 
-        # Note!!! filtering happens here
+        # Filtering objects that have low detection scores
         logger.info("filtering objects!")
         pool_to_det, det_to_pool, obj_num = self._get_valid_obj_candidates(renew=True)
 
@@ -264,10 +266,10 @@ class InvigorateIJRRV6(object):
         # grounding and update candidate beliefs
         pos_grounding_scores = \
             self._vis_ground_client.ground(
-                img, bboxes, self.pos_expr, classes)
+                img, bboxes, self.pos_expr.replace('remote','remote controller'), classes)
         logger.info('Perceive_img: mattnet grounding finished')
         logger.info("grounding scores against positive "
-                    "expression '{}' is".format(self.pos_expr))
+                    "expression '{}' is".format(self.pos_expr.replace('remote','remote controller')))
         logger.info(pos_grounding_scores)
         # multistep state estimation
         self._multistep_p_cand_update(
@@ -276,9 +278,9 @@ class InvigorateIJRRV6(object):
         if self.neg_expr:
             neg_grounding_scores = \
                 self._vis_ground_client.ground(
-                    img, bboxes, self.neg_expr, classes)
+                    img, bboxes, self.neg_expr.replace('remote','remote controller'), classes)
             logger.info("grounding scores against negative "
-                        "expression '{}' is".format(self.neg_expr))
+                        "expression '{}' is".format(self.neg_expr.replace('remote','remote controller')))
             logger.info(neg_grounding_scores)
             # multistep state estimation
             self._multistep_p_cand_update(
@@ -314,7 +316,7 @@ class InvigorateIJRRV6(object):
         rel_mat, rel_score_mat = self.rel_score_process(rel_score_mat)
 
         # multistep state estimation
-        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, det_to_pool)
+        rel_prob_mat = self._multi_step_mrt_estimation(rel_score_mat, bboxes, det_to_pool)
 
         self.belief['rel_prob'] = rel_prob_mat
 
@@ -362,7 +364,7 @@ class InvigorateIJRRV6(object):
         q_matching_scores = [
             self._vis_ground_client.ground(
                 img, bboxes,
-                self.expr_processor.merge_expressions(q, self.pos_expr, self.subject),
+                self.expr_processor.merge_expressions(q, self.pos_expr, self.subject).replace('remote','remote controller'),
                 classes) for q in questions]
         self.belief['q_matching_scores'] = q_matching_scores
 
@@ -479,7 +481,7 @@ class InvigorateIJRRV6(object):
                     if clue:
                         regrounding_scores = self._vis_ground_client.ground(
                             img, bboxes,
-                            self.pos_expr,
+                            self.pos_expr.replace('remote','remote controller'),
                             classes)
                         self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
                     # belief tracking according to the negative response
@@ -498,7 +500,7 @@ class InvigorateIJRRV6(object):
                 if clue:
                     regrounding_scores = self._vis_ground_client.ground(
                         img, bboxes,
-                        self.pos_expr,
+                        self.pos_expr.replace('remote','remote controller'),
                         classes)
                     self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
@@ -650,11 +652,11 @@ class InvigorateIJRRV6(object):
         new_box["questions"] = []
         return new_box
 
-    def _init_relation(self, rel_score):
+    def _init_relation(self, rel_score, bbox1=None, bbox2=None):
         new_rel = {}
         new_rel["rel_score"] = rel_score
         new_rel["rel_score_history"] = []
-        new_rel["rel_belief"] = relation_belief()
+        new_rel["rel_belief"] = relation_belief(bbox1, bbox2)
         return new_rel
 
     # ----------- POMDP helpers -----------------
@@ -1189,7 +1191,10 @@ class InvigorateIJRRV6(object):
             pool_to_det[len(self.object_pool) - 1] = i
             for j in range(len(self.object_pool[:-1])):
                 # initialize relationship belief
-                new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
+                bbox_j = self.object_pool[j]['bbox']
+                new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]),
+                                              bbox1=bbox_j,
+                                              bbox2=bboxes[i])
                 self.rel_pool[(j, det_to_pool[i])] = new_rel
 
     # ---------- grounding helpers ------------
@@ -1201,6 +1206,7 @@ class InvigorateIJRRV6(object):
             cls_str = ''.join(cls.split(" "))
             if cls_str in subj_str or subj_str in cls_str:
                 cls_filter.append(cls)
+        print(cls_filter)
         assert len(cls_filter) <= 1
         return cls_filter
 
@@ -1291,7 +1297,7 @@ class InvigorateIJRRV6(object):
         rel_mat = np.argmax(rel_score_mat, axis=0) + 1
         return rel_mat, rel_score_mat
 
-    def _multi_step_mrt_estimation(self, rel_score_mat, det_to_pool):
+    def _multi_step_mrt_estimation(self, rel_score_mat, bboxes, det_to_pool):
         # multi-step observations for relationship probability estimation
         box_inds = det_to_pool.keys()
         # update the relation pool
@@ -1302,24 +1308,29 @@ class InvigorateIJRRV6(object):
                 box_ind_j = box_inds[j]
                 pool_ind_i = det_to_pool[box_ind_i]
                 pool_ind_j = det_to_pool[box_ind_j]
+                bbox_i = bboxes[i]
+                bbox_j = bboxes[j]
                 if pool_ind_i < pool_ind_j:
                     rel_score = rel_score_mat[:, box_ind_i, box_ind_j]
-                    self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_i, box_ind_j] = self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
+                    self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].update(
+                        rel_score, self.rel_kdes, bbox_i, bbox_j)
+                    rel_prob_mat[:, box_ind_i, box_ind_j] = \
+                        self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief
                     rel_prob_mat[:, box_ind_j, box_ind_i] = [
                         self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[1],
                         self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[0],
                         self.rel_pool[(pool_ind_i, pool_ind_j)]["rel_belief"].belief[2], ]
                 else:
                     rel_score = rel_score_mat[:, box_ind_j, box_ind_i]
-                    self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(rel_score, self.rel_kdes)
-                    rel_prob_mat[:, box_ind_j, box_ind_i] = self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
+                    self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].update(
+                        rel_score, self.rel_kdes, bbox_j, bbox_i)
+                    rel_prob_mat[:, box_ind_j, box_ind_i] = \
+                        self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief
                     rel_prob_mat[:, box_ind_i, box_ind_j] = [
                         self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[1],
                         self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[0],
                         self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[2], ]
         return rel_prob_mat
-
     # ---------- other helpers ------------
 
     def _grasp_filter(self, boxes, grasps, mode="high score"):
@@ -1349,11 +1360,12 @@ class InvigorateIJRRV6(object):
         if renew:
             # any objects cls must > 0.5
             obj_inds = [i for i, obj in enumerate(self.object_pool)
-                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > 0.4]
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > ACTIVE_OBJ_DETECTION_SCORE]
 
             # set invalid object to be removed!!
             invalid_obj_inds = [i for i, obj in enumerate(self.object_pool)
-                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < 0.4]
+                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < REMOVE_OBJ_DETECTION_SCORE]
+
             for i in invalid_obj_inds:
                 self.object_pool[i]["removed"] = True
             logger.info("filtering object: object ind removed: {}".format(invalid_obj_inds))
