@@ -499,7 +499,7 @@ class InvigorateIJRRV6(object):
                     if response: confirmed = True
                     # when the user says 'no', only the corresponding object will not be
                     # considered any more
-                    elif match_probs == 1.: confirmed = True
+                    elif match_probs[i] == 1.: confirmed = True
                     self.object_pool[pool_ind]["cand_belief"].update_linguistic(
                         response, match_probs[i], EPSILON, confirmed=confirmed
                     )
