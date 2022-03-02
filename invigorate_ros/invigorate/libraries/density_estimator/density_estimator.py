@@ -35,7 +35,7 @@ class gaussian_kde(object):
         return x.squeeze()
 
 class object_belief(object):
-    def __init__(self):
+    def __init__(self, confirmed=False):
         self._belief = np.array([0.5, 0.5])
 
         # This placeholder 'cls_llh' is prepared for object detector,
@@ -49,6 +49,9 @@ class object_belief(object):
         self.cls_llh = np.array([0.5, 0.5])
 
         self.low_thr = 0.01
+
+        # confirmed by an instance-specific question
+        self.confirmed = confirmed
 
     @property
     def belief(self):
@@ -82,7 +85,10 @@ class object_belief(object):
     def update_cls_llh(self, llh):
         self.cls_llh[:] = llh
 
-    def update_with_likelihood(self, likelihood, enable_low_thresh=True):
+    def update_with_likelihood(self, likelihood,
+                               enable_low_thresh=True,
+                               confirmed=False):
+
         # for the completely excluded objects, no update is needed
         if self._belief[0] == 1.:
             return self._belief
@@ -98,20 +104,21 @@ class object_belief(object):
         else:
             assert likelihood[0] > 0 and likelihood[1] > 0
 
-        self._belief *= likelihood
-        self._belief /= self._belief.sum()
-
-        if enable_low_thresh:
-            self._belief = np.clip(self._belief, self.low_thr, 1 - self.low_thr)
-        else:
-            self._belief = np.clip(self._belief, 0., 1.)
+        if not self.confirmed:
+            self.confirmed = confirmed
+            self._belief *= likelihood
+            self._belief /= self._belief.sum()
+            if enable_low_thresh and not self.confirmed:
+                self._belief = np.clip(self._belief, self.low_thr, 1 - self.low_thr)
+            else:
+                self._belief = np.clip(self._belief, 0., 1.)
 
         return self.belief
 
     def reset(self):
         self._belief = np.array([0.5, 0.5])
 
-    def update_linguistic(self, answer, match_prob, epsilon=0.01):
+    def update_linguistic(self, answer, match_prob, epsilon=0.01, confirmed=False):
         # an extension in invigorate_IJRR_v1, not used for other versions
         # for original INVIGORATE:
         #        match_prob = 1 for the object being asked,
@@ -127,9 +134,9 @@ class object_belief(object):
             # answer is no
             likelihood = [1 - epsilon * (1 - match_prob), 1 - match_prob]
 
-        self.update_with_likelihood(likelihood, enable_low_thresh=False)
-
-        return self._belief
+        return self.update_with_likelihood(likelihood,
+                                           enable_low_thresh=False,
+                                           confirmed=confirmed)
 
     def _remap_match_prob(self, match_prob, epsilon):
         # scale match_prob so that the stationary point is 0.5

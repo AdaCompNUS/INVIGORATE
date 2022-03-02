@@ -49,6 +49,16 @@ class mattnet_server(object):
         s = rospy.Service('mattnet_server', MAttNetGrounding, self.mattnet_serv_callback)
         print("Ready to ground object.")
 
+    def rescale_image(self, img, bboxes, min_side=1000):
+        h, w, _ = img.shape
+        min_original = min(w, h)
+        scaler = min_side / min_original
+        bboxes *= scaler
+        img = cv2.resize(
+            img, None, fx=scaler, fy=scaler,
+            interpolation=cv2.INTER_CUBIC)
+        return img, bboxes
+
     def mattnet_serv_callback(self, req):
         img_msg = req.img
         img = br.imgmsg_to_cv2(img_msg)
@@ -61,9 +71,12 @@ class mattnet_server(object):
         bboxes = np.array(bboxes).reshape(-1, 4)
         cls = np.array(cls).reshape(-1,1)
 
+        img, bboxes = self.rescale_image(img, bboxes)
+
         bboxes = np.concatenate([bboxes, cls], -1)
         with torch.no_grad():
-            img_data = self.mattnet.forward_image_with_bbox(img, bboxes=bboxes, classes=cls_names)
+            img_data = self.mattnet.forward_image_with_bbox(
+                img, bboxes=bboxes, classes=cls_names)
             entry = self.mattnet.comprehend(img_data, expr)
         torch.cuda.empty_cache()
 

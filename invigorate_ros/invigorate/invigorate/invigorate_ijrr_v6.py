@@ -266,10 +266,10 @@ class InvigorateIJRRV6(object):
         # grounding and update candidate beliefs
         pos_grounding_scores = \
             self._vis_ground_client.ground(
-                img, bboxes, self.pos_expr.replace('remote','remote controller'), classes)
+                img, bboxes, self.pos_expr, classes)
         logger.info('Perceive_img: mattnet grounding finished')
         logger.info("grounding scores against positive "
-                    "expression '{}' is".format(self.pos_expr.replace('remote','remote controller')))
+                    "expression '{}' is".format(self.pos_expr))
         logger.info(pos_grounding_scores)
         # multistep state estimation
         self._multistep_p_cand_update(
@@ -278,9 +278,9 @@ class InvigorateIJRRV6(object):
         if self.neg_expr:
             neg_grounding_scores = \
                 self._vis_ground_client.ground(
-                    img, bboxes, self.neg_expr.replace('remote','remote controller'), classes)
+                    img, bboxes, self.neg_expr, classes)
             logger.info("grounding scores against negative "
-                        "expression '{}' is".format(self.neg_expr.replace('remote','remote controller')))
+                        "expression '{}' is".format(self.neg_expr))
             logger.info(neg_grounding_scores)
             # multistep state estimation
             self._multistep_p_cand_update(
@@ -364,7 +364,7 @@ class InvigorateIJRRV6(object):
         q_matching_scores = [
             self._vis_ground_client.ground(
                 img, bboxes,
-                self.expr_processor.merge_expressions(q, self.pos_expr, self.subject).replace('remote','remote controller'),
+                self.expr_processor.merge_expressions(q, self.pos_expr, self.subject),
                 classes) for q in questions]
         self.belief['q_matching_scores'] = q_matching_scores
 
@@ -469,15 +469,15 @@ class InvigorateIJRRV6(object):
         # update the belief using the response
         if response is not None:
             if target_idx >= obj_num:
+                # the robot asked a question without pointing to a specific object instance
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:
                     regrounding_scores = self._vis_ground_client.ground(
                         img, bboxes,
-                        self.pos_expr.replace('remote','remote controller'),
+                        self.pos_expr,
                         classes)
                     self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
-                # the robot asked a question without pointing to a specific object instance
                 if response:
                     # belief tracking according to the positive response
                     regrounding_scores = self.belief['q_matching_scores'][target_idx]
@@ -487,19 +487,27 @@ class InvigorateIJRRV6(object):
                     regrounding_scores = self.belief['q_matching_scores'][target_idx]
                     self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=False)
             else:
+                # the robot asked a question by pointing to a specific object instance
                 # belief tracking based on the response
                 for i, (det_ind, pool_ind) in enumerate(det_to_pool.items()):
                     # in this version, only the object-specific question is applicable to
                     # the linguistic observation model
                     assert match_probs[i] in {0., 1.}
+                    confirmed = False
+                    # when the user says 'yes', all objects will be confirmed since the
+                    # target has been locked
+                    if response: confirmed = True
+                    # when the user says 'no', only the corresponding object will not be
+                    # considered any more
+                    elif match_probs == 1.: confirmed = True
                     self.object_pool[pool_ind]["cand_belief"].update_linguistic(
-                        response, match_probs[i], EPSILON
+                        response, match_probs[i], EPSILON, confirmed=confirmed
                     )
                 # belief tracking based on the additional clue
                 if clue:
                     regrounding_scores = self._vis_ground_client.ground(
                         img, bboxes,
-                        self.pos_expr.replace('remote','remote controller'),
+                        self.pos_expr,
                         classes)
                     self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
@@ -638,11 +646,11 @@ class InvigorateIJRRV6(object):
         # kde_obj_neg = gaussian_kde(neg_obj_data, bandwidth=0.5)
         # self.obj_det_kdes = [kde_obj_neg, kde_obj_pos]
 
-    def _init_object(self, bbox, score):
+    def _init_object(self, bbox, score, confirmed=False):
         new_box = {}
         new_box["bbox"] = bbox
         new_box["cls_scores"] = [score.tolist()]
-        new_box["cand_belief"] = object_belief()
+        new_box["cand_belief"] = object_belief(confirmed)
         new_box["target_prob"] = 0.
         new_box["ground_scores_history"] = []
         new_box["removed"] = False
@@ -674,7 +682,6 @@ class InvigorateIJRRV6(object):
         penalty_for_fail = self._penalty_for_fail
         penalty_for_asking = self._penalty_for_asking
         penalty_for_asking_and_pointing = self._penalty_for_asking_and_pointing
-
 
         def gen_grasp_macro(belief):
 
@@ -729,13 +736,18 @@ class InvigorateIJRRV6(object):
             p_fail = 1. - target_prob[target].item()
             return penalty_for_fail * p_fail
 
-        def forward_belief(belief, match_probs, match_scores, ans, is_pointing_q=True):
+        def forward_belief(belief, match_probs,
+                           match_scores, ans,
+                           is_pointing_q=True):
             new_belief = copy.deepcopy(belief)
 
             if is_pointing_q:
                 for i in range(len(new_belief["cand_belief"])):
+                    confirmed = False
+                    if ans: confirmed = True
+                    elif match_probs[i] == 1.: confirmed = True
                     new_belief["cand_belief"][i].update_linguistic(
-                        ans, match_probs[i], EPSILON
+                        ans, match_probs[i], EPSILON, confirmed=confirmed
                     )
             else:
                 for i, score in enumerate(match_scores):
@@ -885,7 +897,7 @@ class InvigorateIJRRV6(object):
         print('--------------------------------------------------------')
         return action
 
-    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000, with_virtual_node=True):
+    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1500, with_virtual_node=True):
 
         with torch.no_grad():
             triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
@@ -905,7 +917,7 @@ class InvigorateIJRRV6(object):
 
         return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
 
-    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1000, with_virtual_node=False, removed=None):
+    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1500, with_virtual_node=False, removed=None):
         # TODO: Numpy may support a faster implementation.
         def sample_trees(rel_prob, sample_num=1):
             return torch.multinomial(rel_prob, sample_num, replacement=True)
@@ -992,7 +1004,7 @@ class InvigorateIJRRV6(object):
             visited = []
             desc_mat = torch.zeros(mrt_shape).type_as(adj_mat).long()
             for root in roots:
-                visited, desc_list = find_descendant(root, adj_mat, visited, desc_mat)
+                visited, desc_mat = find_descendant(root, adj_mat, visited, desc_mat)
             return desc_mat.transpose(0, 1)
 
         leaf_desc_prob = torch.zeros(mrt_shape).type_as(rel_prob_mat)
@@ -1172,6 +1184,11 @@ class InvigorateIJRRV6(object):
         not_matched = set(range(bboxes.shape[0])) - set(det_to_pool.keys())
         logger.info('_bbox_post_process: object from object pool selected for latter process: {}'.format(pool_to_det.keys()))
 
+        target_confirmed = False
+        for o in self.object_pool:
+            if o["cand_belief"].confirmed and o["cand_belief"].belief[1] > 0.9:
+                target_confirmed = True
+
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
             self.object_pool[v]["bbox"] = bboxes[k]
@@ -1184,7 +1201,8 @@ class InvigorateIJRRV6(object):
 
         # initialize newly detected bboxes, add to object pool
         for i in not_matched:
-            new_box = self._init_object(bboxes[i], scores[i])
+            new_box = self._init_object(
+                bboxes[i], scores[i], confirmed=target_confirmed)
             self.object_pool.append(new_box)
             det_to_pool[i] = len(self.object_pool) - 1
             pool_to_det[len(self.object_pool) - 1] = i
@@ -1329,9 +1347,10 @@ class InvigorateIJRRV6(object):
                         self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[0],
                         self.rel_pool[(pool_ind_j, pool_ind_i)]["rel_belief"].belief[2], ]
         return rel_prob_mat
+
     # ---------- other helpers ------------
 
-    def _grasp_filter(self, boxes, grasps, mode="high score"):
+    def _grasp_filter(self, boxes, grasps, mode="mixed"):
         """
         mode: "high score" or "near center"
         TODO: support "collision free" mode
@@ -1352,6 +1371,21 @@ class InvigorateIJRRV6(object):
                 g = grasps[i]
                 selected = np.argmax(g[:, -1])
                 keep_g.append(g[selected])
+        elif mode == "mixed":
+            for i, b in enumerate(boxes):
+                # firstly select top 3 grasps
+                g = grasps[i]
+                selected = np.argsort(g[:, -1])[-3:]
+                g = g[selected]
+                # secondly select the grasp near the object center
+                bcx = (b[0] + b[2]) / 2
+                bcy = (b[1] + b[3]) / 2
+                gcx = (g[:, 0] + g[:, 2] + g[:, 4] + g[:, 6]) / 4
+                gcy = (g[:, 1] + g[:, 3] + g[:, 5] + g[:, 7]) / 4
+                dis = np.power(gcx - bcx, 2) + np.power(gcy - bcy, 2)
+                selected = np.argmin(dis)
+                keep_g.append(g[selected])
+
         return np.array(keep_g)
 
     def _get_valid_obj_candidates(self, renew=False):
@@ -1363,7 +1397,6 @@ class InvigorateIJRRV6(object):
             # set invalid object to be removed!!
             invalid_obj_inds = [i for i, obj in enumerate(self.object_pool)
                         if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < REMOVE_OBJ_DETECTION_SCORE]
-
             for i in invalid_obj_inds:
                 self.object_pool[i]["removed"] = True
             logger.info("filtering object: object ind removed: {}".format(invalid_obj_inds))
