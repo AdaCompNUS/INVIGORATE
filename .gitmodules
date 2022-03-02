@@ -1,0 +1,15 @@
+[submodule "invigorate_ros/invigorate/faster_rcnn_detector/detectron2"]
+	path = invigorate_ros/invigorate/faster_rcnn_detector/detectron2
+	url = https://github.com/AdaCompNUS/detectron2.git
+[submodule "invigorate_ros/invigorate/mattnet_server/MattNet"]
+	path = invigorate_ros/invigorate/mattnet_server/MattNet
+	url = https://github.com/AdaCompNUS/MAttNet.git
+[submodule "invigorate_ros/invigorate/mrt_detector/vmrn_old"]
+	path = invigorate_ros/invigorate/mrt_detector/vmrn_old
+	url = https://github.com/ZhangHanbo/Visual-Manipulation-Relationship-Network-Pytorch.git
+[submodule "invigorate_ros/invigorate/ingress-proj"]
+	path = invigorate_ros/invigorate/ingress-proj
+	url = https://github.com/AdaCompNUS/ingress-proj
+[submodule "invigorate_ros/invigorate/libraries/tools/refer"]
+	path = invigorate_ros/invigorate/libraries/tools/refer
+	url = https://github.com/lichengunc/refer
