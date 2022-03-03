@@ -133,6 +133,13 @@ class ExprssionProcessor:
                         'knife', 'banana', 'apple', 'carrot', 'mouse', 
                         'remote', 'cell phone', 'book', 'scissors', 
                         'teddy bear', 'toothbrush', 'box', ]
+        self.SYNSETS = [
+            ['remote controller', 'remote', 'controller', 'remote control'],
+            ['cell phone', 'phone', 'cellphone', 'mobile phone', 'smartphone',
+             'mobile telephone', 'telephone', 'cell', 'mobile', 'cellular phone',
+             'smart phone'],
+            ['ball', 'sports ball']
+        ]
 
     # ------------- expression preprocess -------------
     def stem(self, tag_q):
@@ -142,12 +149,11 @@ class ExprssionProcessor:
         return stem_q
 
     def extract_cls_filter(self, subject):
-        subj_str = ''.join(subject)
+        subj_str = ' '.join(subject)
         cls_filter = []
-        for cls in self.CLASSES:
-            cls_str = ''.join(cls.split())
+        for cls_str in self.CLASSES:
             if cls_str in subj_str or subj_str in cls_str:
-                cls_filter.append(cls)
+                cls_filter.append(cls_str)
         assert len(cls_filter) <= 1
         return cls_filter
 
@@ -156,7 +162,7 @@ class ExprssionProcessor:
         pos_tags = pos_tag(text)
         return pos_tags
 
-    def find_subject(self, expr, classes=None):
+    def find_subject(self, expr, classes=None, return_index=False):
         expr = self._clean_sentence(expr, clean_stop=False)
         pos_tags = self.postag_analysis(expr)
 
@@ -170,7 +176,7 @@ class ExprssionProcessor:
                     if token in c:
                         subj_tokens.append(c)
                 if subj_tokens:
-                    return subj_tokens
+                    return self._handle_synonym(subj_tokens)
 
             elif postag in {"NN"} and classes is None:
                 subj_tokens.append(token)
@@ -180,7 +186,7 @@ class ExprssionProcessor:
                         subj_tokens.append(token)
                     else:
                         break
-                return subj_tokens
+                return self._handle_synonym(subj_tokens)
 
             elif postag in {"IN", "TO", "RP"}:
                 break
@@ -194,7 +200,7 @@ class ExprssionProcessor:
                 continue
             subj_tokens.append(token)
 
-        return subj_tokens
+        return self._handle_synonym(subj_tokens)
 
     def is_included(self, expr, old_expr):
         expr = self._clean_sentence(expr)
@@ -279,23 +285,22 @@ class ExprssionProcessor:
         input of this function should include the subject tokens,
         e.g., the expressions processed by _complete_answer_expression
         """
-        if expr:
-            for sub in subject_tokens:
-                assert sub in expr, "the subject should be included" \
-                                    "in the given expression. \n expression: " \
-                                    "{:s} \n problematic sub: {:s}".format(
-                    expr, sub
-                )
+
+        main_sub = subject_tokens
+        expr_sub = self.find_subject(expr, self.CLASSES)
+        # merge two subject sets
+        for w in expr_sub:
+            if w not in main_sub:
+                main_sub = [w] + main_sub
 
         pre_phrase = []
         post_phrase = []
         subject_phrase = []
-
         expr_words = expr.split(' ')
 
         pre_flag = True
         for w in expr_words:
-            if w in subject_tokens:
+            if w in main_sub:
                 subject_phrase.append(w)
                 pre_flag = False
                 continue
@@ -464,3 +469,18 @@ class ExprssionProcessor:
             if word in self.STOP_WORDS:
                 word_list.remove(word)
         return word_list
+
+    # ------------------ SYNONYM UTILS ------------------
+    def _is_in_syn(self, name, syn):
+        for n in syn:
+            if n in name or name in n:
+                return True
+        return False
+
+    def _handle_synonym(self, subject_tokens):
+        subject = ' '.join(subject_tokens)
+        for syn in self.SYNSETS:
+            if self._is_in_syn(subject, syn):
+                subject = syn[0]
+                break
+        return subject.split(' ')
