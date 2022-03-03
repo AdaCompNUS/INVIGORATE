@@ -128,6 +128,8 @@ import matplotlib.pyplot as plt
 from collections import OrderedDict
 import nltk
 
+import invigorate
+
 from invigorate.libraries.data_viewer.data_viewer import DataViewer
 from invigorate.libraries.density_estimator.density_estimator import object_belief, gaussian_kde, relation_belief
 from invigorate_msgs.srv import ObjectDetection, VmrDetection

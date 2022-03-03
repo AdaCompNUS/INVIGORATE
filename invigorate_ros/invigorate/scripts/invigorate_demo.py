@@ -52,18 +52,18 @@ import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
-from invigorate.invigorate import Invigorate
+from invigorate_models.invigorate import Invigorate
 # from invigorate.baseline import Baseline
-from invigorate.greedy import Greedy
-from invigorate.heuristic import Heuristic
-from invigorate.no_interaction import NoInteraction
-from invigorate.no_multistep import NoMultistep, NoMultistepAll
-from invigorate.invigorate_ijrr import InvigorateIJRR
-from invigorate.invigorate_ijrr_v2 import InvigorateIJRRV2
-from invigorate.invigorate_ijrr_v3 import InvigorateIJRRV3
-from invigorate.invigorate_ijrr_v4 import InvigorateIJRRV4
-from invigorate.invigorate_ijrr_v5 import InvigorateIJRRV5
-from invigorate.invigorate_ijrr_v6 import InvigorateIJRRV6
+from invigorate_models.greedy import Greedy
+from invigorate_models.heuristic import Heuristic
+from invigorate_models.no_interaction import NoInteraction
+from invigorate_models.no_multistep import NoMultistep, NoMultistepAll
+from invigorate_models.invigorate_ijrr import InvigorateIJRR
+from invigorate_models.invigorate_ijrr_v2 import InvigorateIJRRV2
+from invigorate_models.invigorate_ijrr_v3 import InvigorateIJRRV3
+from invigorate_models.invigorate_ijrr_v4 import InvigorateIJRRV4
+from invigorate_models.invigorate_ijrr_v5 import InvigorateIJRRV5
+from invigorate_models.invigorate_ijrr_v6 import InvigorateIJRRV6
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 

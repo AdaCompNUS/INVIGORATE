@@ -1,10 +1,3 @@
-# --------------------------------------------------------
-# Visual Detection: State-of-the-Art
-# Copyright: Hanbo Zhang
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Hanbo Zhang
-# --------------------------------------------------------
-
 import numpy as np
 import cv2
 import networkx as nx
@@ -16,6 +9,8 @@ from PIL import Image
 import time
 import datetime
 import pdb
+
+import invigorate
 
 # from sklearn.manifold import TSNE
 from invigorate.config.config import *

@@ -8,7 +8,7 @@ from cv_bridge import CvBridge
 from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
-USE_LIVE_CAMERA = True
+USE_LIVE_CAMERA = False
 
 YCROP = (100, 440) # 540
 XCROP = (300, 660) # 960
