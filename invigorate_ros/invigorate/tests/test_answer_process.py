@@ -37,9 +37,9 @@ def test_complete_answer():
         print("Processed Answer: {}".format(answer))
 
 def test_merge_expressions():
-    sent1 = 'the phone on the right'
-    sent2 = 'the red smart phone'
-    subject_tokens = expr_proc.find_subject(sent1)
+    sent1 = ''
+    sent2 = 'the apple'
+    subject_tokens = expr_proc.find_subject(sent2)
     print(expr_proc.merge_expressions(sent1, sent2, subject_tokens))
 
 def test_semantic_similarity():

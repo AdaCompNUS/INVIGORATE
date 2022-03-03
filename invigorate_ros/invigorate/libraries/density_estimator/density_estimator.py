@@ -108,7 +108,7 @@ class object_belief(object):
             self.confirmed = confirmed
             self._belief *= likelihood
             self._belief /= self._belief.sum()
-            if enable_low_thresh and not self.confirmed:
+            if enable_low_thresh:
                 self._belief = np.clip(self._belief, self.low_thr, 1 - self.low_thr)
             else:
                 self._belief = np.clip(self._belief, 0., 1.)

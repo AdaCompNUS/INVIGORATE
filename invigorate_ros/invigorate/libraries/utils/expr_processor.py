@@ -286,6 +286,11 @@ class ExprssionProcessor:
         return ' '.join([merged_pre] + subject_tokens + [merged_post]).strip()
 
     def complete_expression(self, expr, subject_tokens):
+        # for empty expr
+        if not expr:
+            assert subject_tokens
+            return ' '.join(['the'] + subject_tokens)
+
         # replace the pronoun in the answer with the subject given by the user
         expr = self._clean_sentence(expr, clean_stop=False)
         expr = expr.split()
@@ -312,17 +317,15 @@ class ExprssionProcessor:
         return expr
 
     def _split_expr_by_subject(self, expr, subject_tokens):
-        """
-        input of this function should include the subject tokens,
-        e.g., the expressions processed by _complete_expression
-        """
+        # first complete the expr using the subject
+        expr = self.complete_expression(expr, subject_tokens)
+
         main_sub = subject_tokens
         expr_sub = self.find_subject(expr, self.CLASSES)
         assert len(set(main_sub).intersection(set(expr_sub))) > 0, \
             "Given subject is not compatible with the expression." \
             "\n Expression: {:s} \n Subject: {:s}".format(
                 expr, ' '.join(main_sub))
-        expr = self.complete_expression(expr, main_sub)
 
         pre_phrase = []
         post_phrase = []
@@ -509,6 +512,7 @@ class ExprssionProcessor:
         return False
 
     def _handle_synonym(self, subject_tokens):
+        assert subject_tokens, "The subject should not be empty for searching synonyms"
         subject = ' '.join(subject_tokens)
 
         subject_syn = copy.deepcopy(subject_tokens)

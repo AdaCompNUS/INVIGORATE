@@ -363,11 +363,18 @@ class InvigorateIJRRV6(object):
             return
 
         # grounding
-        q_matching_scores = [
-            self._vis_ground_client.ground(
-                img, bboxes,
-                self.expr_processor.merge_expressions(q, self.pos_expr, self.subject),
-                classes) for q in questions]
+        q_matching_scores = []
+        for q in questions:
+            try:
+                q_matching_scores.append(
+                    self._vis_ground_client.ground(
+                        img, bboxes,
+                        self.expr_processor.merge_expressions(q, self.pos_expr, self.subject),
+                        classes)
+                )
+            except:
+                raise ValueError("The generated question is problematic: {:s}".format(q))
+
         self.belief['q_matching_scores'] = q_matching_scores
 
         logger.info('Perceive_img: mattnet grounding finished')

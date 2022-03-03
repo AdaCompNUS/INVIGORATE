@@ -52,7 +52,7 @@ import logging
 
 from config.config import *
 from libraries.data_viewer.data_viewer import DataViewer
-from invigorate_models.invigorate import Invigorate
+from invigorate_models.invigorate_rss import Invigorate
 # from invigorate.baseline import Baseline
 from invigorate_models.greedy import Greedy
 from invigorate_models.heuristic import Heuristic
