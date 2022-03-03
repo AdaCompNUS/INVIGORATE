@@ -5,6 +5,7 @@ src/experiment
 src/images
 src/dataset
 tmp/
+invigorate_ros/invigorate/images
 
 .catkin_tools/
 .vscode/
