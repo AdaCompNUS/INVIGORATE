@@ -1,4 +1,5 @@
 import collections
+import copy
 import warnings
 # try:
 #     import stanza
@@ -141,6 +142,10 @@ class ExprssionProcessor:
             ['ball', 'sports ball']
         ]
 
+        self.SYNSETS_WORD_BAG = [
+            set(' '.join(s).split()) for s in self.SYNSETS
+        ]
+
     # ------------- expression preprocess -------------
     def stem(self, tag_q):
         stem_q = []
@@ -162,23 +167,45 @@ class ExprssionProcessor:
         pos_tags = pos_tag(text)
         return pos_tags
 
-    def find_subject(self, expr, classes=None, return_index=False):
+    def find_subject(self, expr, classes=None):
+
         expr = self._clean_sentence(expr, clean_stop=False)
         pos_tags = self.postag_analysis(expr)
 
         subj_tokens = []
-
         # 1. Try to find the first noun phrase before any preposition
-        for i, (token, postag) in enumerate(pos_tags):
-            if postag in {"NN"} and classes is not None:
-                assert isinstance(classes, collections.Sequence)
-                for c in classes:
-                    if token in c:
-                        subj_tokens.append(c)
-                if subj_tokens:
-                    return self._handle_synonym(subj_tokens)
+        # from the given list
+        if classes is not None:
+            assert isinstance(classes, collections.Sequence)
+            # this stop flag is used to ensure that we will only search
+            # for the first noun phrase for the subject
+            # E.G., without the stop_flag, if the expression is `the
+            # cellphone on the right of the banana' and the noun cellphone
+            # is actually not in the given list, then it will return the
+            # banana as the subject, which is incorrect.
+            stop_flag = False
+            for i, (token, postag) in enumerate(pos_tags):
+                if postag in {"NN"}:
+                    for j in range(i, len(pos_tags)):
+                        # in this loop, we are processing the first noun phrase
+                        token, postag = pos_tags[j]
+                        if postag in {"NN"}:
+                            for c in classes:
+                                if token in c:
+                                    subj_tokens.append(c)
+                            if subj_tokens:
+                                return self._handle_synonym(subj_tokens)
+                        else:
+                            stop_flag = True
+                            break
 
-            elif postag in {"NN"} and classes is None:
+                if stop_flag or postag in {"IN", "TO", "RP"}:
+                    break
+
+        # 2. Try to find the first noun phrase before any preposition
+        assert subj_tokens == []
+        for i, (token, postag) in enumerate(pos_tags):
+            if postag in {"NN"}:
                 subj_tokens.append(token)
                 for j in range(i + 1, len(pos_tags)):
                     token, postag = pos_tags[j]
@@ -188,10 +215,10 @@ class ExprssionProcessor:
                         break
                 return self._handle_synonym(subj_tokens)
 
-            elif postag in {"IN", "TO", "RP"}:
+            if postag in {"IN", "TO", "RP"}:
                 break
 
-        # 2. Otherwise, return all words before the first preposition
+        # 3. Otherwise, return all words before the first preposition
         assert subj_tokens == []
         for i, (token, postag) in enumerate(pos_tags):
             if postag in {"IN", "TO", "RP"}:
@@ -228,11 +255,10 @@ class ExprssionProcessor:
                 answer.remove(pos_ans)
 
         # postprocess the sentence
-        answer = self.complete_answer_expression(' '.join(answer), subject_tokens)
+        answer = self.complete_expression(' '.join(answer), subject_tokens)
         return response, answer
 
     def merge_expressions(self, expr, new_expr, subject_tokens):
-        new_expr = self.complete_answer_expression(new_expr, subject_tokens)
         new_pre, _, new_post = self._split_expr_by_subject(new_expr, subject_tokens)
         old_pre, _, old_post = self._split_expr_by_subject(expr, subject_tokens)
 
@@ -259,39 +285,44 @@ class ExprssionProcessor:
 
         return ' '.join([merged_pre] + subject_tokens + [merged_post]).strip()
 
-    def complete_answer_expression(self, answer, subject_tokens):
+    def complete_expression(self, expr, subject_tokens):
         # replace the pronoun in the answer with the subject given by the user
-        answer = self._clean_sentence(answer, clean_stop=False)
-        answer = answer.split()
+        expr = self._clean_sentence(expr, clean_stop=False)
+        expr = expr.split()
         subject = ' '.join(subject_tokens)
-        answer = [w if w not in self.PRONOUNS else subject for w in answer]
-        answer = ' '.join(answer)
+        expr = [w if w not in self.PRONOUNS else subject for w in expr]
+        expr = ' '.join(expr)
 
-        # if the answer starts without any subject, add the subject
-        subj_cand = []
-        for token, postag in self.postag_analysis(answer):
+        # replace original subject using the standard synonym, if any.
+        subj_cand_origin = []
+        for token, postag in self.postag_analysis(expr):
             if postag in {"IN", "TO", "RP"}:
                 break
             if postag in {"DT"}:
                 continue
-            subj_cand.append(token)
+            subj_cand_origin.append(token)
+        subj_cand = self._handle_synonym(subj_cand_origin)
+        expr = expr.replace(' '.join(subj_cand_origin), ' '.join(subj_cand))
+
+        # if no subject is detected, add the subject to the front of the expression
         subj_cand = set(subj_cand)
-        if len(subj_cand.intersection(set(subject_tokens))) == 0 and len(answer) > 0:
-            answer = " ".join(subject_tokens + answer.split(" "))
-        return answer
+        if len(subj_cand.intersection(set(subject_tokens))) == 0 and len(expr) > 0:
+            expr = " ".join(subject_tokens + expr.split(" "))
+
+        return expr
 
     def _split_expr_by_subject(self, expr, subject_tokens):
         """
         input of this function should include the subject tokens,
-        e.g., the expressions processed by _complete_answer_expression
+        e.g., the expressions processed by _complete_expression
         """
-
         main_sub = subject_tokens
         expr_sub = self.find_subject(expr, self.CLASSES)
-        # merge two subject sets
-        for w in expr_sub:
-            if w not in main_sub:
-                main_sub = [w] + main_sub
+        assert len(set(main_sub).intersection(set(expr_sub))) > 0, \
+            "Given subject is not compatible with the expression." \
+            "\n Expression: {:s} \n Subject: {:s}".format(
+                expr, ' '.join(main_sub))
+        expr = self.complete_expression(expr, main_sub)
 
         pre_phrase = []
         post_phrase = []
@@ -479,8 +510,14 @@ class ExprssionProcessor:
 
     def _handle_synonym(self, subject_tokens):
         subject = ' '.join(subject_tokens)
-        for syn in self.SYNSETS:
+
+        subject_syn = copy.deepcopy(subject_tokens)
+        for syn, syn_word_bag in zip(self.SYNSETS, self.SYNSETS_WORD_BAG):
             if self._is_in_syn(subject, syn):
-                subject = syn[0]
+                subject_syn = syn[0].split()
+                for w in subject_tokens[::-1]:
+                    if w not in syn_word_bag:
+                        subject_syn = [w] + subject_syn
                 break
-        return subject.split(' ')
+
+        return subject_syn

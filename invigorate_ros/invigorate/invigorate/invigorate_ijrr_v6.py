@@ -156,6 +156,8 @@ class InvigorateIJRRV6(object):
         if not self.subject:
             self.subject = self.expr_processor.find_subject(expr, CLASSES)
 
+        expr = self.expr_processor.complete_expression(expr, self.subject)
+
         if not self.expr_processor.is_included(expr, self.pos_expr):
             self.pos_expr = \
                 self.expr_processor.merge_expressions(
@@ -462,8 +464,7 @@ class InvigorateIJRRV6(object):
         if clue != "":
             # if there is a clue, update the pos_expr according to it
             self.pos_expr = self.expr_processor.merge_expressions(
-                self.expr_processor.complete_answer_expression(clue, self.subject),
-                self.pos_expr, self.subject
+                clue, self.pos_expr, self.subject
             )
 
         # update the belief using the response
