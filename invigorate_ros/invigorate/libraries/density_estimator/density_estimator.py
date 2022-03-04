@@ -148,6 +148,27 @@ class object_belief(object):
             match_prob = (match_prob - 0.5) / 0.5 * (1 - mid_point) + mid_point
         return match_prob
 
+class object_belief_multi_expressions(object):
+    def __init__(self,
+                 init_expr_num=1,
+                 confirmed=False):
+        self._belief = [np.array([0.5, 0.5]) for _ in range(init_expr_num)]
+
+        # This placeholder 'cls_llh' is prepared for object detector,
+        # hence in INVIGORATE, the object detection score can also
+        # help to filter out incorrect objects.
+        # However, since results of object detection changes
+        # at every time step, we update it at every step and use it
+        # to update the posterior.
+        # In the future, we can consider to introduce object results
+        # from multiple detection steps as the object class likelihood.
+        self.cls_llh = np.array([0.5, 0.5])
+
+        self.low_thr = 0.01
+
+        # confirmed by an instance-specific question
+        self.confirmed = confirmed
+
 class relation_belief(object):
     def __init__(self,
                  bbox1=None,
