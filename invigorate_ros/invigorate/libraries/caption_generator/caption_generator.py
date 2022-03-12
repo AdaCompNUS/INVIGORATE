@@ -10,6 +10,16 @@ except:
 
 from ingress_srv.ingress_srv import Ingress
 from invigorate.config.config import CLASSES
+from ..utils.expr_processor import ExprssionProcessor
+from collections_extended import setlist
+
+expr_proc = ExprssionProcessor()
+# all class words
+CLASS_WORD_BAG = set([])
+for c in expr_proc.CLASSES:
+    CLASS_WORD_BAG = CLASS_WORD_BAG.union(c.split(' '))
+for syn in expr_proc.SYNSETS_WORD_BAG:
+    CLASS_WORD_BAG = CLASS_WORD_BAG.union(syn)
 
 def caption_generation_client(img, bbox, target_box_id):
     # dbg_print(bbox)
@@ -29,6 +39,14 @@ def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption, subject):
         rel_caption_sentence = 'the {} {}'.format(obj_name, rel_caption)
         q_flag = True
     else:
+        rel_caption = expr_proc.clean_sentence(rel_caption)
+        rel_caption = rel_caption.split(' ')
+        rel_caption = list(setlist(rel_caption))
+        rel_caption_pre = []
+        for w in rel_caption:
+            if w not in CLASS_WORD_BAG:
+                rel_caption_pre.append(w)
+        rel_caption = ' '.join(rel_caption_pre)
         # HACK to fix the rare bug where the caption is actually semantic
         rel_caption_sentence = 'the {} {}'.format(rel_caption, obj_name)
         q_flag = False
@@ -46,6 +64,14 @@ def form_mixed_caption_sentence(obj_cls, cxt_obj_cls, rel_caption, subject, self
         #     rel_caption_sentence = '{} {} of the {}'.format(self_caption, rel_caption, cxt_obj_name)
         rel_caption_sentence = '{} {}'.format(self_caption, rel_caption)
     else:
+        rel_caption = expr_proc.clean_sentence(rel_caption)
+        rel_caption = rel_caption.split(' ')
+        rel_caption = list(setlist(rel_caption))
+        rel_caption_pre = []
+        for w in rel_caption:
+            if w not in CLASS_WORD_BAG:
+                rel_caption_pre.append(w)
+        rel_caption = ' '.join(rel_caption_pre)
         # HACK to fix the rare bug where the caption is actually semantic
         rel_caption_sentence = '{} {}'.format(rel_caption, self_caption)
     rel_caption_sentence = rel_caption_sentence.replace('.', '')
@@ -85,24 +111,18 @@ def all_captions_generation_client(img, bbox):
 
     return dense_caps, selected_rel_caps, selected_context_idxs
 
-def form_self_referential_questions(classes, dense_caps, subject, nlp_server="nltk"):
+def form_self_referential_questions(classes, dense_caps, subject):
     for i in range(len(dense_caps)):
         sent = dense_caps[i]
-        if nlp_server == "nltk":
-            text = nltk.word_tokenize(sent)
-            pos_tags = nltk.pos_tag(text)
-        elif nlp_server == "stanza":
-            doc = stanford_nlp_server(sent)
-            pos_tags = [(d.text, d.xpos) for d in doc.sentences[0].words]
-        else:
-            raise NotImplementedError
+        text = nltk.word_tokenize(sent)
+        pos_tags = nltk.pos_tag(text)
 
         formed_cap = ['the']
         for token, postag in pos_tags:
             if postag in {'JJ'}:
                 formed_cap.append(token)
         formed_cap.append(CLASSES[int(classes[i])])
-
+        formed_cap = list(setlist(formed_cap))
         dense_caps[i] = ' '.join(formed_cap)
 
     return dense_caps

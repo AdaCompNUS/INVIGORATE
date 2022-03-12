@@ -13,6 +13,7 @@ from nltk.stem import PorterStemmer
 from nltk.metrics import edit_distance
 import numpy as np
 import re
+from collections_extended import setlist
 
 # TODO: here it is possible to introduce state of the art NN-based NL processor, e.g., BERT.
 
@@ -130,9 +131,9 @@ class ExprssionProcessor:
         self.POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK"}
         self.NEGATIVE_ANS = {"no", "nope", "nah"}
         self.STOP_WORDS = nltk.corpus.stopwords.words()
-        self.CLASSES = ['__background__','sports ball', 'bottle', 'cup', 
+        self.CLASSES = ['__background__','ball', 'bottle', 'cup',
                         'knife', 'banana', 'apple', 'carrot', 'mouse', 
-                        'remote', 'cell phone', 'book', 'scissors', 
+                        'remote controller', 'cell phone', 'book', 'scissors',
                         'teddy bear', 'toothbrush', 'box', ]
         self.SYNSETS = [
             ['remote controller', 'remote', 'controller', 'remote control'],
@@ -153,6 +154,15 @@ class ExprssionProcessor:
             stem_q.append(self.stemmer.stem(token))
         return stem_q
 
+    def delete_redundant_word(self, sent):
+        """
+        WARNING: this function will transform, e.g.,
+        'the red apple on the right of the red book' to
+        'the red apple on right of book'. Be careful to use it
+        """
+        sent = self.clean_sentence(sent)
+        return ' '.join(setlist(sent.split(' ')))
+
     def extract_cls_filter(self, subject):
         subj_str = ' '.join(subject)
         cls_filter = []
@@ -167,7 +177,7 @@ class ExprssionProcessor:
         pos_tags = pos_tag(text)
         return pos_tags
 
-    def find_subject(self, expr, classes=None):
+    def find_subject(self, expr, classes=None, use_syn=True):
 
         expr = self._clean_sentence(expr, clean_stop=False)
         pos_tags = self.postag_analysis(expr)
@@ -189,12 +199,16 @@ class ExprssionProcessor:
                     for j in range(i, len(pos_tags)):
                         # in this loop, we are processing the first noun phrase
                         token, postag = pos_tags[j]
-                        if postag in {"NN"}:
+                        if postag in {"NN", "JJ"}:
                             for c in classes:
                                 if token in c:
-                                    subj_tokens.append(c)
+                                    subj_tokens.extend(c.split(' '))
+                                    break
                             if subj_tokens:
-                                return self._handle_synonym(subj_tokens)
+                                if use_syn:
+                                    return self._handle_synonym(subj_tokens)
+                                else:
+                                    return subj_tokens
                         else:
                             stop_flag = True
                             break
@@ -213,7 +227,11 @@ class ExprssionProcessor:
                         subj_tokens.append(token)
                     else:
                         break
-                return self._handle_synonym(subj_tokens)
+
+                if use_syn:
+                    return self._handle_synonym(subj_tokens)
+                else:
+                    return subj_tokens
 
             if postag in {"IN", "TO", "RP"}:
                 break
@@ -227,7 +245,10 @@ class ExprssionProcessor:
                 continue
             subj_tokens.append(token)
 
-        return self._handle_synonym(subj_tokens)
+        if use_syn:
+            return self._handle_synonym(subj_tokens)
+        else:
+            return subj_tokens
 
     def is_included(self, expr, old_expr):
         expr = self._clean_sentence(expr)
@@ -255,7 +276,10 @@ class ExprssionProcessor:
                 answer.remove(pos_ans)
 
         # postprocess the sentence
-        answer = self.complete_expression(' '.join(answer), subject_tokens)
+        if answer:
+            answer = self.complete_expression(' '.join(answer), subject_tokens)
+        else:
+            answer = ''
         return response, answer
 
     def merge_expressions(self, expr, new_expr, subject_tokens):
@@ -498,6 +522,9 @@ class ExprssionProcessor:
         sentence = " ".join(sentence)
         return sentence
 
+    def clean_sentence(self, expr):
+        return self._clean_sentence(expr, clean_stop=False)
+
     def _clean_stop_words(self, word_list):
         for word in list(word_list):
             if word in self.STOP_WORDS:
@@ -525,3 +552,4 @@ class ExprssionProcessor:
                 break
 
         return subject_syn
+

@@ -72,7 +72,7 @@ PENALTY_FOR_FAIL = -10
 
 EPSILON = 0.5
 SAME_EXPRESSION_THRESH = 0.4
-ACTIVE_OBJ_DETECTION_SCORE = 0.5 # object with detection scores above this will be actively considered
+ACTIVE_OBJ_DETECTION_SCORE = 0.4 # object with detection scores above this will be actively considered
 REMOVE_OBJ_DETECTION_SCORE = 0.4 # object with detection scores below this will be removed
 
 # -------- Statics ---------
@@ -121,6 +121,7 @@ class InvigorateIJRRV6(object):
         self.belief = {}
         self.pos_expr = '' # store positive expressions
         self.neg_expr = '' # store negative expressions
+        self.independent_neg_belief = True
         self.last_question = None
         self.timers = {}
 
@@ -365,15 +366,11 @@ class InvigorateIJRRV6(object):
         # grounding
         q_matching_scores = []
         for q in questions:
-            try:
-                q_matching_scores.append(
-                    self._vis_ground_client.ground(
-                        img, bboxes,
-                        self.expr_processor.merge_expressions(q, self.pos_expr, self.subject),
-                        classes)
-                )
-            except:
-                raise ValueError("The generated question is problematic: {:s}".format(q))
+            _q = self.expr_processor.merge_expressions(q, self.pos_expr, self.subject)
+            q_matching_scores.append(
+                self._vis_ground_client.ground(
+                    img, bboxes, _q, classes)
+            )
 
         self.belief['q_matching_scores'] = q_matching_scores
 
@@ -399,7 +396,7 @@ class InvigorateIJRRV6(object):
         # impose class filtering (raw prior probability derived from object detector)
         q_matching_prob = []
         for i, q in enumerate(questions):
-            subject = self.expr_processor.find_subject(q)
+            subject = self.expr_processor.find_subject(q, CLASSES)
             cls_filter = self._initialize_cls_filter(subject)
             neg_obj_llh, pos_obj_llh = self._compute_cls_llh(
                 self.belief["cls_scores_list"], cls_filter)
@@ -452,8 +449,11 @@ class InvigorateIJRRV6(object):
             # the robot has asked a question not assigned to a specific
             # object instance
             question = self.belief['questions'][target_idx]
+            q_sub = self.expr_processor.find_subject(question, CLASSES)
             for sub in self.subject:
-                assert sub in question
+                assert sub in q_sub, \
+                    "The subject of the question should accord with the expression. \n" \
+                    "sub: {:s} \n question: {:s}".format(sub, question)
             if response:
                 self.pos_expr = self.expr_processor.merge_expressions(
                     self.pos_expr, question, self.subject)
@@ -658,7 +658,8 @@ class InvigorateIJRRV6(object):
         new_box = {}
         new_box["bbox"] = bbox
         new_box["cls_scores"] = [score.tolist()]
-        new_box["cand_belief"] = object_belief(confirmed)
+        new_box["cand_belief"] = object_belief(
+            confirmed, independent_neg=self.independent_neg_belief)
         new_box["target_prob"] = 0.
         new_box["ground_scores_history"] = []
         new_box["removed"] = False
@@ -905,7 +906,7 @@ class InvigorateIJRRV6(object):
         print('--------------------------------------------------------')
         return action
 
-    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1500, with_virtual_node=True):
+    def _get_leaf_desc_prob_from_rel_mat(self, rel_prob_mat, sample_num = 1000, with_virtual_node=True):
 
         with torch.no_grad():
             triu_mask = torch.triu(torch.ones(rel_prob_mat[0].shape), diagonal=1)
@@ -925,7 +926,7 @@ class InvigorateIJRRV6(object):
 
         return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
 
-    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1500, with_virtual_node=False, removed=None):
+    def _leaf_and_desc_estimate(self, rel_prob_mat, sample_num=1000, with_virtual_node=False, removed=None):
         # TODO: Numpy may support a faster implementation.
         def sample_trees(rel_prob, sample_num=1):
             return torch.multinomial(rel_prob, sample_num, replacement=True)

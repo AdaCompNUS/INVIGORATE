@@ -39,7 +39,7 @@ Q2={
 }
 
 Q1={
-    "type1": "Do you mean the {:s}?"
+    "type1": "Do you mean {:s}?"
 }
 
 # planned-action type macros
@@ -62,13 +62,13 @@ EXEC_ASK_WITHOUT_POINT=3    # without pointing action
 
 CLASSES = [
 '__background__',
-'sports ball' ,
-'bottle' ,
-'cup' ,
-'knife' ,
-'banana' ,
-'apple' ,
-'carrot' ,
+'ball' ,
+'bottle',
+'cup',
+'knife',
+'banana',
+'apple',
+'carrot',
 'mouse' ,
 'remote' ,
 'cell phone' ,

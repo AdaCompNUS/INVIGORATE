@@ -219,6 +219,8 @@ def main():
             exec_type = EXEC_ASK_WITH_POINTING
         elif action_type == 'Q_IJRR':
             caption = invigorate_client.belief["questions"][target_idx]
+            # HACK: form the object-agnostic question with 'a' instead of 'the'
+            caption = caption.replace('the ', 'a ')
             question_str = Q1["type1"].format(caption)
             logger.info("Only Askig Question: {:s}".format(question_str))
 
@@ -234,6 +236,8 @@ def main():
 
         elif action_type == 'Q_IJRR_WITH_POINTING':
             caption = invigorate_client.belief["questions"][target_idx]
+            # HACK: We want the robot ask the question like `Do you mean this red apple?' when pointing to some object.
+            caption = caption.replace('the ', 'this ', 1)
             question_str = Q1["type1"].format(caption)
             logger.info("Asking about and Pointing to {:s}th Object".format(str(target_idx)) + " and continuing")
             logger.info("Generated Question: {:s}".format(question_str))

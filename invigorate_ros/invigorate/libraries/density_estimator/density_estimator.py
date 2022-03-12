@@ -1,3 +1,5 @@
+import collections
+
 from sklearn.neighbors import KernelDensity as kde
 import numpy as np
 import pickle as pkl
@@ -35,8 +37,25 @@ class gaussian_kde(object):
         return x.squeeze()
 
 class object_belief(object):
-    def __init__(self, confirmed=False):
-        self._belief = np.array([0.5, 0.5])
+    def __init__(self,
+                 confirmed=False,
+                 independent_neg=False):
+
+        if not confirmed:
+            self._belief = np.array([0.5, 0.5])
+        else:
+            # if an object is initialized with confirmed = True, it means
+            # that another object has already been confirmed to be the target.
+            # hence, this object will be already completely excluded.
+            self._belief = np.array([1., 0.])
+
+        self._independent_neg = independent_neg
+        # only when an negative expression has been observed, will the
+        # self._belief_neg be enabled
+        self._enable_neg = False
+        if self._independent_neg:
+            # the belief that this object matches the negative expression
+            self._belief_neg = np.array([0.5, 0.5])
 
         # This placeholder 'cls_llh' is prepared for object detector,
         # hence in INVIGORATE, the object detection score can also
@@ -66,57 +85,115 @@ class object_belief(object):
         else:
             assert self.cls_llh[0] > 0 and self.cls_llh[1] > 0
 
-        belief = self._belief
+        if not self._independent_neg or not self._enable_neg:
+            belief = self._belief.copy()
+        else:
+            pos_belief = self._belief[1] * self._belief_neg[0]
+            belief = np.array([1-pos_belief, pos_belief])
+
         belief *= self.cls_llh
         belief /= belief.sum()
         return belief
 
     def update(self, score, kde, is_pos=True):
+
+        # update negative expression enabling state
+        if self._independent_neg and not is_pos and not self.confirmed:
+            self._enable_neg = True
+        else:
+            self._enable_neg = False
+
         # update with observation
-        if is_pos:
+        if not self. _independent_neg:
+            if is_pos:
+                neg_prob = np.exp(kde[0].comp_prob(score))
+                pos_prob = np.exp(kde[1].comp_prob(score))
+            else:
+                neg_prob = np.exp(kde[1].comp_prob(score))
+                pos_prob = np.exp(kde[0].comp_prob(score))
+            self.update_with_likelihood([neg_prob, pos_prob])
+        else:
             neg_prob = np.exp(kde[0].comp_prob(score))
             pos_prob = np.exp(kde[1].comp_prob(score))
-        else:
-            neg_prob = np.exp(kde[1].comp_prob(score))
-            pos_prob = np.exp(kde[0].comp_prob(score))
-        self.update_with_likelihood([neg_prob, pos_prob])
+            if is_pos:
+                self.update_with_likelihood(
+                    [neg_prob, pos_prob], update_pos=True)
+            else:
+                self.update_with_likelihood(
+                    [neg_prob, pos_prob], update_pos=False)
+
         return self.belief
 
     def update_cls_llh(self, llh):
         self.cls_llh[:] = llh
 
-    def update_with_likelihood(self, likelihood,
+    def update_with_likelihood(self,
+                               likelihood,
                                enable_low_thresh=True,
-                               confirmed=False):
+                               update_pos=True):
 
-        # for the completely excluded objects, no update is needed
-        if self._belief[0] == 1.:
-            return self._belief
+        if not update_pos:
+            assert self._independent_neg, \
+                "To update negative belief, you need to initialize " \
+                "it first"
 
-        assert len(likelihood) == 2
-        # handle special cases
-        if likelihood[0] == 0 and likelihood[1] > 0:
-            self._belief[:] = [0, 1]
-            return self.belief
-        elif likelihood[0] > 0 and likelihood[1] == 0:
-            self._belief[:] = [1, 0]
-            return self.belief
-        else:
-            assert likelihood[0] > 0 and likelihood[1] > 0
+        # for the completely confirmed objects, no update is needed
+        if self.confirmed:
+            belief = self._belief
+            assert belief[0] in {0., 1.}
+            return belief
 
-        if not self.confirmed:
-            self.confirmed = confirmed
-            self._belief *= likelihood
-            self._belief /= self._belief.sum()
-            if enable_low_thresh:
-                self._belief = np.clip(self._belief, self.low_thr, 1 - self.low_thr)
+        def update_belief(belief, likelihood, confirmed, enable_low_thresh, low_thr):
+            if likelihood[0] == 0 and likelihood[1] > 0:
+                belief[:] = [0., 1.]
+            elif likelihood[0] > 0 and likelihood[1] == 0:
+                belief[:] = [1., 0.]
             else:
-                self._belief = np.clip(self._belief, 0., 1.)
+                assert likelihood[0] > 0 and likelihood[1] > 0
+                # self.confirmed is initialized as False. As long as it has been
+                # set to True during a task, it as well as the belief will never
+                # change any more.
+                if not confirmed:
+                    belief *= likelihood
+                    belief /= belief.sum()
+                    if enable_low_thresh:
+                        belief = np.clip(belief, low_thr, 1 - low_thr)
+                    else:
+                        belief = np.clip(belief, 0., 1.)
+            return belief
 
-        return self.belief
+        def check_belief(belief):
+            assert not np.isnan(belief).any(), \
+                "Please check: \n cls_llh: {} \n belief: {} \n belief_neg: {}".format(
+                    self.cls_llh.tolist(), self._belief.tolist(),
+                    self._belief_neg.tolist() if self._independent_neg else []
+                )
 
-    def reset(self):
+        # likelihood should only contain 2 values
+        assert len(likelihood) == 2
+
+        # handle special cases
+        if not self._independent_neg or update_pos:
+            self._belief = update_belief(
+                self._belief, likelihood, self.confirmed,
+                enable_low_thresh, self.low_thr)
+        else:
+            self._belief_neg = update_belief(
+                self._belief_neg, likelihood, self.confirmed,
+                enable_low_thresh, self.low_thr)
+
+        belief = self.belief
+        check_belief(belief)
+
+        return belief
+
+    def reset(self, confirmed=False):
+        self.cls_llh = np.array([0.5, 0.5])
         self._belief = np.array([0.5, 0.5])
+        if self._independent_neg:
+            self._belief_neg = np.array([0.5, 0.5])
+        self.confirmed = confirmed
+        self._enable_neg = False
 
     def update_linguistic(self, answer, match_prob, epsilon=0.01, confirmed=False):
         # an extension in invigorate_IJRR_v1, not used for other versions
@@ -134,9 +211,21 @@ class object_belief(object):
             # answer is no
             likelihood = [1 - epsilon * (1 - match_prob), 1 - match_prob]
 
-        return self.update_with_likelihood(likelihood,
-                                           enable_low_thresh=False,
-                                           confirmed=confirmed)
+        # if confirmed is enabled, meaning that the object belief will not change anymore
+        # the likelihood should be deterministic
+        if confirmed:
+            assert (likelihood[0] == 0. and likelihood[1] > 0) or \
+                   (likelihood[0] > 0 and likelihood[1] == 0.)
+
+        belief = self.update_with_likelihood(likelihood, enable_low_thresh=False)
+
+        # update confirm state.
+        # once an object has been confirmed, it will never change any more
+        if not self.confirmed:
+            self.confirmed = confirmed
+            if confirmed: self._enable_neg = False
+
+        return belief
 
     def _remap_match_prob(self, match_prob, epsilon):
         # scale match_prob so that the stationary point is 0.5
@@ -147,27 +236,6 @@ class object_belief(object):
         else:
             match_prob = (match_prob - 0.5) / 0.5 * (1 - mid_point) + mid_point
         return match_prob
-
-class object_belief_multi_expressions(object):
-    def __init__(self,
-                 init_expr_num=1,
-                 confirmed=False):
-        self._belief = [np.array([0.5, 0.5]) for _ in range(init_expr_num)]
-
-        # This placeholder 'cls_llh' is prepared for object detector,
-        # hence in INVIGORATE, the object detection score can also
-        # help to filter out incorrect objects.
-        # However, since results of object detection changes
-        # at every time step, we update it at every step and use it
-        # to update the posterior.
-        # In the future, we can consider to introduce object results
-        # from multiple detection steps as the object class likelihood.
-        self.cls_llh = np.array([0.5, 0.5])
-
-        self.low_thr = 0.01
-
-        # confirmed by an instance-specific question
-        self.confirmed = confirmed
 
 class relation_belief(object):
     def __init__(self,
