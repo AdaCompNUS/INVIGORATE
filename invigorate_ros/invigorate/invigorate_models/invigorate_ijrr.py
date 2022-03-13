@@ -435,7 +435,7 @@ class InvigorateIJRR(object):
                 self.object_pool[pool_ind]["cand_belief"].update_linguistic(
                     response,
                     match_probs[det_ind],
-                    e=EPSILON)
+                    epsilon=EPSILON)
 
         target_prob = self._cal_target_prob(self.belief)
 

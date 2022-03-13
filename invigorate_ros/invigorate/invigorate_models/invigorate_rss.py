@@ -285,18 +285,20 @@ class Invigorate(object):
                 # set non-target
                 for obj in self.object_pool:
                     obj["is_target"] = 0
-                    obj["cand_belief"].belief[0] = 1.
-                    obj["cand_belief"].belief[1] = 0.
+                    obj["cand_belief"]._belief[0] = 1.
+                    obj["cand_belief"]._belief[1] = 0.
+                    obj["cand_belief"].confirmed = True
                 # set the only target
                 self.object_pool[det_to_pool[target_idx]]["is_target"] = 1
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 0.
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 1.
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"]._belief[0] = 0.
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"]._belief[1] = 1.
             else:
                 # target_prob[target_idx] = 0
                 # target_prob /= np.sum(target_prob)
                 self.object_pool[det_to_pool[target_idx]]["is_target"] = 0
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[0] = 1
-                self.object_pool[det_to_pool[target_idx]]["cand_belief"].belief[1] = 0
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"]._belief[0] = 1
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"]._belief[1] = 0
+                self.object_pool[det_to_pool[target_idx]]["cand_belief"].confirmed = True
 
         target_prob = self._cal_target_prob()
 
@@ -935,8 +937,9 @@ class Invigorate(object):
             det_to_pool[i] = len(self.object_pool) - 1
             pool_to_det[len(self.object_pool) - 1] = i
             if target_confirmed:
-                new_box["cand_belief"].belief[0] = 1.
-                new_box["cand_belief"].belief[1] = 0.
+                new_box["cand_belief"]._belief[0] = 1.
+                new_box["cand_belief"]._belief[1] = 0.
+                new_box["cand_belief"].confirmed = True
             for j in range(len(self.object_pool[:-1])):
                 # initialize relationship belief
                 new_rel = self._init_relation(np.array([0.33, 0.33, 0.34]))
@@ -980,8 +983,8 @@ class Invigorate(object):
         conf_scores = []
         for pool_ind in det_to_pool.values():
             # likelihood
-            cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[0])
-            cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"].belief[1])
+            cand_neg_llh.append(self.object_pool[pool_ind]["cand_belief"]._belief[0])
+            cand_pos_llh.append(self.object_pool[pool_ind]["cand_belief"]._belief[1])
 
             if not disable_cls_filter:
                 p_det = 0

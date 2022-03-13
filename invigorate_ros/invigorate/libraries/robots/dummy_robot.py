@@ -9,6 +9,8 @@ from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
 USE_LIVE_CAMERA = False
+USE_DATASET = True
+DATASET_STRING = osp.join(ROOT_DIR, 'dataset/rss/{:s}/res/{:s}.png')
 
 YCROP = (100, 440) # 540
 XCROP = (300, 660) # 960
@@ -29,6 +31,12 @@ class DummyRobot():
             logger.info('img_size : {}'.format(img.shape))
             img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
             logger.info('img_size : {}'.format(img.shape))
+            depth = None
+
+        elif USE_DATASET:
+            img_name = raw_input('Enter data index: ')
+            img_name = img_name.split(' ')
+            img = cv2.imread(DATASET_STRING.format(img_name[0], img_name[1]))
             depth = None
 
         else:

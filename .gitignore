@@ -6,6 +6,7 @@ src/images
 src/dataset
 tmp/
 invigorate_ros/invigorate/images
+invigorate_ros/invigorate/dataset
 
 .catkin_tools/
 .vscode/
@@ -37,3 +38,5 @@ src/.DS_Store
 
 src/vilbert_service/vilbert
 src/vilbert_service/vqa_markrcnn_benchmark
+
+invigorate_ros/invigorate/demo/teddy.jpeg

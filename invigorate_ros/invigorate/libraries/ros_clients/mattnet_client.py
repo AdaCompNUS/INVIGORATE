@@ -15,6 +15,13 @@ class MAttNetClient():
         req.img = img_msg
         req.cls = cls.flatten().tolist()
         req.bbox = bboxes.flatten().tolist()
+
+        # HACK: We here standardize the expression using standard names
+        # for visual grounding of MattNet, for fair comparison with the
+        # original INVIGORATE published in RSS 2021.
+        expr = expr.replace('remote controller', 'remote')
+        expr = expr.replace('cell phone', 'phone')
+        expr = expr.replace('sports ball', 'ball')
         req.expr = expr
 
         resp = self._client(req)

@@ -244,7 +244,10 @@ def main():
             exec_type = EXEC_ASK_WITH_POINTING
 
         # debug
-        expr = invigorate_client.pos_expr
+        if hasattr(invigorate_client, 'pos_expr'):
+            expr = invigorate_client.pos_expr
+        else:
+            expr = invigorate_client.expr[0]
         imgs = data_viewer.generate_visualization_imgs(
             img, bboxes, classes, rel_mat, rel_score_mat,
             expr, target_prob,
