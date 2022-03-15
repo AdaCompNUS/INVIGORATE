@@ -337,17 +337,23 @@ class InvigorateIJRRV6(object):
         self.belief["grasps"] = grasps
 
     @_foward_time_decorator
-    def question_captions_generation(self, img, bboxes, classes, det_to_pool):
+    def question_captions_generation(self, img, bboxes, classes,
+                                     det_to_pool=None, subject=None):
         generated_questions = \
             caption_generator.generate_all_captions(
                 img, bboxes, classes, self.subject)
 
-        # append the newly generated questions to the history
-        # TODO: maybe the historic questions could be good candidates
-        for k, v in det_to_pool.items():
-            self.object_pool[v]["questions"].extend(generated_questions[k])
+        if det_to_pool is not None:
+            # append the newly generated questions to the history
+            # TODO: maybe the historic questions could be good candidates
+            for k, v in det_to_pool.items():
+                self.object_pool[v]["questions"].extend(generated_questions[k])
 
-        cls_filter = self._initialize_cls_filter(self.subject)
+        if subject is None:
+            cls_filter = self._initialize_cls_filter(self.subject)
+        else:
+            cls_filter = self._initialize_cls_filter(subject)
+
         generated_questions = list(set(itertools.chain(*generated_questions)))
         if cls_filter:
             self.belief["questions"] = \
@@ -1054,6 +1060,9 @@ class InvigorateIJRRV6(object):
         return leaf_desc_prob, desc_prob, leaf_prob, desc_num, ance_num
 
     # ---------- object detection helpers ------------
+
+    def object_detection(self, *args, **kwargs):
+        return self._object_detection(*args, **kwargs)
 
     def _object_detection(self, img, rois=None):
         num_box, bboxes, classes, class_scores = self._obj_det_client.detect_objects(img, rois)
