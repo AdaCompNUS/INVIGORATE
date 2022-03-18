@@ -337,8 +337,7 @@ class InvigorateIJRRV6(object):
         self.belief["grasps"] = grasps
 
     @_foward_time_decorator
-    def question_captions_generation(self, img, bboxes, classes,
-                                     det_to_pool=None, subject=None):
+    def question_captions_generation(self, img, bboxes, classes, det_to_pool=None):
         generated_questions = \
             caption_generator.generate_all_captions(
                 img, bboxes, classes, self.subject)
@@ -349,10 +348,7 @@ class InvigorateIJRRV6(object):
             for k, v in det_to_pool.items():
                 self.object_pool[v]["questions"].extend(generated_questions[k])
 
-        if subject is None:
-            cls_filter = self._initialize_cls_filter(self.subject)
-        else:
-            cls_filter = self._initialize_cls_filter(subject)
+        cls_filter = self._initialize_cls_filter(self.subject)
 
         generated_questions = list(set(itertools.chain(*generated_questions)))
         if cls_filter:
@@ -1204,8 +1200,11 @@ class InvigorateIJRRV6(object):
 
         target_confirmed = False
         for o in self.object_pool:
-            if o["cand_belief"].confirmed and o["cand_belief"].belief[1] > 0.9:
+            if o["cand_belief"].confirmed and \
+                    o["cand_belief"].belief[1] > 0.9 and \
+                    (not o["removed"]):
                 target_confirmed = True
+                break
 
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():

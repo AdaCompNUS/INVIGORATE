@@ -18,6 +18,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 from config.config import *
+from libraries.ros_services.invigorate_caption_service import INGRESSService, INVIGORATEService
 from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, Grounding
 
 try:
@@ -213,7 +214,25 @@ def label_captions_rss():
 def visualize_results(img, expr, gt=None, g_mattnet=None, g_vilbert=None, g_ingress=None, score=None):
     pass
 
-def main_test_captioning():
-    pass
+def main_test_captioning(img_dir, label_dir):
+    img_list = os.listdir(img_dir)
+    label_list = os.listdir(label_dir)
+
+    invigorate_captioner = INVIGORATEService()
+
+    for img_name in img_list:
+        if img_name.endswith('.png'):
+            img_id, img_suffix = img_name.split('.')
+            label_name = "{:s}.{:s}".format(img_id, 'xml')
+            bboxes, _ = parse_pascalvoc_labels(osp.join(label_dir, label_name))
+            img = cv2.imread(osp.join(img_dir, img_name))
+
+            invigorate_captions = invigorate_captioner.generate_captions(img, bboxes)
+            print(invigorate_captions)
+
 if __name__ == "__main__":
-    label_captions_rss()
+    # label_captions_rss()
+
+    img_path = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/images'
+    label_path = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/objlabels'
+    main_test_captioning(img_path, label_path)
