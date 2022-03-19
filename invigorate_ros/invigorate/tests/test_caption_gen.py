@@ -1,3 +1,4 @@
+import json
 import sys
 import os.path as osp
 this_dir = osp.dirname(osp.abspath(__file__))
@@ -18,9 +19,11 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 from config.config import *
+from coco_caption.pycocoevalcap.eval import CustomEval
+
 from libraries.ros_services.invigorate_caption_service import INGRESSService, INVIGORATEService
 from invigorate_msgs.srv import MAttNetGrounding, ObjectDetection, VmrDetection, Grounding
-
+import random
 try:
     from ingress_srv.ingress_srv import Ingress
 except:
@@ -211,14 +214,44 @@ def label_captions_rss():
 
     return all_labels
 
-def visualize_results(img, expr, gt=None, g_mattnet=None, g_vilbert=None, g_ingress=None, score=None):
-    pass
+def load_caption_labels(label_path):
+    _labels = np.load(label_path)
+    all_labels = {}
+    for l in _labels:
+        label_id = "{:s}_{:s}".format(
+            l['file_name'].split('.')[0],
+            ''.join([str(coord) for coord in l['bbox'].astype(np.int).tolist()])
+        )
+        if label_id not in all_labels:
+            all_labels[label_id] = []
+        all_labels[label_id].append(
+            dict(
+                image_id=label_id,
+                caption=l['expr']
+            )
+        )
 
-def main_test_captioning(img_dir, label_dir):
+    return all_labels
+
+def save_caption_results(img_dir, label_dir, det_res_file):
     img_list = os.listdir(img_dir)
     label_list = os.listdir(label_dir)
-
+    ingress_captioner = INGRESSService()
     invigorate_captioner = INVIGORATEService()
+    rel_captions = {}
+    self_captions = {}
+    invigorate_captions = {}
+
+    def add_caption(cap_dict, ind, caption):
+        if ind not in cap_dict:
+            cap_dict[ind] = []
+        cap_dict[ind].append(
+            dict(
+                image_id=ind,
+                caption=caption
+            )
+        )
+        return cap_dict
 
     for img_name in img_list:
         if img_name.endswith('.png'):
@@ -227,12 +260,118 @@ def main_test_captioning(img_dir, label_dir):
             bboxes, _ = parse_pascalvoc_labels(osp.join(label_dir, label_name))
             img = cv2.imread(osp.join(img_dir, img_name))
 
-            invigorate_captions = invigorate_captioner.generate_captions(img, bboxes)
-            print(invigorate_captions)
+            self_cap_list, rel_cap_list = ingress_captioner.generate_captions(img, bboxes)
+            invigorate_cap_list = invigorate_captioner.generate_captions(img, bboxes)
+
+            for i, (b, c_s, c_r, c_invigorate) in enumerate(zip(bboxes, self_cap_list, rel_cap_list, invigorate_cap_list)):
+                ind = "{:s}_{:s}".format(
+                    img_id,
+                    ''.join([str(coord) for coord in b.astype(np.int).tolist()])
+                )
+                self_captions = add_caption(self_captions, ind, c_s)
+                rel_captions = add_caption(rel_captions, ind, c_r)
+                invigorate_captions = add_caption(invigorate_captions, ind, c_invigorate)
+
+    json.dump(dict(
+        self_captions=self_captions,
+        rel_captions=rel_captions,
+        invigorate_captions=invigorate_captions,
+    ), open(det_res_file, 'w'))
+
+def eval_captioning(det_res_file, caption_label_file):
+    gt_captions = load_caption_labels(caption_label_file)
+    det_captions = json.load(open(det_res_file))
+    rel_captions, self_captions, invigorate_captions = \
+        det_captions['rel_captions'], det_captions['self_captions'], \
+        det_captions['invigorate_captions']
+
+    evaluator = CustomEval()
+    for res, gts in zip([self_captions, rel_captions, invigorate_captions], [gt_captions, gt_captions, gt_captions]):
+        res = {k: res[k] for k in gts}
+        evaluator.evaluate(gts, res)
+        evaluator.reset()
+
+def visualize_captions(shape, captions):
+    im = 255 * np.ones(shape, np.uint8)
+
+    mid_line = im.shape[0] / 2
+    dy = 50
+    y_b = mid_line - dy * len(captions)
+    for i, string in enumerate(captions):
+        cv2.putText(im, string, (0, y_b + i * dy),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    3.5, (0, 0, 0), thickness=2)
+
+    return im
+
+def visualize_single_caption(img, bbox, captions, save_path='.'):
+    draw_single_bbox(img, bbox, text_str="", bbox_color=(0, 255, 0))
+    shape = img.shape
+    w = shape[1]
+    w_save = max(1500, w)
+    caption_shape = (shape[0], w_save, 3)
+    caption_img = visualize_captions(caption_shape, captions).astype(np.uint8)
+    img = np.concatenate(
+        [img, 255 * np.ones((shape[0], w_save - w, 3), dtype=np.uint8)], axis=1)
+    img = np.concatenate([img, caption_img], axis=0)
+
+    if save_path:
+        cv2.imwrite(save_path, img)
+    else:
+        plt.axis('off')
+        plt.imshow(img[:, :, ::-1])
+        plt.show()
+
+def visualize_all_captions(img_dir, label_dir, det_res_path):
+    img_list = os.listdir(img_dir)
+    label_list = os.listdir(label_dir)
+    det_captions = json.load(open(det_res_path))
+    rel_captions, self_captions, invigorate_captions = \
+        det_captions['rel_captions'], det_captions['self_captions'], \
+        det_captions['invigorate_captions']
+
+    save_dir = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/results'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    meta_infos = {}
+    for img_name in img_list:
+        if img_name.endswith('.png'):
+            img_id, img_suffix = img_name.split('.')
+            label_name = "{:s}.{:s}".format(img_id, 'xml')
+            bboxes, _ = parse_pascalvoc_labels(osp.join(label_dir, label_name))
+            img = cv2.imread(osp.join(img_dir, img_name))
+
+            for b in bboxes:
+                img_show = img.copy()
+                ind = "{:s}_{:s}".format(
+                    img_id,
+                    ''.join([str(coord) for coord in b.astype(np.int).tolist()])
+                )
+                c1 = self_captions[ind][0]['caption']
+                c2 = rel_captions[ind][0]['caption']
+                c3 = invigorate_captions[ind][0]['caption']
+
+                captions = [(c1, 'self'), (c2, 'relational'), (c3, 'invigorate')]
+                random.shuffle(captions)
+                cap_for_vis = ['{:d}. '.format(i + 1) + c[0] for i, c in enumerate(captions)]
+                visualize_single_caption(img_show, b, cap_for_vis,
+                                         save_path=osp.join(save_dir, ind + '.png'))
+                meta_infos[ind] = captions
+
+        json.dump(meta_infos, open(osp.join(save_dir, 'meta_infos.json'), 'w'))
+
 
 if __name__ == "__main__":
     # label_captions_rss()
+    rospy.init_node('INVIGORATE_caption_test', anonymous=True)
 
+    det_res_path = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/det_captions.json'
     img_path = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/images'
     label_path = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/objlabels'
-    main_test_captioning(img_path, label_path)
+    save_caption_results(img_path, label_path, det_res_path)
+
+    caption_label_path = '/home/peacock-rls/work/invigorate_adacomp/src/invigorate_ros/invigorate/dataset/caption/caption_labels.npy'
+    eval_captioning(det_res_path, caption_label_path)
+
+    visualize_all_captions(img_path, label_path, det_res_path)

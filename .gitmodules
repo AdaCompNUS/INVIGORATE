@@ -13,3 +13,6 @@
 [submodule "invigorate_ros/invigorate/libraries/tools/refer"]
 	path = invigorate_ros/invigorate/libraries/tools/refer
 	url = https://github.com/lichengunc/refer
+[submodule "invigorate_ros/invigorate/coco_caption"]
+	path = invigorate_ros/invigorate/coco_caption
+	url = https://github.com/ZhangHanbo/coco-caption

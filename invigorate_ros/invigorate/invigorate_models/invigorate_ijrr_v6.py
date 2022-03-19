@@ -352,8 +352,12 @@ class InvigorateIJRRV6(object):
 
         generated_questions = list(set(itertools.chain(*generated_questions)))
         if cls_filter:
-            self.belief["questions"] = \
-                [q for q in generated_questions if q and cls_filter[0] in q]
+            self.belief["questions"] = []
+            for q in generated_questions:
+                if q:
+                    q_sub = ' '.join(self.expr_processor.find_subject(q))
+                    if cls_filter[0] in q_sub or q_sub in cls_filter[0]:
+                        self.belief["questions"].append(q)
         else:
             self.belief["questions"] = [q for q in generated_questions if q]
 
@@ -421,9 +425,13 @@ class InvigorateIJRRV6(object):
         object_specific_questions = []
         num_obj = bboxes.shape[0]
         for i in range(num_obj):
+            # object_specific_questions.append(
+            #     questions[q_matching_prob[:, i].argmax()]
+            # )
             object_specific_questions.append(
-                questions[q_matching_prob[:, i].argmax()]
+                questions[np.array(q_matching_scores)[:, i].argmax()]
             )
+
         object_specific_q_match = np.eye(num_obj, dtype=np.int32)
         object_specific_q_match_scores = np.eye(num_obj, dtype=np.int32)
         object_specific_q_match_scores *= 2
