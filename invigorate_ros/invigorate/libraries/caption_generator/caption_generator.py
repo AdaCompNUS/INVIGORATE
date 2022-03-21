@@ -21,11 +21,66 @@ for c in expr_proc.CLASSES:
 for syn in expr_proc.SYNSETS_WORD_BAG:
     CLASS_WORD_BAG = CLASS_WORD_BAG.union(syn)
 
-def caption_generation_client(img, bbox, target_box_id):
+# RSS Version - purely relational captions
+
+def caption_generation_client(img, bbox, target_box_id, cap_type='rel'):
     # dbg_print(bbox)
     ingress_client = Ingress()
-    top_caption, top_context_box_idx = ingress_client.generate_rel_captions_for_box(img, bbox.tolist(), target_box_id)
-    return top_caption, top_context_box_idx
+    if cap_type == 'rel':
+        top_caption, top_context_box_idx = \
+            ingress_client.generate_rel_captions_for_box(img, bbox.tolist(), target_box_id)
+        return top_caption, top_context_box_idx
+    elif cap_type == 'self':
+        dense_caps, _, _, _ = \
+            ingress_client.generate_all_captions_for_boxes(img, bbox.tolist())
+        return dense_caps[target_box_id], None
+    else:
+        raise NotImplementedError
+
+def form_rel_caption_sentence_rss(obj_cls, cxt_obj_cls, rel_caption, subject):
+    obj_name = subject
+    cxt_obj_name = CLASSES[int(cxt_obj_cls)]
+
+    if rel_caption.startswith("at") or rel_caption.startswith("on") or rel_caption.startswith("in"):
+        # if cxt_obj_cls == 0:
+        #     rel_caption_sentence = '{} {}'.format(obj_name, rel_caption)
+        # else:
+        #     rel_caption_sentence = '{} {} of {}'.format(obj_name, rel_caption, cxt_obj_name)
+        rel_caption_sentence = 'the {} {}'.format(obj_name, rel_caption)
+    else:
+        # HACK to fix the rare bug where the caption is actually semantic
+        rel_caption_sentence = 'the {} {}'.format(rel_caption, obj_name)
+    rel_caption_sentence = rel_caption_sentence.replace('.', '')
+    return rel_caption_sentence
+
+def generate_caption(img_cv, bboxes, classes, target_box_ind, subject, cap_type='rel'):
+    # input validity check
+    if bboxes.shape[1] == 5:
+        # filter out class scores if necessary
+        bboxes = bboxes[:, :4]
+
+    print('generating caption for object {}'.format(target_box_ind))
+    top_caption, top_context_box_idxs = caption_generation_client(
+        img_cv, bboxes, target_box_ind, cap_type=cap_type)
+    print('top_caption: {}'.format(top_caption))
+    if cap_type == 'rel':
+        print('top_context_box_idxs: {}'.format(top_context_box_idxs))
+        if top_context_box_idxs == len(bboxes):
+            # top context is background
+            caption_sentence = form_rel_caption_sentence_rss(
+                classes[target_box_ind], 0, top_caption, subject)
+        else:
+            caption_sentence = form_rel_caption_sentence_rss(
+                classes[target_box_ind], classes[top_context_box_idxs], top_caption, subject)
+        print('caption_sentence: {}'.format(caption_sentence))
+    elif cap_type == 'self':
+        caption_sentence = form_self_referential_questions(
+            classes[target_box_ind], top_caption, None)[0]
+    else:
+        raise NotImplementedError
+    return caption_sentence
+
+# IJRR Version
 
 def form_rel_caption_sentence(obj_cls, cxt_obj_cls, rel_caption, subject):
     obj_name = CLASSES[int(obj_cls)]
@@ -77,24 +132,6 @@ def form_mixed_caption_sentence(obj_cls, cxt_obj_cls, rel_caption, subject, self
     rel_caption_sentence = rel_caption_sentence.replace('.', '')
     return rel_caption_sentence
 
-def generate_caption(img_cv, bboxes, classes, target_box_ind, subject):
-    # input validity check
-    if bboxes.shape[1] == 5:
-        # filter out class scores if necessary
-        bboxes = bboxes[:, :4]
-
-    print('generating caption for object {}'.format(target_box_ind))
-    top_caption, top_context_box_idxs = caption_generation_client(img_cv, bboxes, target_box_ind)
-    print('top_caption: {}'.format(top_caption))
-    print('top_context_box_idxs: {}'.format(top_context_box_idxs))
-    if top_context_box_idxs == len(bboxes):
-        # top context is background
-        caption_sentence, _ = form_rel_caption_sentence(classes[target_box_ind], 0, top_caption, subject)
-    else:
-        caption_sentence, _ = form_rel_caption_sentence(classes[target_box_ind], classes[top_context_box_idxs], top_caption, subject)
-    print('caption_sentence: {}'.format(caption_sentence))
-    return caption_sentence
-
 def all_captions_generation_client(img, bbox):
     # dbg_print(bbox)
     ingress_client = Ingress()
@@ -112,6 +149,11 @@ def all_captions_generation_client(img, bbox):
     return dense_caps, selected_rel_caps, selected_context_idxs
 
 def form_self_referential_questions(classes, dense_caps, subject):
+    if isinstance(dense_caps, str):
+        assert isinstance(classes, int)
+        dense_caps = [dense_caps]
+        classes = [int(classes)]
+
     for i in range(len(dense_caps)):
         sent = dense_caps[i]
         text = nltk.word_tokenize(sent)
@@ -119,7 +161,7 @@ def form_self_referential_questions(classes, dense_caps, subject):
 
         formed_cap = ['the']
         for token, postag in pos_tags:
-            if postag in {'JJ'}:
+            if postag in {'JJ'} and token not in {'remote'}:
                 formed_cap.append(token)
         formed_cap.append(CLASSES[int(classes[i])])
         formed_cap = list(setlist(formed_cap))
@@ -169,5 +211,5 @@ def generate_all_captions(img_cv, bboxes, classes, subject):
     print('formed relational captions: {}'.format(formed_rel_caps))
     print('formed mixed captions: {}'.format(formed_mixes_caps))
 
-    # return zip(list(formed_dense_caps), list(formed_rel_caps), list(formed_mixes_caps))
-    return zip(list(formed_dense_caps), list(formed_rel_caps))
+    return zip(list(formed_dense_caps), list(formed_rel_caps), list(formed_mixes_caps))
+    # return zip(list(formed_dense_caps), list(formed_rel_caps))

@@ -9,7 +9,7 @@ from config.config import *
 from libraries.utils.log import LOGGER_NAME
 
 USE_LIVE_CAMERA = False
-USE_DATASET = True
+USE_DATASET = False
 DATASET_STRING = osp.join(ROOT_DIR, 'dataset/rss/{:s}/res/{:s}.png')
 
 YCROP = (100, 440) # 540
