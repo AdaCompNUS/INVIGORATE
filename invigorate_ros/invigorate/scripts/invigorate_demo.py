@@ -66,6 +66,7 @@ from invigorate_models.invigorate_ijrr_v5 import InvigorateIJRRV5
 from invigorate_models.invigorate_ijrr_v6 import InvigorateIJRRV6
 from invigorate_models.invigorate_ijrr_no_point import InvigorateIJRRNoPoint
 from invigorate_models.invigorate_ijrr_point import InvigorateIJRRPoint
+from invigorate_models.invigorate_ijrr_point_old_caption import InvigorateIJRRPointOldCaption
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
@@ -129,10 +130,12 @@ def main():
         invigorate_client = InvigorateIJRRV5()
     elif EXP_SETTING == "invigorate_ijrr_v6":
         invigorate_client = InvigorateIJRRV6()
-    elif EXP_SETTING == "invigorate_ijrr_no_point":
-        invigorate_client = InvigorateIJRRNoPoint()
-    elif EXP_SETTING == "invigorate_ijrr_point":
+    elif EXP_SETTING == "invigorate_ijrr_no_pointing":
         invigorate_client = InvigorateIJRRPoint()
+    elif EXP_SETTING == "invigorate_ijrr_old_caption":
+        invigorate_client = InvigorateIJRRPointOldCaption()
+    else:
+        raise "exp setting not recognized!!"
 
     logger.info("SETTING: {}".format(EXP_SETTING))
 
@@ -160,18 +163,22 @@ def main():
 
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
-            if grasp_num >= 1:
+            load_img = False
+            if MODE == EXPERIMENT and grasp_num >= 1:
                 tmp = raw_input("load original img?")
                 if tmp == 'y':
                     load_img = True
-                    img_list = os.listdir(osp.join(EXP_DATA_DIR, "../../experiment/participant {}/{}/4".format(PARTICIPANT_NUM, SCENE_NUM)))
+                    if EXP_SETTING == 'invigorate_ijrr_no_pointing' or EXP_SETTING == 'invigorate_ijrr_old_caption':
+                        img_dir = osp.join(EXP_DATA_DIR, "../../result/{}/8".format((PARTICIPANT_NUM-1) * 10 + SCENE_NUM))
+                    else:
+                        img_dir = osp.join(EXP_DATA_DIR, "../../experiment/participant {}/{}/4".format(PARTICIPANT_NUM, SCENE_NUM))
+
+                    img_list = os.listdir(img_dir)
                     img_list = [i for i in img_list if "origin" in i]
                     img_list = sorted(img_list)
-                else:
-                    load_img = False
 
             if load_img:
-                img = cv2.imread(osp.join(EXP_DATA_DIR, "../../experiment/participant {}/{}/4".format(PARTICIPANT_NUM, SCENE_NUM), img_list[step_num]))
+                img = cv2.imread(osp.join(img_dir, img_list[step_num]))
             else:
                 img, _ = robot.read_imgs()
 

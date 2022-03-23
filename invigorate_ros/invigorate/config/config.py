@@ -85,25 +85,24 @@ TEST = 1
 EXPERIMENT = 0
 
 # --------------- Settings ------------------
-MODE = TEST # 1 for test, 0 for experiment
+MODE = EXPERIMENT # 1 for test, 0 for experiment
 # EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
 # EXP_SETTING = "no_multistep"
 # EXP_SETTING = "no_multistep_all"
+# EXP_SETTING = "invigorate"
 # EXP_SETTING = "invigorate_ijrr"
 # EXP_SETTING = "invigorate_ijrr_v2"
 # EXP_SETTING = "invigorate_ijrr_v3"
 # EXP_SETTING = "invigorate_ijrr_v4"
 # EXP_SETTING = "invigorate_ijrr_v5"
 # EXP_SETTING = "invigorate_ijrr_v6"
-# EXP_SETTING = "invigorate"
-EXP_SETTING = "invigorate_ijrr_point"
-# EXP_SETTING = "invigorate_vs_vilbert"
+EXP_SETTING = "invigorate_ijrr_old_caption"
+# EXP_SETTING = "invigorate_ijrr_no_pointing"
 
-# ------------- EXP Settings --------------
-PARTICIPANT_NUM = 9
-SCENE_NUM = 3
+PARTICIPANT_NUM = 3
+SCENE_NUM = 1
 VER_NUM = 0
 EPSILON = 0.01
 if EXP_SETTING == "baseline":
@@ -122,9 +121,9 @@ elif EXP_SETTING == "no_multistep_all":
     VER_NUM = 7
 elif EXP_SETTING == "invigorate_ijrr_v6":
     VER_NUM = 8
-elif EXP_SETTING == "invigorate_ijrr_point":
+elif EXP_SETTING == "invigorate_ijrr_old_caption":
     VER_NUM = 9
-elif EXP_SETTING == "invigorate_ijrr_no_point":
+elif EXP_SETTING == "invigorate_ijrr_no_pointing":
     VER_NUM = 10
 
 EXP_DIR = osp.join(ROOT_DIR, "experiment/dataset")
