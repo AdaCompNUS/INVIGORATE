@@ -463,7 +463,7 @@ class InvigorateIJRRV6(object):
         assert action_type in {"Q_IJRR", "Q_IJRR_WITH_POINTING"}
         match_probs = self.belief['q_matching_prob'][target_idx]
 
-        if target_idx >= obj_num:
+        if action_type == 'Q_IJRR':
             # the robot has asked a question not assigned to a specific
             # object instance
             question = self.belief['questions'][target_idx]
@@ -494,7 +494,7 @@ class InvigorateIJRRV6(object):
 
         # update the belief using the response
         if response is not None:
-            if target_idx >= obj_num:
+            if action_type == 'Q_IJRR':
                 # the robot asked a question without pointing to a specific object instance
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:

@@ -96,8 +96,9 @@ MODE = TEST # 1 for test, 0 for experiment
 # EXP_SETTING = "invigorate_ijrr_v3"
 # EXP_SETTING = "invigorate_ijrr_v4"
 # EXP_SETTING = "invigorate_ijrr_v5"
-EXP_SETTING = "invigorate_ijrr_v6"
+# EXP_SETTING = "invigorate_ijrr_v6"
 # EXP_SETTING = "invigorate"
+EXP_SETTING = "invigorate_ijrr_point"
 # EXP_SETTING = "invigorate_vs_vilbert"
 
 # ------------- EXP Settings --------------
@@ -121,6 +122,10 @@ elif EXP_SETTING == "no_multistep_all":
     VER_NUM = 7
 elif EXP_SETTING == "invigorate_ijrr_v6":
     VER_NUM = 8
+elif EXP_SETTING == "invigorate_ijrr_point":
+    VER_NUM = 9
+elif EXP_SETTING == "invigorate_ijrr_no_point":
+    VER_NUM = 10
 
 EXP_DIR = osp.join(ROOT_DIR, "experiment/dataset")
 EXP_DATA_DIR = osp.join(ROOT_DIR, "experiment/dataset/{}".format((PARTICIPANT_NUM-1) * 10 +  SCENE_NUM))
