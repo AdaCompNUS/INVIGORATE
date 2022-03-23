@@ -154,12 +154,17 @@ class InvigorateIJRRV6(object):
     def estimate_state_with_img(self, img, expr):
         self.img = img
 
+        # HACK
+        the_flag = False
+        if expr.startswith('the'):
+            the_flag = True
+
         if not self.subject:
             self.subject = self.expr_processor.find_subject(expr, CLASSES)
 
         expr = self.expr_processor.complete_expression(expr, self.subject)
 
-        if not self.expr_processor.is_included(expr, self.pos_expr):
+        if not self.expr_processor.is_included(expr, self.pos_expr, self.subject):
             self.pos_expr = \
                 self.expr_processor.merge_expressions(
                     expr, self.pos_expr, self.subject)
@@ -175,6 +180,9 @@ class InvigorateIJRRV6(object):
         classes = self.belief["classes"]
         _, det_to_pool, _ = self._get_valid_obj_candidates()
 
+        print(self.pos_expr, the_flag)
+        if self.pos_expr.startswith('the') and not the_flag:
+            self.pos_expr = self.pos_expr.replace('the ', '')
         # multistep grounding
         self.multistep_grounding(img, bboxes, classes, det_to_pool)
 
@@ -586,9 +594,9 @@ class InvigorateIJRRV6(object):
         #  this function will return True in the current implementation.
         #  A more generalizable is_included is needed in the future versions.
         pos_matched = \
-            self.expr_processor.is_included(question, asked_pos)
+            self.expr_processor.is_included(question, asked_pos, self.subject)
         neg_matched = \
-            self.expr_processor.is_included(question, asked_neg)
+            self.expr_processor.is_included(question, asked_neg, self.subject)
 
         assert not (pos_matched and neg_matched)
 
@@ -1195,7 +1203,7 @@ class InvigorateIJRRV6(object):
 
         target_confirmed = False
         for o in self.object_pool:
-            if o["cand_belief"].confirmed and o["cand_belief"].belief[1] > 0.9:
+            if o["cand_belief"].confirmed and o["cand_belief"].belief[1] > 0.9 and (not o["removed"]):
                 target_confirmed = True
 
         # updating the information of matched bboxes

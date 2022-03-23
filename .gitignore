@@ -1,12 +1,10 @@
 build/
 devel/
 logs/
-src/experiment
-src/images
-src/dataset
 tmp/
 invigorate_ros/invigorate/images
 invigorate_ros/invigorate/dataset
+invigorate_ros/invigorate/experiment
 
 .catkin_tools/
 .vscode/
