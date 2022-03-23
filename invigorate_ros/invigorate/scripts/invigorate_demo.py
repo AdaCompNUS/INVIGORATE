@@ -70,8 +70,8 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-# ROBOT = 'Fetch'
-ROBOT = 'Dummy'
+ROBOT = 'Fetch'
+# ROBOT = 'Dummy'
 GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
 
@@ -151,22 +151,42 @@ def main():
     dummy_question_answer = None
     to_end = False
     first_time = True
+    grasp_num = 0
+    step_num = 0
+    load_img = False
     while not to_end:
         logger.info("----------------------------------------------------------------------------------------")
         logger.info("Start of iteration")
 
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
-            img, _ = robot.read_imgs()
+            if grasp_num >= 1:
+                tmp = raw_input("load original img?")
+                if tmp == 'y':
+                    load_img = True
+                    img_list = os.listdir(osp.join(EXP_DATA_DIR, "../../experiment/participant {}/{}/4".format(PARTICIPANT_NUM, SCENE_NUM)))
+                    img_list = [i for i in img_list if "origin" in i]
+                    img_list = sorted(img_list)
+                else:
+                    load_img = False
 
-            # NOTE: only applicable for EXPERIMENT mode. Ensure the first picture is the same for all baselines!
+            if load_img:
+                img = cv2.imread(osp.join(EXP_DATA_DIR, "../../experiment/participant {}/{}/4".format(PARTICIPANT_NUM, SCENE_NUM), img_list[step_num]))
+            else:
+                img, _ = robot.read_imgs()
+
+            # NOTE: only applicable for EXPERIMENqT mode. Ensure the first picture is the same for all baselines!
             if first_time and MODE == EXPERIMENT:
-                origin_img_path = osp.join(EXP_RES_DIR, "../origin.png")
+                origin_img_path = osp.join(EXP_DATA_DIR, "origin.png")
                 # if EXP_SETTING == "greedy":
                 #     cv2.imwrite(origin_img_path, img) # if greedy, write image
                 # else:
                 img = cv2.imread(origin_img_path) # for others, read image
                 first_time = False
+
+                # origin_img_path = osp.join(EXP_DATA_DIR, "origin.png")
+
+            grasp_num += 1
 
             # state_estimation
             res = invigorate_client.estimate_state_with_img(img, expr)
@@ -323,6 +343,8 @@ def main():
             to_cont = raw_input('To_continue?')
             if to_cont == 'q':
                 break
+
+        step_num += 1
 
     print("exit!")
     # rospy.sleep(10) # wait 10 second
