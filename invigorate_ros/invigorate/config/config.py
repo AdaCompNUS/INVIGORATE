@@ -85,7 +85,7 @@ TEST = 1
 EXPERIMENT = 0
 
 # --------------- Settings ------------------
-MODE = EXPERIMENT # 1 for test, 0 for experiment
+MODE = TEST # 1 for test, 0 for experiment
 # EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
