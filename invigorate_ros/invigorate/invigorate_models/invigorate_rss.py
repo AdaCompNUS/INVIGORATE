@@ -926,7 +926,7 @@ class Invigorate(object):
             self.object_pool[v]["cls_scores"].append(scores[k].tolist())
         for i in range(len(self.object_pool)):
             if not self.object_pool[i]["removed"] and i not in det_to_pool.values():
-                # This only happens when the detected class lable is different with previous box
+                # This only happens when the detected class label is different with previous box
                 logger.info("history bbox {} not matched!, class label different, deleting original object".format(i))
                 self.object_pool[i]["removed"] = True
 

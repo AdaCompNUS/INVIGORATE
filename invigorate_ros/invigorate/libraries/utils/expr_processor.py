@@ -193,28 +193,25 @@ class ExprssionProcessor:
             # cellphone on the right of the banana' and the noun cellphone
             # is actually not in the given list, then it will return the
             # banana as the subject, which is incorrect.
-            stop_flag = False
             for i, (token, postag) in enumerate(pos_tags):
-                if postag in {"NN"}:
+                if postag in {"NN", "JJ"}:
                     for j in range(i, len(pos_tags)):
                         # in this loop, we are processing the first noun phrase
                         token, postag = pos_tags[j]
                         if postag in {"NN", "JJ"}:
                             for c in classes:
                                 if token in c:
-                                    subj_tokens.extend(c.split(' '))
+                                    subj_tokens = c.split(' ')
                                     break
-                            if subj_tokens:
-                                if use_syn:
-                                    return self._handle_synonym(subj_tokens)
-                                else:
-                                    return subj_tokens
                         else:
-                            stop_flag = True
                             break
-
-                if stop_flag or postag in {"IN", "TO", "RP"}:
                     break
+
+        if subj_tokens:
+            if use_syn:
+                return self._handle_synonym(subj_tokens)
+            else:
+                return subj_tokens
 
         # 2. Try to find the first noun phrase before any preposition
         assert subj_tokens == []
@@ -356,8 +353,8 @@ class ExprssionProcessor:
         expr_sub = self.find_subject(expr, self.CLASSES)
         assert len(set(main_sub).intersection(set(expr_sub))) > 0, \
             "Given subject is not compatible with the expression." \
-            "\n Expression: {:s} \n Subject: {:s}".format(
-                expr, ' '.join(main_sub))
+            "\n Expression: {:s} \n Main Subject: {:s} \n Expr Subject: {:s}".format(
+                expr, ' '.join(main_sub), ' '.join(expr_sub))
 
         pre_phrase = []
         post_phrase = []

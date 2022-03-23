@@ -96,8 +96,8 @@ MODE = EXPERIMENT # 1 for test, 0 for experiment
 # EXP_SETTING = "invigorate_ijrr_v3"
 # EXP_SETTING = "invigorate_ijrr_v4"
 # EXP_SETTING = "invigorate_ijrr_v5"
-EXP_SETTING = "invigorate_ijrr_v6"
-# EXP_SETTING = "invigorate"
+# EXP_SETTING = "invigorate_ijrr_v6"
+EXP_SETTING = "invigorate"
 # EXP_SETTING = "invigorate_vs_vilbert"
 
 # ------------- EXP Settings --------------

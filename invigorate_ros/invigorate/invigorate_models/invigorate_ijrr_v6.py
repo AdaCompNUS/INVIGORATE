@@ -345,21 +345,27 @@ class InvigorateIJRRV6(object):
         self.belief["grasps"] = grasps
 
     @_foward_time_decorator
-    def question_captions_generation(self, img, bboxes, classes, det_to_pool):
+    def question_captions_generation(self, img, bboxes, classes, det_to_pool=None):
         generated_questions = \
             caption_generator.generate_all_captions(
                 img, bboxes, classes, self.subject)
 
-        # append the newly generated questions to the history
-        # TODO: maybe the historic questions could be good candidates
-        for k, v in det_to_pool.items():
-            self.object_pool[v]["questions"].extend(generated_questions[k])
+        if det_to_pool is not None:
+            # append the newly generated questions to the history
+            # TODO: maybe the historic questions could be good candidates
+            for k, v in det_to_pool.items():
+                self.object_pool[v]["questions"].extend(generated_questions[k])
 
         cls_filter = self._initialize_cls_filter(self.subject)
+
         generated_questions = list(set(itertools.chain(*generated_questions)))
         if cls_filter:
-            self.belief["questions"] = \
-                [q for q in generated_questions if q and cls_filter[0] in q]
+            self.belief["questions"] = []
+            for q in generated_questions:
+                if q:
+                    q_sub = ' '.join(self.expr_processor.find_subject(q))
+                    if cls_filter[0] in q_sub or q_sub in cls_filter[0]:
+                        self.belief["questions"].append(q)
         else:
             self.belief["questions"] = [q for q in generated_questions if q]
 
@@ -427,9 +433,13 @@ class InvigorateIJRRV6(object):
         object_specific_questions = []
         num_obj = bboxes.shape[0]
         for i in range(num_obj):
+            # object_specific_questions.append(
+            #     questions[q_matching_prob[:, i].argmax()]
+            # )
             object_specific_questions.append(
-                questions[q_matching_prob[:, i].argmax()]
+                questions[np.array(q_matching_scores)[:, i].argmax()]
             )
+
         object_specific_q_match = np.eye(num_obj, dtype=np.int32)
         object_specific_q_match_scores = np.eye(num_obj, dtype=np.int32)
         object_specific_q_match_scores *= 2
@@ -1063,6 +1073,9 @@ class InvigorateIJRRV6(object):
 
     # ---------- object detection helpers ------------
 
+    def object_detection(self, *args, **kwargs):
+        return self._object_detection(*args, **kwargs)
+
     def _object_detection(self, img, rois=None):
         num_box, bboxes, classes, class_scores = self._obj_det_client.detect_objects(img, rois)
         if num_box == 0:
@@ -1203,8 +1216,11 @@ class InvigorateIJRRV6(object):
 
         target_confirmed = False
         for o in self.object_pool:
-            if o["cand_belief"].confirmed and o["cand_belief"].belief[1] > 0.9 and (not o["removed"]):
+            if o["cand_belief"].confirmed and \
+                    o["cand_belief"].belief[1] > 0.9 and \
+                    (not o["removed"]):
                 target_confirmed = True
+                break
 
         # updating the information of matched bboxes
         for k, v in det_to_pool.items():
