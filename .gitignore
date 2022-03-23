@@ -5,6 +5,7 @@ tmp/
 invigorate_ros/invigorate/images
 invigorate_ros/invigorate/dataset
 invigorate_ros/invigorate/experiment
+ingress_proj
 
 .catkin_tools/
 .vscode/
