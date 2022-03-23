@@ -132,7 +132,7 @@ class ExprssionProcessor:
         self.NEGATIVE_ANS = {"no", "nope", "nah"}
         self.STOP_WORDS = nltk.corpus.stopwords.words()
         self.CLASSES = ['__background__','ball', 'bottle', 'cup',
-                        'knife', 'banana', 'apple', 'carrot', 'mouse', 
+                        'knife', 'banana', 'apple', 'carrot', 'mouse',
                         'remote controller', 'cell phone', 'book', 'scissors',
                         'teddy bear', 'toothbrush', 'box', ]
         self.SYNSETS = [
@@ -247,10 +247,18 @@ class ExprssionProcessor:
         else:
             return subj_tokens
 
-    def is_included(self, expr, old_expr):
+    def is_included(self, expr, old_expr, subject_tokens=None):
         expr = self._clean_sentence(expr)
         old_expr = self._clean_sentence(old_expr)
-        return set(expr.split(' ')).issubset(set(old_expr.split(' ')))
+
+        if subject_tokens is not None:
+            pre1, sub1, post1 = self._split_expr_by_subject(expr, subject_tokens)
+            pre2, sub2, post2 = self._split_expr_by_subject(old_expr, subject_tokens)
+        else:
+            raise NotImplemented
+
+        assert ' '.join(sub1) == ' '.join(sub2)
+        return set(pre1.split(' ')).issubset(set(pre2.split(' '))) and set(post1.split(' ')).issubset(set(post2.split(' ')))
 
     def process_user_answer(self, answer, subject_tokens):
         # preprocess the sentence

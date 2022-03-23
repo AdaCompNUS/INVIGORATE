@@ -20,6 +20,7 @@ import sensor_msgs.point_cloud2 as pcl2
 import time
 import random
 import logging
+import os
 
 from rls_perception_msgs.srv import *
 from rls_control_msgs.srv import *
@@ -46,6 +47,7 @@ DUMMY_GRASP = True
 
 # ------- Constants ---------
 CONFIG_DIR = osp.join(ROOT_DIR, "config")
+FETCH_MODEL_DIR = osp.join(ROOT_DIR, "fetch_robot_stl")
 GRIPPER_FILE = "gripper_link.STL"
 LEFT_GRIPPER_FINGER_FILE = "l_gripper_finger_link.STL"
 RIGHT_GRIPPER_FINGER_FILE = "r_gripper_finger_link.STL"
@@ -63,6 +65,8 @@ ORIG_IMAGE_SIZE = (480, 640)
 # XCROP = (X_OFFSET, ORIG_IMAGE_SIZE[1] - X_OFFSET)
 YCROP = (470, 1000) # 1080
 XCROP = (700, 1460) # 1920
+# YCROP = (0, 600) # 720
+# XCROP = (500, 1000) # 680
 FETCH_YCROP = (180, 450) # 480
 FETCH_XCROP = (150, 490) # 640
 
@@ -97,23 +101,25 @@ class FetchRobot():
         self._tf_transformer = tf.TransformerROS()
         self._fetch_image_client = rospy.ServiceProxy('/rls_perception_service/fetch/rgb_image_service', RetrieveImage)
         self._fetch_pc_client = rospy.ServiceProxy('/rls_control_service/fetch/retrieve_pc_service', RetrievePointCloud)
-        self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
+        # self._fetch_speaker_client = rospy.ServiceProxy("rls_control_services/fetch/speaker_google", SpeakGoogle)
+        self._robot_voice_client = rospy.ServiceProxy("rls_control_services/text_to_speech", TextToSpeech)
         self._tl = tf.TransformListener()
         self._arm = fetch_api.ArmV2()
         self._torso = fetch_api.Torso()
         self._head = fetch_api.Head()
         self._gripper = fetch_api.Gripper()
 
-        #
-        self._torso.set_height(0.15)
-        self._head.pan_tilt(pan=0, tilt= math.radians(55), duration=2)
-
-        # call pnp service to get ready
         pnp_req = PickPlaceRequest()
         pnp_req.action = PickPlaceRequest.GET_READY
+        pnp_req.torso_height = 0.15
+        pnp_req.table_camera_tilt = 45
+        pnp_req.final_camera_tilt = 55
         resp = self._pnp_client(pnp_req)  # get existing result
         if not resp.success:
             raise RuntimeError('fetch failed to get ready for pick n place!!!')
+
+        # self._torso.set_height(0.15)
+        # self._head.pan_tilt(pan=0, tilt= math.radians(55), duration=2)
 
         pnp_req = PickPlaceRequest()
         pnp_req.action = PickPlaceRequest.MOVE_ARM_TO_HOME
@@ -134,9 +140,9 @@ class FetchRobot():
         representation for .obj object). Coordinates should be w.r.t. the
         frame of the gripper itself.
         """
-        gripper_model_path = osp.join(CONFIG_DIR, GRIPPER_FILE)
-        l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
-        r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+        gripper_model_path = osp.join(FETCH_MODEL_DIR, GRIPPER_FILE)
+        l_finger_model_path = osp.join(FETCH_MODEL_DIR, LEFT_GRIPPER_FINGER_FILE)
+        r_finger_model_path = osp.join(FETCH_MODEL_DIR, RIGHT_GRIPPER_FINGER_FILE)
         gripper_mesh = stl.mesh.Mesh.from_file(gripper_model_path)
         l_finger_mesh = stl.mesh.Mesh.from_file(l_finger_model_path)
         r_finger_mesh = stl.mesh.Mesh.from_file(r_finger_model_path)
@@ -156,8 +162,8 @@ class FetchRobot():
         if selected_grasp is None:
             return
 
-        l_finger_model_path = osp.join(CONFIG_DIR, LEFT_GRIPPER_FINGER_FILE)
-        r_finger_model_path = osp.join(CONFIG_DIR, RIGHT_GRIPPER_FINGER_FILE)
+        l_finger_model_path = osp.join(FETCH_MODEL_DIR, LEFT_GRIPPER_FINGER_FILE)
+        r_finger_model_path = osp.join(FETCH_MODEL_DIR, RIGHT_GRIPPER_FINGER_FILE)
         l_finger_mesh = o3d.io.read_triangle_mesh(l_finger_model_path)
         r_finger_mesh = o3d.io.read_triangle_mesh(r_finger_model_path)
         l_finger = l_finger_mesh.sample_points_uniformly(number_of_points=500)
@@ -359,6 +365,7 @@ class FetchRobot():
             img_msg = rospy.wait_for_message('/camera/color/image_raw', Image, timeout=10)
             img = self._br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
             logger.info('img_size : {}'.format(img.shape))
+            img = cv2.resize(img, (1920, 1080), interpolation=cv2.INTER_CUBIC)
             img = img[YCROP[0]:YCROP[1], XCROP[0]:XCROP[1]]
             logger.info('img_size : {}'.format(img.shape))
         else:
@@ -445,8 +452,11 @@ class FetchRobot():
             print('Dummy execution of say: {}'.format(text))
             return True
         else:
-            resp = self._fetch_speaker_client(text)
-            return resp.success
+            req = TextToSpeechRequest()
+            req.text = text
+            res = self._robot_voice_client(req)
+            if res.success:
+                os.system("play {} >/dev/null".format(res.filename))
 
     def listen(self, timeout=None):
         if DUMMY_LISTEN:

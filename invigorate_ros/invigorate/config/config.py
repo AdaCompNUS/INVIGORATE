@@ -85,7 +85,7 @@ TEST = 1
 EXPERIMENT = 0
 
 # --------------- Settings ------------------
-MODE = TEST # 0 for test, 1 for experiment
+MODE = EXPERIMENT # 1 for test, 0 for experiment
 # EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
@@ -101,8 +101,8 @@ EXP_SETTING = "invigorate"
 # EXP_SETTING = "invigorate_vs_vilbert"
 
 # ------------- EXP Settings --------------
-PARTICIPANT_NUM = 10
-SCENE_NUM = 10
+PARTICIPANT_NUM = 9
+SCENE_NUM = 3
 VER_NUM = 0
 EPSILON = 0.01
 if EXP_SETTING == "baseline":
@@ -119,11 +119,12 @@ elif EXP_SETTING == "no_multistep":
     VER_NUM = 6
 elif EXP_SETTING == "no_multistep_all":
     VER_NUM = 7
-elif EXP_SETTING == "invigorate_ijrr":
+elif EXP_SETTING == "invigorate_ijrr_v6":
     VER_NUM = 8
 
-EXP_DIR = osp.join(ROOT_DIR, "experiment/")
-EXP_RES_DIR = osp.join(EXP_DIR, "participant {}".format(PARTICIPANT_NUM), "{}".format(SCENE_NUM), "{}".format(VER_NUM))
+EXP_DIR = osp.join(ROOT_DIR, "experiment/dataset")
+EXP_DATA_DIR = osp.join(ROOT_DIR, "experiment/dataset/{}".format((PARTICIPANT_NUM-1) * 10 +  SCENE_NUM))
+EXP_RES_DIR = osp.join(ROOT_DIR, "experiment/result/{}".format((PARTICIPANT_NUM -1)* 10 + SCENE_NUM), "{}".format(VER_NUM))
 
 if EXP_SETTING == "invigorate_vs_vilbert":
     EXP_DIR = osp.join(ROOT_DIR, "experiment/invigorate_vs_vilbert")
