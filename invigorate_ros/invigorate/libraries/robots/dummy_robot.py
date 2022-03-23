@@ -42,9 +42,9 @@ class DummyRobot():
         else:
             img_name = raw_input('Enter img name: ')
             img = cv2.imread(osp.join(ROOT_DIR, 'demo/' + img_name))
-            # longest_side = max(img.shape)
-            # scaler = 800. / longest_side
-            # img = cv2.resize(img, None, fx=scaler, fy=scaler)
+            longest_side = max(img.shape)
+            scaler = 1000. / longest_side
+            img = cv2.resize(img, None, fx=scaler, fy=scaler)
             depth = None
 
         return img, depth

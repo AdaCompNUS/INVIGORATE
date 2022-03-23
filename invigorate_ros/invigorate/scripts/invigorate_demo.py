@@ -64,6 +64,8 @@ from invigorate_models.invigorate_ijrr_v3 import InvigorateIJRRV3
 from invigorate_models.invigorate_ijrr_v4 import InvigorateIJRRV4
 from invigorate_models.invigorate_ijrr_v5 import InvigorateIJRRV5
 from invigorate_models.invigorate_ijrr_v6 import InvigorateIJRRV6
+from invigorate_models.invigorate_ijrr_no_point import InvigorateIJRRNoPoint
+from invigorate_models.invigorate_ijrr_point import InvigorateIJRRPoint
 from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
@@ -127,6 +129,10 @@ def main():
         invigorate_client = InvigorateIJRRV5()
     elif EXP_SETTING == "invigorate_ijrr_v6":
         invigorate_client = InvigorateIJRRV6()
+    elif EXP_SETTING == "invigorate_ijrr_no_point":
+        invigorate_client = InvigorateIJRRNoPoint()
+    elif EXP_SETTING == "invigorate_ijrr_point":
+        invigorate_client = InvigorateIJRRPoint()
 
     logger.info("SETTING: {}".format(EXP_SETTING))
 
