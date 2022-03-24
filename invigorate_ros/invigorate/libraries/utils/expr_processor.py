@@ -248,17 +248,20 @@ class ExprssionProcessor:
             return subj_tokens
 
     def is_included(self, expr, old_expr, subject_tokens=None):
-        expr = self._clean_sentence(expr)
-        old_expr = self._clean_sentence(old_expr)
-
         if subject_tokens is not None:
             pre1, sub1, post1 = self._split_expr_by_subject(expr, subject_tokens)
             pre2, sub2, post2 = self._split_expr_by_subject(old_expr, subject_tokens)
         else:
             raise NotImplemented
 
+        pre1 = self._clean_sentence(' '.join(pre1))
+        pre2 = self._clean_sentence(' '.join(pre2))
+        post1 = self._clean_sentence(' '.join(post1))
+        post2 = self._clean_sentence(' '.join(post2))
+
         assert ' '.join(sub1) == ' '.join(sub2)
-        return set(pre1.split(' ')).issubset(set(pre2.split(' '))) and set(post1.split(' ')).issubset(set(post2.split(' ')))
+        return set(pre1.split(' ')).issubset(set(pre2.split(' '))) and \
+               set(post1.split(' ')).issubset(set(post2.split(' ')))
 
     def process_user_answer(self, answer, subject_tokens):
         # preprocess the sentence

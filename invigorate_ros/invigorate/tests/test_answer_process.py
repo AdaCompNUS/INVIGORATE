@@ -37,9 +37,9 @@ def test_complete_answer():
         print("Processed Answer: {}".format(answer))
 
 def test_merge_expressions():
-    sent1 = 'the blue red cup'
-    sent2 = 'the cup'
-    subject_tokens = expr_proc.find_subject(sent2)
+    sent1 = 'the blue cup on the right'
+    sent2 = 'the blue red cup on top left'
+    subject_tokens = expr_proc.find_subject(sent2, expr_proc.CLASSES)
     print(expr_proc.merge_expressions(sent1, sent2, subject_tokens))
 
 def test_semantic_similarity():
@@ -71,8 +71,15 @@ def test_replace_subject(expr, subj):
 def test_process_ans(answer, subject_tokens):
     print(expr_proc.process_user_answer(answer, subject_tokens))
 
-# test_merge_expressions()
+def test_included():
+    sent1 = 'the blue cup on the right'
+    sent2 = 'the blue red cup on top left'
+    subject_tokens = expr_proc.find_subject(sent2, expr_proc.CLASSES)
+    print(expr_proc.is_included(sent1, sent2, subject_tokens))
+
+test_merge_expressions()
 # test_complete_expr()
-test_find_subject()
+# test_find_subject()
 # test_replace_subject('the red apple', 'remote'.split(' '))
 # test_process_ans('no', 'remote'.split(' '))
+# test_included()
