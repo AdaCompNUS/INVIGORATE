@@ -39,3 +39,5 @@ src/vilbert_service/vilbert
 src/vilbert_service/vqa_markrcnn_benchmark
 
 invigorate_ros/invigorate/demo/teddy.jpeg
+
+ingress-proj

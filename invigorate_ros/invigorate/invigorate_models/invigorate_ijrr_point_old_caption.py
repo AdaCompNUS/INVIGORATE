@@ -132,6 +132,8 @@ class InvigorateIJRRPointOldCaption(object):
         # expression processor
         self.expr_processor = ExprssionProcessor('nltk')
 
+        self.tmp = True
+
     def clear(self):
         self.object_pool = []
         self.rel_pool = {}
@@ -156,15 +158,15 @@ class InvigorateIJRRPointOldCaption(object):
         self.img = img
 
         # HACK
-        the_flag = False
-        if expr.startswith('the'):
-            the_flag = True
+        # the_flag = False
+        # if expr.startswith('the'):
+        #     the_flag = True
 
         if not self.subject:
             self.subject = self.expr_processor.find_subject(expr, CLASSES)
 
         expr = self.expr_processor.complete_expression(expr, self.subject)
-
+        logger.info("after complete_expression, expr = {}".format(expr))
         if not self.expr_processor.is_included(expr, self.pos_expr, self.subject):
             self.pos_expr = \
                 self.expr_processor.merge_expressions(
@@ -181,11 +183,16 @@ class InvigorateIJRRPointOldCaption(object):
         classes = self.belief["classes"]
         _, det_to_pool, _ = self._get_valid_obj_candidates()
 
-        print(self.pos_expr, the_flag)
-        if self.pos_expr.startswith('the') and not the_flag:
+        # print(self.pos_expr, the_flag)
+        # if self.pos_expr.startswith('the') and not the_flag:
+        #     self.pos_expr = self.pos_expr.replace('the ', '')
+
+        if self.pos_expr.startswith('the') and self.tmp:
             self.pos_expr = self.pos_expr.replace('the ', '')
+            self.tmp = False
 
         # multistep grounding
+        logger.info("before multistep grounding, expr = {}".format(self.pos_expr))
         self.multistep_grounding(img, bboxes, classes, det_to_pool)
 
         # multistep obr detection
@@ -350,8 +357,10 @@ class InvigorateIJRRPointOldCaption(object):
     def question_captions_generation(self, img, bboxes, classes, det_to_pool=None):
         generated_questions = \
             [caption_generator.generate_caption(
-                img, bboxes, classes, target_idx, self.subject, cap_type='rel')
+                img, bboxes, classes, target_idx, ' '.join(self.subject), cap_type='rel')
                 for target_idx in range(len(bboxes))]
+
+        print(generated_questions)
 
         if det_to_pool is not None:
             # append the newly generated questions to the history
@@ -359,8 +368,7 @@ class InvigorateIJRRPointOldCaption(object):
             for k, v in det_to_pool.items():
                 self.object_pool[v]["questions"].extend(generated_questions[k])
 
-        cls_filter = self._initialize_cls_filter(self.subject)
-        self.belief["questions"] = [q for q in generated_questions if q]
+        self.belief["questions"] = generated_questions
 
     @_foward_time_decorator
     def match_question_to_object(self, img, bboxes, classes, questions):
@@ -371,7 +379,7 @@ class InvigorateIJRRPointOldCaption(object):
             return
 
         # object-specific questions
-        object_specific_questions = []
+        # object_specific_questions = []
         num_obj = bboxes.shape[0]
 
         object_specific_q_match = np.eye(num_obj, dtype=np.int32)
@@ -381,7 +389,7 @@ class InvigorateIJRRPointOldCaption(object):
 
         self.belief['q_matching_scores'] = object_specific_q_match_scores
         self.belief['q_matching_prob'] = object_specific_q_match
-        self.belief['questions'] = object_specific_questions
+        # self.belief['questions'] = object_specific_questions
 
     @_foward_time_decorator
     def estimate_state_with_user_answer(self, action, answer):

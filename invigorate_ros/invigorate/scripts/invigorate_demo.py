@@ -164,7 +164,7 @@ def main():
         if exec_type == EXEC_GRASP:
             # after grasping, perceive new images
             load_img = False
-            if MODE == EXPERIMENT and grasp_num >= 1:
+            if MODE == EXPERIMENT and grasp_num >= 0:
                 tmp = raw_input("load original img?")
                 if tmp == 'y':
                     load_img = True
@@ -173,6 +173,7 @@ def main():
                     else:
                         img_dir = osp.join(EXP_DATA_DIR, "../../experiment/participant {}/{}/4".format(PARTICIPANT_NUM, SCENE_NUM))
 
+                    # logger.info("read from: {}".format(img_dir))
                     img_list = os.listdir(img_dir)
                     img_list = [i for i in img_list if "origin" in i]
                     img_list = sorted(img_list)
@@ -182,16 +183,17 @@ def main():
             else:
                 img, _ = robot.read_imgs()
 
-            # NOTE: only applicable for EXPERIMENqT mode. Ensure the first picture is the same for all baselines!
-            if first_time and MODE == EXPERIMENT:
-                origin_img_path = osp.join(EXP_DATA_DIR, "origin.png")
-                # if EXP_SETTING == "greedy":
-                #     cv2.imwrite(origin_img_path, img) # if greedy, write image
-                # else:
-                img = cv2.imread(origin_img_path) # for others, read image
-                first_time = False
+            # NOTE: only applicable for EXPERIMENT mode. Ensure the first picture is the same for all baselines!
+            # if first_time and MODE == EXPERIMENT:
+            #     # origin_img_path = osp.join(img_dir, "origin.png")
+            #     origin_img_path = osp.join(EXP_DATA_DIR, "origin.png")
+            #     # if EXP_SETTING == "greedy":
+            #     #     cv2.imwrite(origin_img_path, img) # if greedy, write image
+            #     # else:
+            #     img = cv2.imread(origin_img_path) # for others, read image
+            #     first_time = False
 
-                # origin_img_path = osp.join(EXP_DATA_DIR, "origin.png")
+            #     # origin_img_path = osp.join(EXP_DATA_DIR, "origin.png")
 
             grasp_num += 1
 
@@ -268,9 +270,11 @@ def main():
                 exec_type = EXEC_ASK_WITHOUT_POINT
 
         elif action_type == 'Q_IJRR_WITH_POINTING':
+            print(target_idx, invigorate_client.belief["questions"])
+
             caption = invigorate_client.belief["questions"][target_idx]
             # HACK: We want the robot ask the question like `Do you mean this red apple?' when pointing to some object.
-            caption = caption.replace('the ', 'this ', 1)
+            caption = caption.replace('the ', 'a ', 1)
             question_str = Q1["type1"].format(caption)
             logger.info("Asking about and Pointing to {:s}th Object".format(str(target_idx)) + " and continuing")
             logger.info("Generated Question: {:s}".format(question_str))
