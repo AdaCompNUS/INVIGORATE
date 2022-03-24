@@ -248,6 +248,9 @@ class ExprssionProcessor:
             return subj_tokens
 
     def is_included(self, expr, old_expr, subject_tokens=None):
+        if not old_expr:
+            return False
+
         if subject_tokens is not None:
             pre1, sub1, post1 = self._split_expr_by_subject(expr, subject_tokens)
             pre2, sub2, post2 = self._split_expr_by_subject(old_expr, subject_tokens)
@@ -290,7 +293,7 @@ class ExprssionProcessor:
             answer = ''
         return response, answer
 
-    def merge_expressions(self, expr, new_expr, subject_tokens, logger=None):
+    def merge_expressions(self, new_expr, expr, subject_tokens, logger=None):
         try:
             new_pre, _, new_post = self._split_expr_by_subject(new_expr, subject_tokens)
             old_pre, _, old_post = self._split_expr_by_subject(expr, subject_tokens)
@@ -322,6 +325,7 @@ class ExprssionProcessor:
                 logger.error(e)
             else:
                 print(e)
+            return expr
 
     def complete_expression(self, expr, subject_tokens):
         # for empty expr
