@@ -290,32 +290,38 @@ class ExprssionProcessor:
             answer = ''
         return response, answer
 
-    def merge_expressions(self, expr, new_expr, subject_tokens):
-        new_pre, _, new_post = self._split_expr_by_subject(new_expr, subject_tokens)
-        old_pre, _, old_post = self._split_expr_by_subject(expr, subject_tokens)
+    def merge_expressions(self, expr, new_expr, subject_tokens, logger=None):
+        try:
+            new_pre, _, new_post = self._split_expr_by_subject(new_expr, subject_tokens)
+            old_pre, _, old_post = self._split_expr_by_subject(expr, subject_tokens)
 
-        old_pre_clean = set(
-            self._clean_sentence(old_pre).split(' '))
-        new_pre_clean = set(
-            self._clean_sentence(new_pre).split(' '))
-        merged_pre = list(old_pre_clean.union(new_pre_clean))
-        while '' in merged_pre:
-            merged_pre.remove('')
-        merged_pre = ' '.join(['the'] + merged_pre)
+            old_pre_clean = set(
+                self._clean_sentence(old_pre).split(' '))
+            new_pre_clean = set(
+                self._clean_sentence(new_pre).split(' '))
+            merged_pre = list(old_pre_clean.union(new_pre_clean))
+            while '' in merged_pre:
+                merged_pre.remove('')
+            merged_pre = ' '.join(['the'] + merged_pre)
 
-        merged_post = old_post
-        merged_post_clean = set(
-            self._clean_sentence(merged_post).split(' ')).union({''})
-        new_post_clean = set(
-            self._clean_sentence(new_post).split(' ')).union({''})
-        if merged_post_clean.issubset(new_post_clean):
-            merged_post = new_post
-        elif new_post_clean.issubset(merged_post_clean):
-            pass
-        else:
-            merged_post = ' '.join([merged_post, 'and', new_post])
+            merged_post = old_post
+            merged_post_clean = set(
+                self._clean_sentence(merged_post).split(' ')).union({''})
+            new_post_clean = set(
+                self._clean_sentence(new_post).split(' ')).union({''})
+            if merged_post_clean.issubset(new_post_clean):
+                merged_post = new_post
+            elif new_post_clean.issubset(merged_post_clean):
+                pass
+            else:
+                merged_post = ' '.join([merged_post, 'and', new_post])
 
-        return ' '.join([merged_pre] + subject_tokens + [merged_post]).strip()
+            return ' '.join([merged_pre] + subject_tokens + [merged_post]).strip()
+        except Exception as e:
+            if logger:
+                logger.error(e)
+            else:
+                print(e)
 
     def complete_expression(self, expr, subject_tokens):
         # for empty expr

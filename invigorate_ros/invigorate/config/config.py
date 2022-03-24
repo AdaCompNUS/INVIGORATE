@@ -26,7 +26,7 @@ PAPER_FIGURE_ID=1
 MRT_FIGURE_ID=2
 DISPLAY_FIGURE_ID=3
 
-POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK"}
+POSITIVE_ANS = {"yes", "yeah", "yep", "sure", "certainly", "OK", "exactly"}
 NEGATIVE_ANS = {"no", "nope", "nah"}
 PRONOUNS = {"it", "it's", "one", "that", "that's"}
 NLP_SERVER = "nltk"
