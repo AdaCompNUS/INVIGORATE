@@ -158,9 +158,9 @@ class InvigorateIJRRPointOldCaption(object):
         self.img = img
 
         # HACK
-        # the_flag = False
-        # if expr.startswith('the'):
-        #     the_flag = True
+        the_flag = False
+        if expr.startswith('the'):
+            the_flag = True
 
         if not self.subject:
             self.subject = self.expr_processor.find_subject(expr, CLASSES)
@@ -184,12 +184,12 @@ class InvigorateIJRRPointOldCaption(object):
         _, det_to_pool, _ = self._get_valid_obj_candidates()
 
         # print(self.pos_expr, the_flag)
-        # if self.pos_expr.startswith('the') and not the_flag:
-        #     self.pos_expr = self.pos_expr.replace('the ', '')
-
-        if self.pos_expr.startswith('the') and self.tmp:
+        if self.pos_expr.startswith('the') and not the_flag:
             self.pos_expr = self.pos_expr.replace('the ', '')
-            self.tmp = False
+
+        # if self.pos_expr.startswith('the') and self.tmp:
+        #     self.pos_expr = self.pos_expr.replace('the ', '')
+        #     self.tmp = False
 
         # multistep grounding
         logger.info("before multistep grounding, expr = {}".format(self.pos_expr))

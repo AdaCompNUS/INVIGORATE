@@ -101,8 +101,8 @@ MODE = EXPERIMENT # 1 for test, 0 for experiment
 # EXP_SETTING = "invigorate_ijrr_old_caption"
 EXP_SETTING = "invigorate_ijrr_no_pointing"
 
-PARTICIPANT_NUM = 2
-SCENE_NUM = 7
+PARTICIPANT_NUM = 8
+SCENE_NUM = 9
 VER_NUM = 0
 EPSILON = 0.01
 if EXP_SETTING == "baseline":

@@ -530,7 +530,7 @@ class ExprssionProcessor:
 
         return overall
 
-    def _clean_sentence(self, expr, clean_stop=False):
+    def _clean_sentence(self, expr, clean_stop=True):
         "remove chars that are not letters or numbers, downcase, then remove stop words"
         regex = re.compile('([^\s\w]|_)+')
         sentence = regex.sub('', expr).lower()
