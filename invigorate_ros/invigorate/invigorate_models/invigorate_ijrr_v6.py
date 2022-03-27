@@ -54,7 +54,7 @@ from invigorate.libraries.ros_clients.mattnet_client import MAttNetClient
 from invigorate.config.config import *
 from invigorate.libraries.utils.log import LOGGER_NAME
 from invigorate.libraries.utils.expr_processor import ExprssionProcessor
-from invigorate.libraries.caption_generator import caption_generator
+from invigorate.libraries.caption_generator.caption_generator import *
 
 try:
     import stanza
@@ -121,7 +121,7 @@ class InvigorateIJRRV6(object):
         self.belief = {}
         self.pos_expr = '' # store positive expressions
         self.neg_expr = '' # store negative expressions
-        self.independent_neg_belief = True
+        self.independent_neg_belief = False
         self.last_question = None
         self.timers = {}
 
@@ -130,6 +130,8 @@ class InvigorateIJRRV6(object):
 
         # expression processor
         self.expr_processor = ExprssionProcessor('nltk')
+
+        self._grounding_scores_buffer = {}
 
     def clear(self):
         self.object_pool = []
@@ -152,6 +154,7 @@ class InvigorateIJRRV6(object):
     # --------------- Public -------------------
     @_foward_time_decorator
     def estimate_state_with_img(self, img, expr):
+        self._grounding_scores_buffer = {}
         self.img = img
 
         # HACK
@@ -278,6 +281,8 @@ class InvigorateIJRRV6(object):
         pos_grounding_scores = \
             self._vis_ground_client.ground(
                 img, bboxes, self.pos_expr, classes)
+        self._grounding_scores_buffer[self.pos_expr] = pos_grounding_scores
+
         logger.info('Perceive_img: mattnet grounding finished')
         logger.info("grounding scores against positive "
                     "expression '{}' is".format(self.pos_expr))
@@ -290,6 +295,8 @@ class InvigorateIJRRV6(object):
             neg_grounding_scores = \
                 self._vis_ground_client.ground(
                     img, bboxes, self.neg_expr, classes)
+            self._grounding_scores_buffer[self.neg_expr] = neg_grounding_scores
+
             logger.info("grounding scores against negative "
                         "expression '{}' is".format(self.neg_expr))
             logger.info(neg_grounding_scores)
@@ -347,7 +354,7 @@ class InvigorateIJRRV6(object):
     @_foward_time_decorator
     def question_captions_generation(self, img, bboxes, classes, det_to_pool=None):
         generated_questions = \
-            caption_generator.generate_all_captions(
+            generate_all_captions(
                 img, bboxes, classes, self.subject)
 
         if det_to_pool is not None:
@@ -373,7 +380,6 @@ class InvigorateIJRRV6(object):
     def match_question_to_object(self, img, bboxes, classes, questions):
         if not questions:
             # no available question
-            self.belief['q_matching_prob'] = np.array([])
             self.belief['q_matching_scores'] = np.array([])
             return
 
@@ -381,17 +387,43 @@ class InvigorateIJRRV6(object):
         q_matching_scores = []
         for q in questions:
             _q = self.expr_processor.merge_expressions(q, self.pos_expr, self.subject)
+            _q = self.clean_duplicated_words(_q, self.pos_expr)
+            _q_pos_grounding_scores = []
+            if _q:
+                logger.info("Doing Visual Grounding for Cleaned Positive Question: {}".format(_q))
+                _q_pos_grounding_scores = self._vis_ground_client.ground(img, bboxes, _q, classes)
+                self._grounding_scores_buffer[_q] = _q_pos_grounding_scores
+
+            _q = self.expr_processor.merge_expressions(q, self.neg_expr, self.subject)
+            _q = self.clean_duplicated_words(_q, self.neg_expr)
+            _q_neg_grounding_scores = []
+            if _q:
+                logger.info("Doing Visual Grounding for Cleaned Negative Question: {}".format(_q))
+                _q_neg_grounding_scores = self._vis_ground_client.ground(img, bboxes, _q, classes)
+                self._grounding_scores_buffer[_q] = _q_neg_grounding_scores
+
             q_matching_scores.append(
-                self._vis_ground_client.ground(
-                    img, bboxes, _q, classes)
+                [_q_neg_grounding_scores, _q_pos_grounding_scores]
             )
 
         self.belief['q_matching_scores'] = q_matching_scores
 
         logger.info('Perceive_img: mattnet grounding finished')
-        for i, g_score in enumerate(q_matching_scores):
+        for i, (g_pos_score, g_neg_score) in enumerate(q_matching_scores):
             logger.info("Question {}: {}".format(i, questions[i]))
-            logger.info(g_score)
+            logger.info("Positive scores:")
+            logger.info(g_pos_score)
+            logger.info("Negative scores:")
+            logger.info(g_neg_score)
+
+        match_prob_scores = []
+        for q in questions:
+            _q = self.expr_processor.merge_expressions(q, self.pos_expr, self.subject)
+            _match_prob_score = self._vis_ground_client.ground(img, bboxes, _q, classes)
+            self._grounding_scores_buffer[_q] = _match_prob_score
+            match_prob_scores.append(_match_prob_score)
+
+        self.belief['q_matching_prob_scores'] = match_prob_scores
 
         # score to prob is equivalent to a one-step belief tracking.
         def match_score_to_prob(score):
@@ -405,7 +437,7 @@ class InvigorateIJRRV6(object):
             return prob_pos, prob_neg
 
         q_matching_prob_pos, q_matching_prob_neg = \
-            zip(*[match_score_to_prob(score) for score in q_matching_scores])
+            zip(*[match_score_to_prob(score) for score in match_prob_scores])
 
         # impose class filtering (raw prior probability derived from object detector)
         q_matching_prob = []
@@ -433,26 +465,35 @@ class InvigorateIJRRV6(object):
         object_specific_questions = []
         num_obj = bboxes.shape[0]
         for i in range(num_obj):
-            # object_specific_questions.append(
-            #     questions[q_matching_prob[:, i].argmax()]
-            # )
             object_specific_questions.append(
-                questions[np.array(q_matching_scores)[:, i].argmax()]
+                self.expr_processor.merge_expressions(
+                    questions[np.array(match_prob_scores)[:, i].argmax()],
+                    self.pos_expr, self.subject
+                )
             )
 
         object_specific_q_match = np.eye(num_obj, dtype=np.int32)
         object_specific_q_match_scores = np.eye(num_obj, dtype=np.int32)
         object_specific_q_match_scores *= 2
         object_specific_q_match_scores -= 1
+        object_specific_q_match_scores = object_specific_q_match_scores.tolist()
+        object_specific_q_match_scores = zip(
+            object_specific_q_match_scores, object_specific_q_match_scores)
 
-        self.belief['q_matching_scores'] = np.concatenate(
-            (object_specific_q_match_scores,
-             self.belief['q_matching_scores']), axis=0)
+        self.belief['q_matching_scores'] = object_specific_q_match_scores \
+            + self.belief['q_matching_scores']
         self.belief['q_matching_prob'] = np.concatenate(
             (object_specific_q_match,
              self.belief['q_matching_prob']), axis=0)
         self.belief['questions'] = \
             object_specific_questions + self.belief['questions']
+
+    def clean_duplicated_words(self, new_expr, old_expr):
+        old_expr = old_expr.split(' ')
+        for w in old_expr:
+            new_expr = new_expr.replace(w, '')
+            new_expr = new_expr.replace('  ', ' ')
+        return new_expr.strip(' ')
 
     @_foward_time_decorator
     def estimate_state_with_user_answer(self, action, answer):
@@ -461,6 +502,10 @@ class InvigorateIJRRV6(object):
 
         action_type, target_idx = self.parse_action(action)
         assert action_type in {"Q_IJRR", "Q_IJRR_WITH_POINTING"}
+
+        old_pos_expr = self.pos_expr
+        old_neg_expr = self.neg_expr
+
         match_probs = self.belief['q_matching_prob'][target_idx]
 
         if action_type == 'Q_IJRR':
@@ -498,20 +543,41 @@ class InvigorateIJRRV6(object):
                 # the robot asked a question without pointing to a specific object instance
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:
-                    regrounding_scores = self._vis_ground_client.ground(
-                        img, bboxes,
-                        self.pos_expr,
-                        classes)
-                    self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
+                    tmp_expr = self.clean_duplicated_words(self.pos_expr, old_pos_expr)
+                    if tmp_expr:
+                        if tmp_expr in self._grounding_scores_buffer:
+                            regrounding_scores = self._grounding_scores_buffer[tmp_expr]
+                        else:
+                            regrounding_scores = self._vis_ground_client.ground(
+                                img, bboxes, tmp_expr, classes)
+                            self._grounding_scores_buffer[tmp_expr] = regrounding_scores
+                        self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
+                q = self.belief['questions'][target_idx]
                 if response:
                     # belief tracking according to the positive response
-                    regrounding_scores = self.belief['q_matching_scores'][target_idx]
-                    self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
+                    # regrounding_scores = self.belief['q_matching_scores'][target_idx]
+                    tmp_expr = self.clean_duplicated_words(q, old_pos_expr)
+                    if tmp_expr:
+                        if tmp_expr in self._grounding_scores_buffer:
+                            regrounding_scores = self._grounding_scores_buffer[tmp_expr]
+                        else:
+                            regrounding_scores = self._vis_ground_client.ground(
+                                img, bboxes, tmp_expr, classes)
+                            self._grounding_scores_buffer[tmp_expr] = regrounding_scores
+                        self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
                 else:
                     # belief tracking according to the negative response
-                    regrounding_scores = self.belief['q_matching_scores'][target_idx]
-                    self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=False)
+                    # regrounding_scores = self.belief['q_matching_scores'][target_idx]
+                    tmp_expr = self.clean_duplicated_words(q, old_neg_expr)
+                    if tmp_expr:
+                        if tmp_expr in self._grounding_scores_buffer:
+                            regrounding_scores = self._grounding_scores_buffer[tmp_expr]
+                        else:
+                            regrounding_scores = self._vis_ground_client.ground(
+                                img, bboxes, tmp_expr, classes)
+                            self._grounding_scores_buffer[tmp_expr] = regrounding_scores
+                        self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=False)
             else:
                 # the robot asked a question by pointing to a specific object instance
                 # belief tracking based on the response
@@ -531,11 +597,15 @@ class InvigorateIJRRV6(object):
                     )
                 # belief tracking based on the additional clue
                 if clue:
-                    regrounding_scores = self._vis_ground_client.ground(
-                        img, bboxes,
-                        self.pos_expr,
-                        classes)
-                    self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
+                    tmp_expr = self.clean_duplicated_words(self.pos_expr, old_pos_expr)
+                    if tmp_expr:
+                        if tmp_expr in self._grounding_scores_buffer:
+                            regrounding_scores = self._grounding_scores_buffer[tmp_expr]
+                        else:
+                            regrounding_scores = self._vis_ground_client.ground(
+                                img, bboxes, tmp_expr, classes)
+                            self._grounding_scores_buffer[tmp_expr] = regrounding_scores
+                        self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
         # update self.belief
         self.belief["cand_belief"] = [self.object_pool[p]["cand_belief"] for _, p in det_to_pool.items()]
@@ -777,8 +847,12 @@ class InvigorateIJRRV6(object):
                         ans, match_probs[i], EPSILON, confirmed=confirmed
                     )
             else:
-                for i, score in enumerate(match_scores):
-                    new_belief["cand_belief"][i].update(score, self.obj_kdes, ans)
+                if ans: match_scores = match_scores[1]
+                else: match_scores = match_scores[0]
+                if len(match_scores) > 0:
+                    for i, score in enumerate(match_scores):
+                        new_belief["cand_belief"][i].update(
+                            score, self.obj_kdes, ans)
 
             target_prob = self._compute_target_prob(new_belief)
             new_belief["target_prob"] = torch.from_numpy(target_prob)

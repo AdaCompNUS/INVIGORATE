@@ -85,7 +85,7 @@ TEST = 1
 EXPERIMENT = 0
 
 # --------------- Settings ------------------
-MODE = EXPERIMENT # 1 for test, 0 for experiment
+MODE = TEST # 1 for test, 0 for experiment
 # EXP_SETTING = "greedy" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "heuristic" # choose from: baseline, no_uncert, no_multistep, invigorate
 # EXP_SETTING = "no_interaction"
@@ -97,9 +97,9 @@ MODE = EXPERIMENT # 1 for test, 0 for experiment
 # EXP_SETTING = "invigorate_ijrr_v3"
 # EXP_SETTING = "invigorate_ijrr_v4"
 # EXP_SETTING = "invigorate_ijrr_v5"
-# EXP_SETTING = "invigorate_ijrr_v6"
+EXP_SETTING = "invigorate_ijrr_v6"
 # EXP_SETTING = "invigorate_ijrr_old_caption"
-EXP_SETTING = "invigorate_ijrr_no_pointing"
+# EXP_SETTING = "invigorate_ijrr_no_pointing"
 
 PARTICIPANT_NUM = 8
 SCENE_NUM = 9

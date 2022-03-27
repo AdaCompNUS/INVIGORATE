@@ -71,7 +71,7 @@ from libraries.robots.dummy_robot import DummyRobot
 from libraries.utils.log import LOGGER_NAME
 
 # -------- Settings --------
-ROBOT = 'Fetch'
+ROBOT = 'Dummy'
 # ROBOT = 'Dummy'
 GENERATE_CAPTIONS = True
 DISPLAY_DEBUG_IMG = True
@@ -255,7 +255,12 @@ def main():
         elif action_type == 'Q_IJRR':
             caption = invigorate_client.belief["questions"][target_idx]
             # HACK: form the object-agnostic question with 'a' instead of 'the'
-            caption = caption.replace('the ', 'a ')
+            caption = caption.replace('the ', 'a ', 1)
+            # HACK: to make the caption more natural
+            caption = caption.replace('the right', 'right side')
+            caption = caption.replace('the left', 'left side')
+            caption = caption.replace('the top', 'top')
+            caption = caption.replace('the bottom', 'bottom')
             question_str = Q1["type1"].format(caption)
             logger.info("Only Askig Question: {:s}".format(question_str))
 
@@ -274,7 +279,7 @@ def main():
 
             caption = invigorate_client.belief["questions"][target_idx]
             # HACK: We want the robot ask the question like `Do you mean this red apple?' when pointing to some object.
-            caption = caption.replace('the ', 'a ', 1)
+            caption = caption.replace('the ', 'this ', 1)
             question_str = Q1["type1"].format(caption)
             logger.info("Asking about and Pointing to {:s}th Object".format(str(target_idx)) + " and continuing")
             logger.info("Generated Question: {:s}".format(question_str))
