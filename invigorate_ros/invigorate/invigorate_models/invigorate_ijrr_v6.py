@@ -125,7 +125,7 @@ class InvigorateIJRRV6(object):
         self.initial_pos_expr = '' # store positive expressions after each grasping action
         self.neg_expr = '' # store negative expressions
         self.initial_neg_expr = '' # store negative expressions after each grasping action
-        self.independent_neg_belief = True
+        self.independent_neg_belief = False
         self.last_question = None
         self.timers = {}
 
@@ -301,13 +301,13 @@ class InvigorateIJRRV6(object):
         if self.neg_expr:
             # clean duplicate words
             tmp_exprs = self.neg_expr.split('-')
-            tmp_pos_expr = self.pos_expr
-            tmp_pos_expr = self.clean_duplicated_words(tmp_pos_expr, ' '.join(self.subject))
+            # tmp_pos_expr = self.pos_expr
+            # tmp_pos_expr = self.clean_duplicated_words(tmp_pos_expr, ' '.join(self.subject))
             # do visual grounding for all negative expressions
             for i, tmp_expr in enumerate(tmp_exprs):
                 # find all negative expressions, and clean all positive expressions in them,
                 # but we need to keep the subject phrase.
-                tmp_expr = self.clean_duplicated_words(tmp_expr, tmp_pos_expr)
+                # tmp_expr = self.clean_duplicated_words(tmp_expr, tmp_pos_expr)
                 # prevent over-denial
                 tmp_expr = self.clean_duplicated_words(tmp_expr, ' '.join(tmp_exprs[:i]))
                 if tmp_expr:
@@ -408,7 +408,7 @@ class InvigorateIJRRV6(object):
         for q in questions:
             _q = q
             _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
-            _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
+            # _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
             _q_pos_grounding_scores = []
             if _q:
                 logger.info("Doing Visual Grounding for Cleaned Positive Question: {}".format(_q))
@@ -416,7 +416,7 @@ class InvigorateIJRRV6(object):
                 self._grounding_scores_buffer[_q] = _q_pos_grounding_scores
 
             _q = q
-            _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
+            # _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
             _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
             _q_neg_grounding_scores = []
             if _q:
@@ -570,7 +570,7 @@ class InvigorateIJRRV6(object):
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:
                     tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
-                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
+                    # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -580,13 +580,14 @@ class InvigorateIJRRV6(object):
                             self._grounding_scores_buffer[tmp_expr] = regrounding_scores
                         self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
+                tmp_expr = question
                 if response:
                     # belief tracking according to the positive response
                     # regrounding_scores = self.belief['q_matching_scores'][target_idx]
                     # for negative expressions, the ``negative words'' which conflict with
                     # the positive expressions will be used to update the belief
-                    tmp_expr = self.clean_duplicated_words(question, self.initial_pos_expr)
-                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
+                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_pos_expr)
+                    # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -600,7 +601,7 @@ class InvigorateIJRRV6(object):
                     # regrounding_scores = self.belief['q_matching_scores'][target_idx]
                     # for negative expressions, the ``negative words'' which conflict with
                     # the positive expressions will be used to update the belief
-                    tmp_expr = self.clean_duplicated_words(question, self.initial_pos_expr)
+                    # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_pos_expr)
                     # also, the duplicated words compared to the initial negative expressions
                     # will also be excluded to prevent over-denial.
                     tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
@@ -632,7 +633,7 @@ class InvigorateIJRRV6(object):
                 # belief tracking based on the additional clue
                 if clue:
                     tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
-                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
+                    # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
