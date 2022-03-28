@@ -32,6 +32,7 @@ import torch
 import torch.nn.functional as f
 import numpy as np
 import os
+import re
 from torchvision.ops import nms
 import time
 import pickle as pkl
@@ -124,7 +125,7 @@ class InvigorateIJRRV6(object):
         self.initial_pos_expr = '' # store positive expressions after each grasping action
         self.neg_expr = '' # store negative expressions
         self.initial_neg_expr = '' # store negative expressions after each grasping action
-        self.independent_neg_belief = False
+        self.independent_neg_belief = True
         self.last_question = None
         self.timers = {}
 
@@ -298,17 +299,30 @@ class InvigorateIJRRV6(object):
             pos_grounding_scores, det_to_pool, is_pos=True)
 
         if self.neg_expr:
-            neg_grounding_scores = \
-                self._vis_ground_client.ground(
-                    img, bboxes, self.neg_expr, classes)
-            self._grounding_scores_buffer[self.neg_expr] = neg_grounding_scores
+            # clean duplicate words
+            tmp_exprs = self.neg_expr.split('-')
+            tmp_pos_expr = self.pos_expr
+            tmp_pos_expr = self.clean_duplicated_words(tmp_pos_expr, ' '.join(self.subject))
+            # do visual grounding for all negative expressions
+            for i, tmp_expr in enumerate(tmp_exprs):
+                # find all negative expressions, and clean all positive expressions in them,
+                # but we need to keep the subject phrase.
+                tmp_expr = self.clean_duplicated_words(tmp_expr, tmp_pos_expr)
+                # prevent over-denial
+                tmp_expr = self.clean_duplicated_words(tmp_expr, ' '.join(tmp_exprs[:i]))
+                if tmp_expr:
+                    neg_grounding_scores = \
+                        self._vis_ground_client.ground(
+                            img, bboxes, tmp_expr, classes)
+                    self._grounding_scores_buffer[tmp_expr] = neg_grounding_scores
 
-            logger.info("grounding scores against negative "
-                        "expression '{}' is".format(self.neg_expr))
-            logger.info(neg_grounding_scores)
-            # multistep state estimation
-            self._multistep_p_cand_update(
-                neg_grounding_scores, det_to_pool, is_pos=False)
+                    logger.info("grounding scores against negative "
+                                "expression '{}' is".format(self.neg_expr))
+                    logger.info(neg_grounding_scores)
+
+                    # multistep state estimation
+                    self._multistep_p_cand_update(
+                        neg_grounding_scores, det_to_pool, is_pos=False)
 
         # update self.belief with the new candidate beliefs
         self.belief["cand_belief"] = \
@@ -392,15 +406,17 @@ class InvigorateIJRRV6(object):
         # grounding
         q_matching_scores = []
         for q in questions:
-            _q = self.expr_processor.merge_expressions(q, self.pos_expr, self.subject)
+            _q = q
             _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
+            _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
             _q_pos_grounding_scores = []
             if _q:
                 logger.info("Doing Visual Grounding for Cleaned Positive Question: {}".format(_q))
                 _q_pos_grounding_scores = self._vis_ground_client.ground(img, bboxes, _q, classes)
                 self._grounding_scores_buffer[_q] = _q_pos_grounding_scores
 
-            _q = self.expr_processor.merge_expressions(q, self.neg_expr, self.subject)
+            _q = q
+            _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
             _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
             _q_neg_grounding_scores = []
             if _q:
@@ -492,10 +508,10 @@ class InvigorateIJRRV6(object):
             (object_specific_q_match,
              self.belief['q_matching_prob']), axis=0)
         self.belief['questions'] = \
-            object_specific_questions + self.belief['questions']
+            object_specific_questions + questions
 
     def clean_duplicated_words(self, new_expr, old_expr):
-        old_expr = old_expr.split(' ')
+        old_expr = re.split(' |-', old_expr)
         for w in old_expr:
             new_expr = new_expr.replace(w, '')
             new_expr = new_expr.replace('  ', ' ')
@@ -511,11 +527,12 @@ class InvigorateIJRRV6(object):
 
         question = self.belief['questions'][target_idx]
 
-        self.qa_history.append(
-            (setlist(self.expr_processor.clean_sentence(question, True).split(' ')),
-             'yes' if response else 'no'
-             )
-        )
+        if action_type == 'Q_IJRR':
+            self.qa_history.append(
+                (setlist(self.expr_processor.clean_sentence(question, True).split(' ')),
+                 'yes' if response else 'no'
+                 )
+            )
 
         match_probs = self.belief['q_matching_prob'][target_idx]
 
@@ -531,8 +548,7 @@ class InvigorateIJRRV6(object):
                 self.pos_expr = self.expr_processor.merge_expressions(
                     self.pos_expr, question, self.subject)
             else:
-                self.neg_expr = self.expr_processor.merge_expressions(
-                    self.neg_expr, question, self.subject)
+                self.neg_expr = self.neg_expr + '-' + question
 
         print('--------------------------------------------------------')
         logger.info("Invigorate: handling answer for Q1")
@@ -554,6 +570,7 @@ class InvigorateIJRRV6(object):
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:
                     tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
+                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -566,7 +583,10 @@ class InvigorateIJRRV6(object):
                 if response:
                     # belief tracking according to the positive response
                     # regrounding_scores = self.belief['q_matching_scores'][target_idx]
-                    tmp_expr = self.clean_duplicated_words(question, self.initial_neg_expr)
+                    # for negative expressions, the ``negative words'' which conflict with
+                    # the positive expressions will be used to update the belief
+                    tmp_expr = self.clean_duplicated_words(question, self.initial_pos_expr)
+                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -578,7 +598,12 @@ class InvigorateIJRRV6(object):
                 else:
                     # belief tracking according to the negative response
                     # regrounding_scores = self.belief['q_matching_scores'][target_idx]
-                    tmp_expr = self.clean_duplicated_words(question, self.initial_neg_expr)
+                    # for negative expressions, the ``negative words'' which conflict with
+                    # the positive expressions will be used to update the belief
+                    tmp_expr = self.clean_duplicated_words(question, self.initial_pos_expr)
+                    # also, the duplicated words compared to the initial negative expressions
+                    # will also be excluded to prevent over-denial.
+                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -607,6 +632,7 @@ class InvigorateIJRRV6(object):
                 # belief tracking based on the additional clue
                 if clue:
                     tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
+                    tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -629,6 +655,11 @@ class InvigorateIJRRV6(object):
         print('--------------------------------------------------------')
 
         self.belief["target_prob"] = target_prob
+        self.initial_pos_expr = self.pos_expr
+        self.initial_neg_expr = self.neg_expr
+
+        questions = self.belief["questions"][obj_num:]
+        self.match_question_to_object(img, bboxes, classes, questions)
 
     @_foward_time_decorator
     def plan_action(self):
@@ -699,7 +730,10 @@ class InvigorateIJRRV6(object):
     def search_answer(self, question):
         question = self.expr_processor.clean_sentence(question, True)
         question = setlist(question.split(' '))
+        logger.info('The formatted asked question: {}'.format(question))
+        logger.info('Searching the answer from:')
         for q, a in self.qa_history:
+            logger.info('Q: {}, A: {}'.format(q, a))
             if q == question:
                 return a
         return None
@@ -782,30 +816,57 @@ class InvigorateIJRRV6(object):
 
     # ----------- POMDP helpers -----------------
 
-    def _planning_with_macro(self, infos):
-        """
-        ALL ACTIONS INCLUDE:
-        Do you mean ... ? (num_obj) + grasping macro (1)
-        :param belief: including "leaf_desc_prob", "desc_num", and "target_prob"
-        :param planning_depth:
-        :return:
-        """
+    def _gen_grasp_macro(self, belief, infos, g_ind=-1):
+        belief["target_prob"] = torch.from_numpy(belief["target_prob"])
+        belief["rel_prob"] = torch.from_numpy(belief["rel_prob"])
+        belief["q_matching_prob"] = torch.from_numpy(belief["q_matching_prob"])
+        belief["infos"] = copy.deepcopy(infos)
+        for k in belief["infos"]:
+            belief["infos"][k] = torch.from_numpy(belief["infos"][k])
 
-        # initialize hyperparameters
-        planning_depth = self._policy_tree_max_depth
-        penalty_for_fail = self._penalty_for_fail
-        penalty_for_asking = self._penalty_for_asking
-        penalty_for_asking_and_pointing = self._penalty_for_asking_and_pointing
+        num_obj = belief["target_prob"].shape[0] - 1
 
-        def gen_grasp_macro(belief):
+        grasp_macros = {}
+        belief_infos = belief["infos"]
 
-            num_obj = belief["target_prob"].shape[0] - 1
+        cache_leaf_desc_prob = {}
+        cache_leaf_prob = {}
 
-            grasp_macros = {i: None for i in range(num_obj)}
-            belief_infos = belief["infos"]
+        if g_ind >= 0:
+            grasp_macro = {"seq": [], "leaf_prob": []}
+            grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, g_ind]).item())
+            grasp_macro["leaf_prob"].append(belief_infos["leaf_prob"][grasp_macro["seq"][0]].item())
 
-            cache_leaf_desc_prob = {}
-            cache_leaf_prob = {}
+            rel_mat = belief["rel_prob"].clone()
+            while (grasp_macro["seq"][-1] != g_ind):
+                removed = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+                indice = ''.join([str(o) for o in np.sort(grasp_macro["seq"]).tolist()])
+                if indice in cache_leaf_desc_prob:
+                    leaf_desc_prob = cache_leaf_desc_prob[indice]
+                    leaf_prob = cache_leaf_prob[indice]
+                else:
+                    rel_mat[0:2, removed, :] = 0.
+                    rel_mat[0:2, :, removed] = 0.
+                    rel_mat[2, removed, :] = 1.
+                    rel_mat[2, :, removed] = 1.
+                    triu_mask = torch.triu(torch.ones(rel_mat[0].shape), diagonal=1)
+                    triu_mask = triu_mask.unsqueeze(0).repeat(3, 1, 1)
+                    rel_mat *= triu_mask
+
+                    leaf_desc_prob, _, leaf_prob, _, _ = \
+                        self._leaf_and_desc_estimate(rel_mat, removed=grasp_macro["seq"], with_virtual_node=True)
+
+                    cache_leaf_desc_prob[indice] = leaf_desc_prob
+                    cache_leaf_prob[indice] = leaf_prob
+
+                grasp_macro["seq"].append(torch.argmax(leaf_desc_prob[:, g_ind]).item())
+                grasp_macro["leaf_prob"].append(leaf_prob[grasp_macro["seq"][-1]].item())
+
+            grasp_macro["seq"] = torch.tensor(grasp_macro["seq"]).type_as(rel_mat).long()
+            grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
+            grasp_macros[g_ind] = grasp_macro
+
+        else:
             for i in range(num_obj + 1):
                 grasp_macro = {"seq": [], "leaf_prob": []}
                 grasp_macro["seq"].append(torch.argmax(belief_infos["leaf_desc_prob"][:, i]).item())
@@ -840,7 +901,26 @@ class InvigorateIJRRV6(object):
                 grasp_macro["leaf_prob"] = torch.tensor(grasp_macro["leaf_prob"]).type_as(rel_mat)
                 grasp_macros[i] = grasp_macro
 
-            return grasp_macros
+        for k in grasp_macros:
+            for kk in grasp_macros[k]:
+                grasp_macros[k][kk] = grasp_macros[k][kk].numpy()
+
+        return grasp_macros
+
+    def _planning_with_macro(self, infos):
+        """
+        ALL ACTIONS INCLUDE:
+        Do you mean ... ? (num_obj) + grasping macro (1)
+        :param belief: including "leaf_desc_prob", "desc_num", and "target_prob"
+        :param planning_depth:
+        :return:
+        """
+
+        # initialize hyperparameters
+        planning_depth = self._policy_tree_max_depth
+        penalty_for_fail = self._penalty_for_fail
+        penalty_for_asking = self._penalty_for_asking
+        penalty_for_asking_and_pointing = self._penalty_for_asking_and_pointing
 
         def grasp_reward_estimate(belief):
             # reward of grasping macro, equal to: desc_num * reward_of_each_grasp_step
@@ -932,10 +1012,10 @@ class InvigorateIJRRV6(object):
         belief["target_prob"] = torch.from_numpy(belief["target_prob"])
         belief["rel_prob"] = torch.from_numpy(belief["rel_prob"])
         belief["q_matching_prob"] = torch.from_numpy(belief["q_matching_prob"])
-        belief["infos"] = infos
+        belief["infos"] = copy.deepcopy(infos)
         for k in belief["infos"]:
             belief["infos"][k] = torch.from_numpy(belief["infos"][k])
-        grasp_macros = belief["grasp_macros"] = gen_grasp_macro(belief)
+        # grasp_macros = belief["grasp_macros"] = gen_grasp_macro(belief)
 
         with torch.no_grad():
             q_vec = estimate_q_vec(belief, 0)
@@ -944,11 +1024,12 @@ class InvigorateIJRRV6(object):
         logger.info("Grasping:{:.3f}".format(q_vec.tolist()[0]))
         logger.info("Asking:{:s}".format(q_vec.tolist()[1:]))
 
-        for k in grasp_macros:
-            for kk in grasp_macros[k]:
-                grasp_macros[k][kk] = grasp_macros[k][kk].numpy()
+        # for k in grasp_macros:
+        #     for kk in grasp_macros[k]:
+        #         grasp_macros[k][kk] = grasp_macros[k][kk].numpy()
 
-        return self._choose_optimal_action(q_vec), grasp_macros
+        # return self._choose_optimal_action(q_vec), grasp_macros
+        return self._choose_optimal_action(q_vec)
 
     def _choose_optimal_action(self, q_vec):
         optimal_q = torch.max(q_vec).item()
@@ -964,10 +1045,11 @@ class InvigorateIJRRV6(object):
             else: ask_without_pointing_actions.append(a)
 
         if not ask_without_pointing_actions:
-            if grasp_actions:
-                return grasp_actions[0]
-            else:
+            # disambiguation is with higher priority when having the cost as grasping
+            if ask_with_pointing_actions:
                 return ask_with_pointing_actions[0]
+            else:
+                return grasp_actions[0]
         else:
             # search for a question in the history, if possible
             for a in ask_without_pointing_actions:
@@ -997,11 +1079,13 @@ class InvigorateIJRRV6(object):
             "leaf_prob": leaf_prob
         }
 
-        a_macro, grasp_macros = self._planning_with_macro(infos)
+        a_macro = self._planning_with_macro(infos)
         if a_macro == 0:
             # grasping
             tgt_id = np.argmax(target_prob)
-            grasp_macro = grasp_macros[tgt_id]
+            with torch.no_grad():
+                grasp_macro = self._gen_grasp_macro(
+                    self.belief, infos, g_ind=tgt_id)[tgt_id]
             current_tgt = grasp_macro["seq"][0]
 
             if len(grasp_macro["seq"]) == 1:

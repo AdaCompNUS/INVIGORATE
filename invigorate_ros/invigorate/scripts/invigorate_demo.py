@@ -254,16 +254,6 @@ def main():
             exec_type = EXEC_ASK_WITH_POINTING
         elif action_type == 'Q_IJRR':
             caption = invigorate_client.belief["questions"][target_idx]
-            # HACK: form the object-agnostic question with 'a' instead of 'the'
-            caption = caption.replace('the ', 'a ', 1)
-            # HACK: to make the caption more natural
-            caption = caption.replace('the right', 'right side')
-            caption = caption.replace('the left', 'left side')
-            caption = caption.replace('the top', 'top')
-            caption = caption.replace('the bottom', 'bottom')
-            question_str = Q1["type1"].format(caption)
-            logger.info("Only Askig Question: {:s}".format(question_str))
-
             if hasattr(invigorate_client, 'search_answer'):
                 answer = invigorate_client.search_answer(caption)
                 if answer is not None:
@@ -273,6 +263,16 @@ def main():
                     exec_type = EXEC_ASK_WITHOUT_POINT
             else:
                 exec_type = EXEC_ASK_WITHOUT_POINT
+
+            # HACK: form the object-agnostic question with 'a' instead of 'the'
+            caption = caption.replace('the ', 'a ', 1)
+            # HACK: to make the caption more natural
+            caption = caption.replace('the right', 'right side')
+            caption = caption.replace('the left', 'left side')
+            caption = caption.replace('the top', 'top')
+            caption = caption.replace('the bottom', 'bottom')
+            question_str = Q1["type1"].format(caption)
+            logger.info("Only Askig Question: {:s}".format(question_str))
 
         elif action_type == 'Q_IJRR_WITH_POINTING':
             print(target_idx, invigorate_client.belief["questions"])
