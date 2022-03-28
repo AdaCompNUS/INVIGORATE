@@ -1584,7 +1584,7 @@ class InvigorateIJRRV6(object):
             for i, b in enumerate(boxes):
                 # firstly select top 3 grasps
                 g = grasps[i]
-                selected = np.argsort(g[:, -1])[-3:]
+                selected = np.argsort(g[:, -1])[-5:]
                 g = g[selected]
                 # secondly select the grasp near the object center
                 bcx = (b[0] + b[2]) / 2
@@ -1601,16 +1601,81 @@ class InvigorateIJRRV6(object):
         if renew:
             # any objects cls must > 0.5
             obj_inds = [i for i, obj in enumerate(self.object_pool)
-                        if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > ACTIVE_OBJ_DETECTION_SCORE]
+                        if not obj["removed"] and
+                        np.array(obj["cls_scores"]).mean(axis=0)[1:].max() > ACTIVE_OBJ_DETECTION_SCORE]
+
+            apple_inds = []
+            for obj_ind in obj_inds:
+                if np.array(self.object_pool[obj_ind]["cls_scores"]).mean(axis=0)[6] > ACTIVE_OBJ_DETECTION_SCORE:
+                    apple_inds.append(obj_ind)
+
+            def neg_apple_inds(apple_inds):
+                if not apple_inds:
+                    return None
+                apple_boxes = np.array([self.object_pool[i]['bbox'] for i in apple_inds])
+                print(apple_boxes)
+                overlaps = (self.iou(apple_boxes, apple_boxes) > 0.25).sum(-1)
+                if overlaps.max() == 1:
+                    return None
+                else:
+                    return apple_inds[overlaps.argmax()]
+
+            deleted_apple_ind = neg_apple_inds(apple_inds)
+            if deleted_apple_ind is not None:
+                obj_inds.remove(deleted_apple_ind)
 
             # set invalid object to be removed!!
             invalid_obj_inds = [i for i, obj in enumerate(self.object_pool)
                         if not obj["removed"] and np.array(obj["cls_scores"]).mean(axis=0)[1:].max() < REMOVE_OBJ_DETECTION_SCORE]
             for i in invalid_obj_inds:
                 self.object_pool[i]["removed"] = True
+            if deleted_apple_ind is not None:
+                self.object_pool[deleted_apple_ind]["removed"] = True
             logger.info("filtering object: object ind removed: {}".format(invalid_obj_inds))
 
             self.pool_to_det = OrderedDict(zip(obj_inds, list(range(len(obj_inds)))))
             self.det_to_pool = OrderedDict(zip(list(range(len(obj_inds))), obj_inds))
             self.obj_num = len(self.pool_to_det)
         return self.pool_to_det, self.det_to_pool, self.obj_num
+
+    def iou(self, anchors, gt_boxes):
+        """
+        anchors: (N, 4) ndarray of float
+        gt_boxes: (K, 4) ndarray of float
+        overlaps: (N, K) ndarray of overlap between boxes and query_boxes
+        """
+        anchors = torch.tensor(anchors)
+        gt_boxes = torch.tensor(gt_boxes)
+
+        N = anchors.size(0)
+        K = gt_boxes.size(0)
+
+        gt_boxes_area = (
+                (gt_boxes[:, 2] - gt_boxes[:, 0] + 1) * (gt_boxes[:, 3] - gt_boxes[:, 1] + 1)
+        ).view(1, K)
+
+        anchors_area = (
+                (anchors[:, 2] - anchors[:, 0] + 1) * (anchors[:, 3] - anchors[:, 1] + 1)
+        ).view(N, 1)
+
+        boxes = anchors.view(N, 1, 4).expand(N, K, 4)
+        query_boxes = gt_boxes.view(1, K, 4).expand(N, K, 4)
+
+        iw = (
+                torch.min(boxes[:, :, 2], query_boxes[:, :, 2])
+                - torch.max(boxes[:, :, 0], query_boxes[:, :, 0])
+                + 1
+        )
+        iw[iw < 0] = 0
+
+        ih = (
+                torch.min(boxes[:, :, 3], query_boxes[:, :, 3])
+                - torch.max(boxes[:, :, 1], query_boxes[:, :, 1])
+                + 1
+        )
+        ih[ih < 0] = 0
+
+        ua = anchors_area + gt_boxes_area - (iw * ih)
+        overlaps = iw * ih / ua
+
+        return overlaps.numpy()
