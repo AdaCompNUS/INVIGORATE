@@ -540,8 +540,8 @@ class ExprssionProcessor:
         sentence = " ".join(sentence)
         return sentence
 
-    def clean_sentence(self, expr):
-        return self._clean_sentence(expr, clean_stop=False)
+    def clean_sentence(self, expr, clean_stop=False):
+        return self._clean_sentence(expr, clean_stop=clean_stop)
 
     def _clean_stop_words(self, word_list):
         for word in list(word_list):

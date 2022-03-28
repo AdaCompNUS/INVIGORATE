@@ -42,6 +42,7 @@ from scipy import optimize
 import logging
 import matplotlib.pyplot as plt
 from collections import OrderedDict
+from collections_extended import setlist
 import nltk
 
 from invigorate.libraries.data_viewer.data_viewer import DataViewer
@@ -115,12 +116,14 @@ class InvigorateIJRRV6(object):
         self.object_pool = []
         self.rel_pool = {}
         self.subject = []
-        self.qa_history = {}
+        self.qa_history = []
 
         # cache of the last step
         self.belief = {}
         self.pos_expr = '' # store positive expressions
+        self.initial_pos_expr = '' # store positive expressions after each grasping action
         self.neg_expr = '' # store negative expressions
+        self.initial_neg_expr = '' # store negative expressions after each grasping action
         self.independent_neg_belief = False
         self.last_question = None
         self.timers = {}
@@ -171,6 +174,9 @@ class InvigorateIJRRV6(object):
             self.pos_expr = \
                 self.expr_processor.merge_expressions(
                     expr, self.pos_expr, self.subject)
+
+        self.initial_pos_expr = self.pos_expr
+        self.initial_neg_expr = self.neg_expr
 
         # multistep object detection
         res = self.multistep_object_detection(img)
@@ -387,7 +393,7 @@ class InvigorateIJRRV6(object):
         q_matching_scores = []
         for q in questions:
             _q = self.expr_processor.merge_expressions(q, self.pos_expr, self.subject)
-            _q = self.clean_duplicated_words(_q, self.pos_expr)
+            _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
             _q_pos_grounding_scores = []
             if _q:
                 logger.info("Doing Visual Grounding for Cleaned Positive Question: {}".format(_q))
@@ -395,7 +401,7 @@ class InvigorateIJRRV6(object):
                 self._grounding_scores_buffer[_q] = _q_pos_grounding_scores
 
             _q = self.expr_processor.merge_expressions(q, self.neg_expr, self.subject)
-            _q = self.clean_duplicated_words(_q, self.neg_expr)
+            _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
             _q_neg_grounding_scores = []
             if _q:
                 logger.info("Doing Visual Grounding for Cleaned Negative Question: {}".format(_q))
@@ -503,15 +509,19 @@ class InvigorateIJRRV6(object):
         action_type, target_idx = self.parse_action(action)
         assert action_type in {"Q_IJRR", "Q_IJRR_WITH_POINTING"}
 
-        old_pos_expr = self.pos_expr
-        old_neg_expr = self.neg_expr
+        question = self.belief['questions'][target_idx]
+
+        self.qa_history.append(
+            (setlist(self.expr_processor.clean_sentence(question, True).split(' ')),
+             'yes' if response else 'no'
+             )
+        )
 
         match_probs = self.belief['q_matching_prob'][target_idx]
 
         if action_type == 'Q_IJRR':
             # the robot has asked a question not assigned to a specific
             # object instance
-            question = self.belief['questions'][target_idx]
             q_sub = self.expr_processor.find_subject(question, CLASSES)
             for sub in self.subject:
                 assert sub in q_sub, \
@@ -543,7 +553,7 @@ class InvigorateIJRRV6(object):
                 # the robot asked a question without pointing to a specific object instance
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:
-                    tmp_expr = self.clean_duplicated_words(self.pos_expr, old_pos_expr)
+                    tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -553,11 +563,10 @@ class InvigorateIJRRV6(object):
                             self._grounding_scores_buffer[tmp_expr] = regrounding_scores
                         self._multistep_p_cand_update(regrounding_scores, det_to_pool, is_pos=True)
 
-                q = self.belief['questions'][target_idx]
                 if response:
                     # belief tracking according to the positive response
                     # regrounding_scores = self.belief['q_matching_scores'][target_idx]
-                    tmp_expr = self.clean_duplicated_words(q, old_pos_expr)
+                    tmp_expr = self.clean_duplicated_words(question, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -569,7 +578,7 @@ class InvigorateIJRRV6(object):
                 else:
                     # belief tracking according to the negative response
                     # regrounding_scores = self.belief['q_matching_scores'][target_idx]
-                    tmp_expr = self.clean_duplicated_words(q, old_neg_expr)
+                    tmp_expr = self.clean_duplicated_words(question, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -597,7 +606,7 @@ class InvigorateIJRRV6(object):
                     )
                 # belief tracking based on the additional clue
                 if clue:
-                    tmp_expr = self.clean_duplicated_words(self.pos_expr, old_pos_expr)
+                    tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -663,29 +672,37 @@ class InvigorateIJRRV6(object):
         else:
             return 'Q_IJRR', action - 2 * num_obj
 
+    # def search_answer(self, question):
+    #
+    #     asked_pos = self.pos_expr
+    #     asked_neg = self.neg_expr
+    #
+    #     # TODO: here the is_included is a hack, which may be incorrect
+    #     #  in some certain cases. For example, 'the right apple' is not
+    #     #  included in 'the apple beside the right banana', but here,
+    #     #  this function will return True in the current implementation.
+    #     #  A more generalizable is_included is needed in the future versions.
+    #     pos_matched = \
+    #         self.expr_processor.is_included(question, asked_pos, self.subject)
+    #     neg_matched = \
+    #         self.expr_processor.is_included(question, asked_neg, self.subject)
+    #
+    #     assert not (pos_matched and neg_matched)
+    #
+    #     answer = None
+    #     if pos_matched:
+    #         answer = 'yes'
+    #     elif neg_matched:
+    #         answer = 'no'
+    #     return answer
+
     def search_answer(self, question):
-
-        asked_pos = self.pos_expr
-        asked_neg = self.neg_expr
-
-        # TODO: here the is_included is a hack, which may be incorrect
-        #  in some certain cases. For example, 'the right apple' is not
-        #  included in 'the apple beside the right banana', but here,
-        #  this function will return True in the current implementation.
-        #  A more generalizable is_included is needed in the future versions.
-        pos_matched = \
-            self.expr_processor.is_included(question, asked_pos, self.subject)
-        neg_matched = \
-            self.expr_processor.is_included(question, asked_neg, self.subject)
-
-        assert not (pos_matched and neg_matched)
-
-        answer = None
-        if pos_matched:
-            answer = 'yes'
-        elif neg_matched:
-            answer = 'no'
-        return answer
+        question = self.expr_processor.clean_sentence(question, True)
+        question = setlist(question.split(' '))
+        for q, a in self.qa_history:
+            if q == question:
+                return a
+        return None
 
     # ----------- Init helper ------------
     def _init_kde(self):

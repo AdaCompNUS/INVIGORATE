@@ -78,9 +78,14 @@ def test_included():
     subject_tokens = ['mouse']
     print(expr_proc.is_included(sent1, sent2, subject_tokens))
 
+def test_clean(sent):
+    print(expr_proc.clean_sentence(sent, True))
+
 # test_merge_expressions()
 #test_complete_expr()
 # test_find_subject()
 # test_replace_subject('the red apple', 'remote'.split(' '))
 # test_process_ans('no', 'remote'.split(' '))
-test_included()
+# test_included()
+
+test_clean('the blue cup on top of the banana')
