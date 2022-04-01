@@ -141,7 +141,7 @@ class InvigorateIJRRV6(object):
         self.object_pool = []
         self.rel_pool = {}
         self.subject = []
-        self.qa_history = {}
+        self.qa_history = []
         self.belief = {}
         self.pos_expr = '' # store positive expressions
         self.neg_expr = '' # store negative expressions
@@ -285,10 +285,11 @@ class InvigorateIJRRV6(object):
     @_foward_time_decorator
     def multistep_grounding(self, img, bboxes, classes, det_to_pool):
         # grounding and update candidate beliefs
+        pos_expr = self.expr_processor.delete_expr_subject(self.pos_expr, self.subject)
         pos_grounding_scores = \
             self._vis_ground_client.ground(
-                img, bboxes, self.pos_expr, classes)
-        self._grounding_scores_buffer[self.pos_expr] = pos_grounding_scores
+                img, bboxes, pos_expr, classes)
+        self._grounding_scores_buffer[pos_expr] = pos_grounding_scores
 
         logger.info('Perceive_img: mattnet grounding finished')
         logger.info("grounding scores against positive "
@@ -305,6 +306,7 @@ class InvigorateIJRRV6(object):
             # tmp_pos_expr = self.clean_duplicated_words(tmp_pos_expr, ' '.join(self.subject))
             # do visual grounding for all negative expressions
             for i, tmp_expr in enumerate(tmp_exprs):
+                tmp_expr = self.expr_processor.delete_expr_subject(tmp_expr, self.subject)
                 # find all negative expressions, and clean all positive expressions in them,
                 # but we need to keep the subject phrase.
                 # tmp_expr = self.clean_duplicated_words(tmp_expr, tmp_pos_expr)
@@ -408,20 +410,24 @@ class InvigorateIJRRV6(object):
         for q in questions:
             _q = q
             _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
+            _q = self.expr_processor.delete_expr_subject(_q, self.subject)
             # _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
             _q_pos_grounding_scores = []
             if _q:
                 logger.info("Doing Visual Grounding for Cleaned Positive Question: {}".format(_q))
-                _q_pos_grounding_scores = self._vis_ground_client.ground(img, bboxes, _q, classes)
+                _q_pos_grounding_scores = self._vis_ground_client.ground(
+                    img, bboxes, _q, classes)
                 self._grounding_scores_buffer[_q] = _q_pos_grounding_scores
 
             _q = q
             # _q = self.clean_duplicated_words(_q, self.initial_pos_expr)
             _q = self.clean_duplicated_words(_q, self.initial_neg_expr)
+            _q = self.expr_processor.delete_expr_subject(_q, self.subject)
             _q_neg_grounding_scores = []
             if _q:
                 logger.info("Doing Visual Grounding for Cleaned Negative Question: {}".format(_q))
-                _q_neg_grounding_scores = self._vis_ground_client.ground(img, bboxes, _q, classes)
+                _q_neg_grounding_scores = self._vis_ground_client.ground(
+                    img, bboxes, _q, classes)
                 self._grounding_scores_buffer[_q] = _q_neg_grounding_scores
 
             q_matching_scores.append(
@@ -441,7 +447,9 @@ class InvigorateIJRRV6(object):
         match_prob_scores = []
         for q in questions:
             _q = self.expr_processor.merge_expressions(q, self.pos_expr, self.subject)
-            _match_prob_score = self._vis_ground_client.ground(img, bboxes, _q, classes)
+            _q = self.expr_processor.delete_expr_subject(_q, self.subject)
+            _match_prob_score = self._vis_ground_client.ground(
+                img, bboxes, _q, classes)
             self._grounding_scores_buffer[_q] = _match_prob_score
             match_prob_scores.append(_match_prob_score)
 
@@ -464,16 +472,25 @@ class InvigorateIJRRV6(object):
         # impose class filtering (raw prior probability derived from object detector)
         q_matching_prob = []
         for i, q in enumerate(questions):
+            # compute class llh for each question
             subject = self.expr_processor.find_subject(q, CLASSES)
             cls_filter = self._initialize_cls_filter(subject)
-            neg_obj_llh, pos_obj_llh = self._compute_cls_llh(
+            obj_neg_llh, obj_pos_llh = self._compute_cls_llh(
                 self.belief["cls_scores_list"], cls_filter)
+
             # introduce object class likelihood from the object detector
+            obj_neg_llh = np.array(obj_neg_llh)
+            obj_pos_llh = np.array(obj_pos_llh)
             match_neg_llh_i = np.array(q_matching_prob_neg[i])
             match_pos_llh_i = np.array(q_matching_prob_pos[i])
-            q_matching_prob_i = match_pos_llh_i * pos_obj_llh / \
-                (match_neg_llh_i * neg_obj_llh + match_pos_llh_i * pos_obj_llh)
+            q_matching_prob_i = np.zeros(obj_pos_llh.shape)
+            _mask = obj_pos_llh > 0
+            q_matching_prob_i[_mask] = \
+                match_pos_llh_i[_mask] * obj_pos_llh[_mask] / \
+                (match_neg_llh_i[_mask] * obj_neg_llh[_mask] +
+                 match_pos_llh_i[_mask] * obj_pos_llh[_mask])
             q_matching_prob.append(q_matching_prob_i)
+
         q_matching_prob = np.array(q_matching_prob)
 
         self.belief['q_matching_prob'] = q_matching_prob
@@ -570,6 +587,7 @@ class InvigorateIJRRV6(object):
                 # Firstly, belief tracking according to the additional clue if possible.
                 if clue:
                     tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
+                    tmp_expr = self.expr_processor.delete_expr_subject(tmp_expr, self.subject)
                     # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
@@ -587,6 +605,9 @@ class InvigorateIJRRV6(object):
                     # for negative expressions, the ``negative words'' which conflict with
                     # the positive expressions will be used to update the belief
                     tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_pos_expr)
+                    tmp_expr = self.expr_processor.delete_expr_subject(tmp_expr, self.subject)
+                    # the clue is also part of the positive expression
+                    if clue: tmp_expr = self.clean_duplicated_words(tmp_expr, clue)
                     # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
@@ -605,6 +626,7 @@ class InvigorateIJRRV6(object):
                     # also, the duplicated words compared to the initial negative expressions
                     # will also be excluded to prevent over-denial.
                     tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
+                    tmp_expr = self.expr_processor.delete_expr_subject(tmp_expr, self.subject)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
                             regrounding_scores = self._grounding_scores_buffer[tmp_expr]
@@ -633,6 +655,7 @@ class InvigorateIJRRV6(object):
                 # belief tracking based on the additional clue
                 if clue:
                     tmp_expr = self.clean_duplicated_words(self.pos_expr, self.initial_pos_expr)
+                    tmp_expr = self.expr_processor.delete_expr_subject(tmp_expr, self.subject)
                     # tmp_expr = self.clean_duplicated_words(tmp_expr, self.initial_neg_expr)
                     if tmp_expr:
                         if tmp_expr in self._grounding_scores_buffer:
@@ -728,16 +751,40 @@ class InvigorateIJRRV6(object):
     #         answer = 'no'
     #     return answer
 
-    def search_answer(self, question):
+    def search_answer(self, question, qa_history=None, disable_logging=False):
+        if qa_history is None:
+            qa_history = self.qa_history
+
         question = self.expr_processor.clean_sentence(question, True)
         question = setlist(question.split(' '))
-        logger.info('The formatted asked question: {}'.format(question))
-        logger.info('Searching the answer from:')
-        for q, a in self.qa_history:
-            logger.info('Q: {}, A: {}'.format(q, a))
-            if q == question:
-                return a
-        return None
+        if not disable_logging:
+            logger.info('The formatted asked question: {}'.format(question))
+            logger.info('Searching the answer from:')
+
+        _y = None
+        _yq = None
+        _n = None
+        _nq = None
+        for q, a in qa_history:
+            _question = copy.deepcopy(question)
+            if not disable_logging:
+                logger.info('Q: {}, A: {}'.format(q, a))
+            if a == 'yes':
+                q = setlist([i for i in q if i in _question])
+                if _question == q:
+                    _y = a
+                    _yq = q
+            elif a == 'no':
+                _question = setlist([i for i in _question if i in q])
+                if q == _question:
+                    _n = a
+                    _nq = q
+
+        assert not (_y and _n), 'Conflicts detected during checking the QA history: \n' \
+                                'Q: {}, A: {}\n' \
+                                'Q: {}, A: {}\n' \
+                                'Interested Question: {}'.format(_yq, _y, _nq, _n, question)
+        return _y or _n
 
     # ----------- Init helper ------------
     def _init_kde(self):
@@ -964,11 +1011,13 @@ class InvigorateIJRRV6(object):
             else:
                 # computing q-value for grasping
                 q_vec = [grasp_reward_estimate(belief)]
+                qa_history = belief['qa_history']
 
                 # computing q-value for asking
-                for i, (match_prob, match_score) in enumerate(
+                for i, (match_prob, match_score, question) in enumerate(
                         zip(belief["q_matching_prob"],
-                            belief["q_matching_scores"])
+                            belief["q_matching_scores"],
+                            belief["questions"])
                 ):
                     if current_d == 0:
                         print(i)
@@ -978,11 +1027,16 @@ class InvigorateIJRRV6(object):
                     else:
                         is_pointing_q = False
 
-                    # 0. Check whether the current object has been completely denied.
+                    # 0. Check:
+                    # 1) whether the current object has been completely denied.
                     # If it has been denied, no question is needed anymore,
                     # and hence the corresponding action will be disabled by
                     # assigning a high cost.
                     if is_pointing_q and belief["cand_belief"][i].belief[0] == 1:
+                        q_vec.append(PENALTY_FOR_FAIL)
+                        continue
+                    # 2) Whether the question has been asked
+                    if self.search_answer(question, qa_history, disable_logging=True):
                         q_vec.append(PENALTY_FOR_FAIL)
                         continue
 
@@ -998,6 +1052,14 @@ class InvigorateIJRRV6(object):
                         belief, match_prob, match_score, True, is_pointing_q)
                     new_belief_no = forward_belief(
                         belief, match_prob, match_score, False, is_pointing_q)
+                    # make sure that during planning, the robot will not plan with same
+                    # questions in a trajectory.
+                    new_belief_yes['qa_history'].append(
+                        (setlist(self.expr_processor.clean_sentence(question, True).split(' ')),
+                         'yes'))
+                    new_belief_no['qa_history'].append(
+                        (setlist(self.expr_processor.clean_sentence(question, True).split(' ')),
+                         'no'))
 
                     # 3. computing the q value
                     if i < num_obj: q = penalty_for_asking_and_pointing
@@ -1005,6 +1067,8 @@ class InvigorateIJRRV6(object):
                     yes_val = estimate_q_vec(new_belief_yes, current_d + 1).max()
                     no_val = estimate_q_vec(new_belief_no, current_d + 1).max()
                     q += p_no * no_val + p_yes * yes_val
+                    if torch.isnan(q).any():
+                        print(p_no, no_val, p_yes, yes_val)
                     q_vec.append(q.item())
 
                 return torch.Tensor(q_vec).type_as(belief["target_prob"])
@@ -1013,6 +1077,7 @@ class InvigorateIJRRV6(object):
         belief["target_prob"] = torch.from_numpy(belief["target_prob"])
         belief["rel_prob"] = torch.from_numpy(belief["rel_prob"])
         belief["q_matching_prob"] = torch.from_numpy(belief["q_matching_prob"])
+        belief["qa_history"] = self.qa_history
         belief["infos"] = copy.deepcopy(infos)
         for k in belief["infos"]:
             belief["infos"][k] = torch.from_numpy(belief["infos"][k])
