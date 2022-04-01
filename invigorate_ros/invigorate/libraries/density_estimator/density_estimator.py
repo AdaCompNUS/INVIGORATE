@@ -147,6 +147,9 @@ class object_belief(object):
             return belief
 
         def update_belief(belief, likelihood, confirmed):
+            if np.abs(belief[1]) < 1e-5:
+                return belief
+
             if likelihood[0] == 0 and likelihood[1] > 0:
                 belief[:] = [0., 1.]
             elif likelihood[0] > 0 and likelihood[1] == 0:
@@ -160,6 +163,7 @@ class object_belief(object):
                     belief *= likelihood
                     belief /= belief.sum()
                     belief = np.clip(belief, 0., 1.)
+
             return belief
 
         def check_belief(belief):
@@ -183,8 +187,8 @@ class object_belief(object):
         belief = self.belief
         check_belief(belief)
 
-        if enable_low_thresh and belief[0] < self.low_thr:
-            self._belief[:] = [0., 1.]
+        if enable_low_thresh and belief[1] < self.low_thr:
+            self._belief[:] = [1., 0.]
             belief = self.belief
 
         return belief
