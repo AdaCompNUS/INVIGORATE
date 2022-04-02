@@ -330,6 +330,9 @@ class InvigorateIJRRV6(object):
         self.belief["cand_belief"] = \
             [self.object_pool[p]["cand_belief"]
              for _, p in det_to_pool.items()]
+        for i, b in enumerate(self.belief["cand_belief"]):
+            logger.info("After visual updates, the belief for each object:\n"
+                        "object {}: {}".format(i, b.belief))
 
         # compute the new target probs
         target_prob = self._compute_target_prob(self.belief)
@@ -668,6 +671,9 @@ class InvigorateIJRRV6(object):
 
         # update self.belief
         self.belief["cand_belief"] = [self.object_pool[p]["cand_belief"] for _, p in det_to_pool.items()]
+        for i, b in enumerate(self.belief["cand_belief"]):
+            logger.info("after linguistic updates, the belief for each object:\n"
+                        "object {}: {}".format(i, b.belief))
 
         target_prob = self._compute_target_prob(self.belief)
 

@@ -164,6 +164,12 @@ class object_belief(object):
                     belief /= belief.sum()
                     belief = np.clip(belief, 0., 1.)
 
+            # to prevent numerical problems
+            # intuitively, visual grounding without the human's confirmation should not be
+            # used to confirm an object.
+            if not confirmed and belief[0] < self.low_thr:
+                belief[:] = [self.low_thr, 1 - self.low_thr]
+
             return belief
 
         def check_belief(belief):
@@ -187,6 +193,7 @@ class object_belief(object):
         belief = self.belief
         check_belief(belief)
 
+        # the low thresh is used to exclude the objects with very low belief completely.
         if enable_low_thresh and belief[1] < self.low_thr:
             self._belief[:] = [1., 0.]
             belief = self.belief
@@ -217,11 +224,17 @@ class object_belief(object):
             # answer is no
             likelihood = [1 - epsilon * (1 - match_prob), 1 - match_prob]
 
-        belief = self.update_with_likelihood(likelihood)
-
-        if not self.confirmed:
-            self.confirmed = confirmed
-            if self.confirmed: self._enable_neg = False
+        if not confirmed:
+            belief = self.update_with_likelihood(likelihood)
+        else:
+            if not self.confirmed:
+                # update the belief for the last time
+                self._belief[:] = likelihood
+                self._belief /= self._belief.sum()
+                self.confirmed = confirmed
+                if self.confirmed: self._enable_neg = False
+            assert self._belief[0] in {0., 1.}
+            belief = self._belief
 
         return belief
 
