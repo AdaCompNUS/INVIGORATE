@@ -406,6 +406,7 @@ class InvigorateIJRRV6(object):
         if not questions:
             # no available question
             self.belief['q_matching_scores'] = np.array([])
+            self.belief['q_matching_prob'] = np.array([])
             return
 
         # grounding
