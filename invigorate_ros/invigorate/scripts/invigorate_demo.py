@@ -269,7 +269,7 @@ def main():
             # HACK: to make the caption more natural
             caption = caption.replace('the right', 'right side')
             caption = caption.replace('the left', 'left side')
-            caption = caption.replace('the top', 'top')
+            caption = caption.replace('the top', 'far')
             caption = caption.replace('the bottom', 'bottom')
             question_str = Q1["type1"].format(caption)
             logger.info("Only Askig Question: {:s}".format(question_str))

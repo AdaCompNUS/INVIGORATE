@@ -78,12 +78,15 @@ class object_belief(object):
         # here the cls_llh has a higher priority
         if self.cls_llh[0] == 0 and self.cls_llh[1] > 0:
             self._belief[:] = [0, 1]
-            return self._belief
         elif self.cls_llh[0] > 0 and self.cls_llh[1] == 0:
             self._belief[:] = [1, 0]
-            return self._belief
         else:
             assert self.cls_llh[0] > 0 and self.cls_llh[1] > 0
+
+        if self._belief[0] == 1. or self._belief[1] == 1.:
+            if self._independent_neg and self._enable_neg:
+                assert (self._belief * self._belief_neg[::-1]).sum() > 0
+            return self._belief
 
         if not self._independent_neg or not self._enable_neg:
             belief = self._belief.copy()
@@ -111,18 +114,18 @@ class object_belief(object):
             else:
                 neg_prob = np.exp(kde[1].comp_prob(score))
                 pos_prob = np.exp(kde[0].comp_prob(score))
-            self.update_with_likelihood([neg_prob, pos_prob])
+            belief = self.update_with_likelihood([neg_prob, pos_prob])
         else:
             neg_prob = np.exp(kde[0].comp_prob(score))
             pos_prob = np.exp(kde[1].comp_prob(score))
             if is_pos:
-                self.update_with_likelihood(
+                belief = self.update_with_likelihood(
                     [neg_prob, pos_prob], update_pos=True)
             else:
-                self.update_with_likelihood(
+                belief = self.update_with_likelihood(
                     [neg_prob, pos_prob], update_pos=False)
 
-        return self.belief
+        return belief
 
     def update_cls_llh(self, llh):
         self.cls_llh[:] = llh
@@ -143,7 +146,10 @@ class object_belief(object):
             assert belief[0] in {0., 1.}
             return belief
 
-        def update_belief(belief, likelihood, confirmed, enable_low_thresh, low_thr):
+        def update_belief(belief, likelihood, confirmed):
+            if np.abs(belief[1]) < 1e-5:
+                return belief
+
             if likelihood[0] == 0 and likelihood[1] > 0:
                 belief[:] = [0., 1.]
             elif likelihood[0] > 0 and likelihood[1] == 0:
@@ -156,10 +162,14 @@ class object_belief(object):
                 if not confirmed:
                     belief *= likelihood
                     belief /= belief.sum()
-                    if enable_low_thresh:
-                        belief = np.clip(belief, low_thr, 1 - low_thr)
-                    else:
-                        belief = np.clip(belief, 0., 1.)
+                    belief = np.clip(belief, 0., 1.)
+
+            # to prevent numerical problems
+            # intuitively, visual grounding without the human's confirmation should not be
+            # used to confirm an object.
+            if not confirmed and belief[0] < self.low_thr:
+                belief[:] = [self.low_thr, 1 - self.low_thr]
+
             return belief
 
         def check_belief(belief):
@@ -175,15 +185,18 @@ class object_belief(object):
         # handle special cases
         if not self._independent_neg or update_pos:
             self._belief = update_belief(
-                self._belief, likelihood, self.confirmed,
-                enable_low_thresh, self.low_thr)
+                self._belief, likelihood, self.confirmed)
         else:
             self._belief_neg = update_belief(
-                self._belief_neg, likelihood, self.confirmed,
-                enable_low_thresh, self.low_thr)
+                self._belief_neg, likelihood, self.confirmed)
 
         belief = self.belief
         check_belief(belief)
+
+        # the low thresh is used to exclude the objects with very low belief completely.
+        if enable_low_thresh and belief[1] < self.low_thr:
+            self._belief[:] = [1., 0.]
+            belief = self.belief
 
         return belief
 
@@ -211,19 +224,17 @@ class object_belief(object):
             # answer is no
             likelihood = [1 - epsilon * (1 - match_prob), 1 - match_prob]
 
-        # if confirmed is enabled, meaning that the object belief will not change anymore
-        # the likelihood should be deterministic
-        if confirmed:
-            assert (likelihood[0] == 0. and likelihood[1] > 0) or \
-                   (likelihood[0] > 0 and likelihood[1] == 0.)
-
-        belief = self.update_with_likelihood(likelihood, enable_low_thresh=False)
-
-        # update confirm state.
-        # once an object has been confirmed, it will never change any more
-        if not self.confirmed:
-            self.confirmed = confirmed
-            if confirmed: self._enable_neg = False
+        if not confirmed:
+            belief = self.update_with_likelihood(likelihood)
+        else:
+            if not self.confirmed:
+                # update the belief for the last time
+                self._belief[:] = likelihood
+                self._belief /= self._belief.sum()
+                self.confirmed = confirmed
+                if self.confirmed: self._enable_neg = False
+            assert self._belief[0] in {0., 1.}
+            belief = self._belief
 
         return belief
 

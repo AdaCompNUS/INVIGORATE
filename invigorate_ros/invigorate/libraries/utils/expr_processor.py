@@ -117,6 +117,7 @@ class ExprssionProcessor:
                  nlp_server='nltk'):
         self.nlp_server = nlp_server
         self.stemmer = PorterStemmer()
+        self.enable_delete_sub = False
 
         # TODO: implement a version based on the Stanford NLP Toolkit.
         # if self.nlp_server == "stanza":
@@ -358,6 +359,9 @@ class ExprssionProcessor:
 
         return expr
 
+    def split_expr_by_subject(self, expr, subject_tokens):
+        return self._split_expr_by_subject(expr, subject_tokens)
+
     def _split_expr_by_subject(self, expr, subject_tokens):
         # first complete the expr using the subject
         expr = self.complete_expression(expr, subject_tokens)
@@ -387,6 +391,20 @@ class ExprssionProcessor:
                 post_phrase.append(w)
 
         return ' '.join(pre_phrase), ' '.join(subject_phrase), ' '.join(post_phrase)
+
+    def delete_expr_subject(self, expr, subject_tokens):
+        if self.enable_delete_sub:
+            subject = ' '.join(subject_tokens)
+            expr = expr.replace(subject, '')
+            expr = expr.replace('  ', ' ')
+            expr = expr.strip(' ')
+            # HACK
+            if expr in {'', 'the', 'a', 'an', 'my'}:
+                return subject
+            else:
+                return expr
+        else:
+            return expr
 
     # ----------- word distance --------------
     def word_path_dist(self, set1, set2):
