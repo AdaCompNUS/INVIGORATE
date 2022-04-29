@@ -1,6 +1,5 @@
 nltk==3.4.5
 numpy==1.14.6
-tornado==5.1.1
 terminado==0.8.3
 jsonschema==2.4
 scipy==1.2.3
@@ -9,3 +8,9 @@ open3d==0.9.0.0
 pillow
 matplotlib==2.2.5
 opencv-python==3.4.1.15
+pyyaml
+empy
+networkx==2.2
+sklearn
+collections_extended
+tf

@@ -6,10 +6,20 @@ INVIGORATE is tested on:
 
 # Clone the code
 ```
+# main branch, used to run codes
 git clone https://github.com/AdaCompNUS/INVIGORATE.git
+export ROOT_DIR_INVIGORATE=${PWD}/INVIGORATE
 cd INVIGORATE
 git submodule init
 git submodule update --recursive
+
+# clone another copy for the four modules of INVIGORATE
+git clone https://github.com/AdaCompNUS/INVIGORATE.git INVIGORATE_modules
+export ROOT_DIR_INVIGORATE_MODULES=${PWD}/INVIGORATE_modules
+cd INVIGORATE_modules
+git submodule init
+git submodule update --recursive --init
+
 ```
 
 # Environment setup
@@ -17,12 +27,23 @@ INVIGORATE relies on 4 different neural networks. Their environments have to be 
 
 ## Detectron2
 We use a custom version of detectron2. To install dependencies, do
+1. install required python packages
 ```
 conda create -n detectron2 python=3.8 # detectron uses python3
-conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
-cd src/faster_rcnn_detector/detectron2
+conda activate detectron2
+conda install pytorch==1.9.1 torchvision==0.10.1 torchaudio==0.9.1 cudatoolkit==10.2  -c pytorch
+cd $ROOT_DIR_INVIGORATE_MODULES/src/faster_rcnn_detector/detectron2
 pip install -e .
 pip install rospkg catkin_pkg opencv-python # to make ROS work with python3
+conda deactivate
+```
+
+2. install invigorate msgs
+```
+cd $ROOT_DIR_INVIGORATE_MODULES
+. /opt/ros/$ROS_DISTRO/setup.bash
+conda activate detectron2 # make sure that detectron2 is activated after ROS setup
+catkin build --cmake-args -DPYTHON_VERSION=3.8
 ```
 
 ## MAttNet and VMRN
@@ -33,15 +54,14 @@ Our docker uses cuda 9.0 and it has a conda environment called **torch_old** tha
 2. Follow the [official instruction](https://github.com/NVIDIA/nvidia-docker) to install nvidia-docker. This allows docker to use your GPU.
 3. Download and run our provided [docker](https://hub.docker.com/repository/docker/adacompnus/vmrd)
 ```
-cd .. # move to the parent folder of INVIGORATE
-cp -r INVIGORATE INVIGORATE_docker # Make a copy of INVIGORATE. This is because we need to build the ROS workspace inside docker separately.
+cd $ROOT_DIR_INVIGORATE_MODULES
 docker pull adacompnus/vmrd
-docker run --gpus all -v "$(pwd)"/INVIGORATE_docker:/home/INVIGORATE_docker --network host -it adacompnus/vmrd /bin/bash # mount INVIGORATE_docker folder into docker and give GPU and network access
+docker run --gpus all -v "$(pwd)"/src:/home/INVIGORATE/src --network host -it adacompnus/vmrd /bin/bash
 ```
 4. Now you are inside the docker, use the provided **torch_old** environment.
 ```
 conda activate torch_old # the docker has a conda environment with cuda 9.0 and pytorch 0.4
-cd /home/INVIGORATE_docker # go to mounted folder
+cd /home/INVIGORATE # go to mounted folder
 catkin build
 source devel/setup.bash
 ```
@@ -95,33 +115,69 @@ $ luarocks install cudnn
 5. Make sure you can run [Demo](https://github.com/AdaCompNUS/ingress-proj) for INGRESS.
 
 ## INVIGORATE
-Create a conda environment for INVIGORATE
+1. Create a conda environment for INVIGORATE
 ```
 conda create -n invigorate python=2.7
+conda activate invigorate
 conda install pytorch torchvision cudatoolkit=10.2 -c pytorch
 pip install -r requirements.txt
+conda deactivate
+```
+
+2. compile ROS workspace for the main branch
+```
+cd $ROOT_DIR_INVIGORATE/src
+git clone https://github.com/AdaCompNUS/ingress-proj
+cd ..
+conda activate invigorate
+catkin build
 ```
 
 # Download models
 All models are stored [here](https://drive.google.com/drive/folders/1jLva2HR6QLxKdaXZBxK4RKI_dNQBDZtK?usp=sharing)
 # Detectron2
 Download model_final_cascade.pth
-put it in <root_dir>/src/model
+put it in 
+```
+<root_dir>/src/model
+```
 
 ## VMRN
 Download all_in_one_1_25_1407_0.pth
-put it in <root_dir>/src/mrt_detector/vmrn_old/output/res101/vmrdcompv1.
+put it in 
+```
+<root_dir>/src/mrt_detector/vmrn_old/output/res101/vmrdcompv1.
+```
 *(The root directory should be INVIGORATE_docker if you follow the procedure above.)*
 
 ## MAttNet
-Download mattnet pretrained model on refCOCO from its official repository. *(The root directory should be INVIGORATE_docker if you follow the procedure above.)*
+1. Download pretrained mask-rcnn models and COCO annotations:
+[Mask RCNN pretrained model](http://bvision.cs.unc.edu/licheng/MattNet/pytorch_mask_rcnn/res101_mask_rcnn_iter_1250k.zip),
+[MAttNet pretrained model](http://bvision.cs.unc.edu/licheng/MattNet/pretrained/refcoco_unc.zip),
+[COCO annotations](http://images.cocodataset.org/annotations/annotations_trainval2014.zip).
+2. Put the pretrained Mask RCNN model (including a pth and a pkl file) to:
+   ```
+   <root_dir>/src/mattnet_server/MAttNet/pyutils/mask-faster-rcnn/output/res101/coco_2014_train_minus_refer_valtest+coco_2014_valminusminival/notime
+   ```
+3. Put the pretrained MAttNet model (including a json file and a pth file) to:
+   ```
+   <root_dir>/src/mattnet_server/MAttNet/output/refcoco_unc
+   ```
+4. Put instances_minival2014.json from COCO annotations to:
+   ```
+   <root_dir>/src/mattnet_server/MAttNet/pyutils/mask-faste-r-rcnn/data/coco/
+   ```
+
 
 ## INGRESS
 Included in the INGRESS docker
 
 ## INVIGORATE observation models
 Download density estimation pickle files. (ground_density_estimation_mattnet.pkl and relation_density_estimation.pkl)
-put it in <root_dir>/src/model
+put it in 
+```
+<root_dir>/src/model
+```
 
 ## Download INVIGORATE Dataset
 Download invigorate dataset from [here](https://drive.google.com/file/d/1FUoLSZupPi1J3BNRY2VTYC1bKWe50ZRF/view?usp=sharing).
