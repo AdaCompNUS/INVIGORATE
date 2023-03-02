@@ -164,7 +164,7 @@ bash launch_mattnet.sh
 conda activate torch_old
 source devel/setup.bash
 cd src
-bash luanch_vmrn.sh
+bash launch_vmrn.sh
 ```
 5. Start INGRESS service inside docker (If you want to generate captions)
 ```
