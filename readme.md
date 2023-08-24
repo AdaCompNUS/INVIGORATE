@@ -92,6 +92,7 @@ bash make.sh
 docker run --gpus all --network host -it adacompnus/ingress /bin/bash
 ```
 4. Inside docker, install lua torch and cuda libraries:
+   (In case you cannot install, try this command: git config --global url."https://".insteadOf git://)
 ```bash
 $ luarocks install cutorch
 $ luarocks install cunn
